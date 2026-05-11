@@ -1,0 +1,24 @@
+# Rust
+/target/
+**/target/
+Cargo.lock
+
+# Node
+node_modules/
+dist/
+.env
+.env.*
+
+# Tauri
+**/src-tauri/target/
+**/src-tauri/WixTools/
+apps/desktop-tauri/src-tauri/gen/
+
+# macOS
+.DS_Store
+*.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
