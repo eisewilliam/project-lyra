@@ -49,7 +49,7 @@
         "label": "settings",
         "title": "Lyra — Settings",
         "url": "/settings",
-        "width": 560,
+        "width": 860,
         "height": 640,
         "resizable": false,
         "fullscreen": false,

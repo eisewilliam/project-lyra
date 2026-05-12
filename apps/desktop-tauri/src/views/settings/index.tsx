@@ -189,7 +189,7 @@ export default function Settings() {
           {state ? (
             <Body section={section} state={state} actions={actions} />
           ) : (
-            <div className="pane-loading">Loading…</div>
+            <SettingsSkeleton />
           )}
         </div>
       </main>
@@ -440,6 +440,40 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
       <h2 className="group-title">{title}</h2>
       <div className="group-card">{children}</div>
     </section>
+  );
+}
+
+function SettingsSkeleton() {
+  return (
+    <div className="pane-loading" role="status" aria-live="polite" aria-label="Loading settings">
+      <section className="group">
+        <span className="group-title skeleton-line skeleton-title" />
+        <div className="group-card">
+          {[52, 44, 58].map((width, index) => (
+            <div className="row skeleton-row" key={`appearance-${index}`}>
+              <span className="row-label skeleton-line" style={{ width: `${width}%` }} />
+              <span className="row-control skeleton-control">
+                <span className="skeleton-line skeleton-pill" />
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="group">
+        <span className="group-title skeleton-line skeleton-title short" />
+        <div className="group-card">
+          {[60, 48].map((width, index) => (
+            <div className="row skeleton-row" key={`surface-${index}`}>
+              <span className="row-label skeleton-line" style={{ width: `${width}%` }} />
+              <span className="row-control skeleton-control">
+                <span className={`skeleton-line ${index === 0 ? 'skeleton-toggle' : 'skeleton-slider'}`} />
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
 
