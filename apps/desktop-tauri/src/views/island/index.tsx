@@ -3,6 +3,12 @@ import { getCurrentWindow, currentMonitor } from '@tauri-apps/api/window';
 import { PhysicalSize } from '@tauri-apps/api/dpi';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import {
+  resolveLyricsSurfaceState,
+  type LyricsPlaceholderState,
+  type LyricsStatus,
+} from '../../utils/lyrics-state';
+import { LyricsPlaceholderIcon } from '../../utils/lyrics-placeholder-icon';
 import './island.css';
 
 type UiState = {
@@ -20,18 +26,42 @@ type UiState = {
 
 type VisibleLine = { index: number; text: string; is_active: boolean };
 
+type LyricWord = { start_ms: number; end_ms: number; text: string };
+
 type RenderSnapshot = {
   playback: {
-    track: { artwork_url: string | null } | null;
+    track: { uri: string; artwork_url: string | null } | null;
     state: 'Playing' | 'Paused' | 'Stopped';
+    position_ms: number | null;
+    observed_at_ms: number;
   };
-  lyrics_status: 'Loading' | 'Ready' | 'NotFound' | { Error: string };
+  lyrics_status: LyricsStatus;
   visible_lines: VisibleLine[];
+  active_line_words: LyricWord[] | null;
 };
 
 const TOP_DOCK_SNAP_PX = 80;
 const POLL_MS = 300;
+const BLEND_MS = 500;
 const FALLBACK_ART = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
+
+type PositionBaseline = {
+  ms: number;
+  at: number;
+  targetMs: number;
+  targetAt: number;
+  blendDur: number;
+};
+
+function interpolatePosition(b: PositionBaseline, now: number, playing: boolean): number {
+  if (!playing) return b.ms;
+  const currentTraj = b.ms + (now - b.at);
+  const targetTraj = b.targetMs + (now - b.targetAt);
+  const elapsed = now - b.at;
+  if (elapsed >= b.blendDur) return targetTraj;
+  const t = elapsed / Math.max(1, b.blendDur);
+  return currentTraj * (1 - t) + targetTraj * t;
+}
 
 function applyIslandFont(scale: number) {
   document.documentElement.style.setProperty('--font-scale', String(scale));
@@ -53,11 +83,19 @@ export default function Island() {
   const [activeLine, setActiveLine] = useState('');
   const [nextLine, setNextLine] = useState('');
   const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
+  const [hasTrack, setHasTrack] = useState(false);
+  const [hasVisibleLyrics, setHasVisibleLyrics] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [lyricsStatus, setLyricsStatus] = useState<LyricsStatus>('Loading');
+  const [snapshotReady, setSnapshotReady] = useState(false);
   const [locked, setLocked] = useState(true);
   const [isDocked, setIsDocked] = useState(true);
+  const [activeLineWords, setActiveLineWords] = useState<LyricWord[]>([]);
   const saveTimerRef = useRef<number | null>(null);
   const refreshedUriRef = useRef('');
   const lastUriRef = useRef('');
+  const baselineRef = useRef<PositionBaseline>({ ms: 0, at: 0, targetMs: 0, targetAt: 0, blendDur: 1 });
+  const wordRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
   // Init: read persisted state, position window, subscribe to lock + settings changes.
   useEffect(() => {
@@ -146,11 +184,32 @@ export default function Island() {
     const poll = async () => {
       try {
         const snap = await invoke<RenderSnapshot>('get_render_snapshot');
-        const uri = snap.playback.track
-          ? (snap.playback.track as unknown as { uri: string }).uri
-          : '';
+        const uri = snap.playback.track?.uri ?? '';
 
+        setSnapshotReady(true);
+        setHasTrack(Boolean(snap.playback.track));
+        setHasVisibleLyrics(snap.visible_lines.length > 0);
+        const playingNow = snap.playback.state === 'Playing';
+        setIsPlaying(playingNow);
+        setLyricsStatus(snap.lyrics_status);
         setArtworkUrl(snap.playback.track?.artwork_url ?? null);
+        setActiveLineWords(snap.active_line_words ?? []);
+
+        // Age-corrected position + continuous blend. See app view for details.
+        const newPos = snap.playback.position_ms ?? 0;
+        const now = performance.now();
+        const ageMs = playingNow
+          ? Math.max(0, Math.min(2000, Date.now() - snap.playback.observed_at_ms))
+          : 0;
+        const correctedPos = newPos + ageMs;
+        const currentInterp = interpolatePosition(baselineRef.current, now, playingNow);
+        const drift = correctedPos - currentInterp;
+
+        if (!playingNow || Math.abs(drift) > 1000) {
+          baselineRef.current = { ms: correctedPos, at: now, targetMs: correctedPos, targetAt: now, blendDur: 1 };
+        } else {
+          baselineRef.current = { ms: currentInterp, at: now, targetMs: correctedPos, targetAt: now, blendDur: BLEND_MS };
+        }
 
         // Trigger lyrics fetch once per URI.
         if (uri && snap.lyrics_status === 'Loading' && refreshedUriRef.current !== uri) {
@@ -162,6 +221,7 @@ export default function Island() {
           lastUriRef.current = uri;
           setActiveLine('');
           setNextLine('');
+          setActiveLineWords([]);
         }
 
         const activeIdx = snap.visible_lines.findIndex(l => l.is_active);
@@ -182,11 +242,48 @@ export default function Island() {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (activeLineWords.length === 0) return;
+    let raf = 0;
+    const tick = () => {
+      const pos = interpolatePosition(baselineRef.current, performance.now(), isPlaying);
+      for (let i = 0; i < activeLineWords.length; i++) {
+        const w = activeLineWords[i];
+        const el = wordRefs.current[i];
+        if (!el) continue;
+        let cls: string;
+        let progress: number;
+        if (pos >= w.end_ms) {
+          cls = 'lyric-word passed';
+          progress = 1;
+        } else if (pos >= w.start_ms) {
+          cls = 'lyric-word singing';
+          progress = Math.max(0, Math.min(1, (pos - w.start_ms) / Math.max(1, w.end_ms - w.start_ms)));
+        } else {
+          cls = 'lyric-word upcoming';
+          progress = 0;
+        }
+        if (el.className !== cls) el.className = cls;
+        el.style.setProperty('--word-progress', progress.toFixed(3));
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [activeLineWords, isPlaying]);
+
   const artSrc = artworkUrl ?? FALLBACK_ART;
+  const panelState = resolveLyricsSurfaceState({
+    booted: snapshotReady,
+    hasTrack,
+    lyricsStatus,
+    hasContent: hasVisibleLyrics,
+  });
+  const barsActive = panelState === 'ready' && isPlaying;
 
   return (
     <div
-      className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${isDocked ? 'docked' : 'floating'}`}
+      className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${isDocked ? 'docked' : 'floating'} ${panelState !== 'ready' ? 'has-placeholder' : ''}`}
       onMouseDown={(e) => {
         if (locked || e.button !== 0) return;
         e.preventDefault();
@@ -200,19 +297,36 @@ export default function Island() {
 
       <div className="panel-content">
         <div className="panel-art">
-          <img src={artSrc} className="panel-cover" draggable={false} alt="Album" />
+          <img
+            src={artSrc}
+            className={`panel-cover ${artworkUrl ? '' : 'placeholder'}`}
+            draggable={false}
+            alt={hasTrack ? 'Album' : ''}
+          />
         </div>
 
-        <div className="panel-lyrics-stack">
-          <div className="panel-lyric-active">
-            {activeLine}
-          </div>
-          <div className="panel-lyric-next">
-            {nextLine}
-          </div>
+        <div className={`panel-lyrics-stack ${panelState !== 'ready' ? 'is-placeholder' : ''}`}>
+          {panelState === 'ready' ? (
+            <>
+              <div className="panel-lyric-active">
+                {activeLineWords.length > 0 ? (
+                  activeLineWords.map((w, i) => (
+                    <span
+                      key={i}
+                      ref={(el) => { wordRefs.current[i] = el; }}
+                      className="lyric-word upcoming"
+                    >{w.text}</span>
+                  ))
+                ) : activeLine}
+              </div>
+              <div className="panel-lyric-next">{nextLine}</div>
+            </>
+          ) : (
+            <PanelPlaceholder state={panelState} />
+          )}
         </div>
 
-        <div className="audio-bars">
+        <div className={`audio-bars ${barsActive ? '' : 'is-idle'}`}>
           <span className="bar"></span>
           <span className="bar"></span>
           <span className="bar"></span>
@@ -220,5 +334,38 @@ export default function Island() {
       </div>
     </div>
   );
+}
+
+function PanelPlaceholder({ state }: { state: LyricsPlaceholderState }) {
+  const loading = state === 'booting' || state === 'loading';
+
+  return (
+    <div className={`panel-placeholder is-${state} ${loading ? 'is-loading' : ''}`} role="status" aria-label={getCompactPlaceholderLabel(state)}>
+      <span className="panel-placeholder-indicator" aria-hidden="true">
+        <LyricsPlaceholderIcon state={state} className="panel-placeholder-icon" />
+      </span>
+      <span className="panel-placeholder-lines" aria-hidden="true">
+        <span className="panel-placeholder-line primary" />
+        <span className="panel-placeholder-line secondary" />
+      </span>
+    </div>
+  );
+}
+
+function getCompactPlaceholderLabel(state: LyricsPlaceholderState) {
+  switch (state) {
+    case 'booting':
+      return 'Connecting to Spotify';
+    case 'idle':
+      return 'Waiting for playback';
+    case 'loading':
+      return 'Loading lyrics';
+    case 'empty':
+      return 'No synced lyrics';
+    case 'error':
+      return 'Lyrics unavailable';
+    default:
+      return '';
+  }
 }
 

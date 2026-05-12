@@ -82,6 +82,12 @@ html, body {
   border-radius: inherit;
 }
 
+.panel-cover.placeholder {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.05)),
+    rgba(255, 255, 255, 0.06);
+}
+
 .panel-lyrics-stack {
   display: flex;
   flex-direction: column;
@@ -89,6 +95,10 @@ html, body {
   gap: 4px;
   flex: 1;
   min-width: 0; 
+}
+
+.panel-lyrics-stack.is-placeholder {
+  gap: 0;
 }
 
 .panel-lyric-active {
@@ -102,6 +112,24 @@ html, body {
   letter-spacing: -0.02em;
 }
 
+/* All word states share one gradient rule. --word-progress (0..1) is updated
+   60fps via refs; the dim → bright wipe moves with the cursor without any
+   class-swap repaint. */
+.panel-lyric-active .lyric-word {
+  display: inline;
+  color: transparent;
+  background-image: linear-gradient(
+    to right,
+    #ffffff 0%,
+    #ffffff calc(var(--word-progress, 0) * 100%),
+    rgba(255, 255, 255, 0.4) calc(var(--word-progress, 0) * 100%),
+    rgba(255, 255, 255, 0.4) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
 .panel-lyric-next {
   font-size: calc(14px * var(--font-scale, 1));
   font-weight: 600;
@@ -113,12 +141,80 @@ html, body {
   letter-spacing: -0.01em;
 }
 
+.panel-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.panel-placeholder-indicator {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.panel-placeholder-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.panel-placeholder-lines {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.panel-placeholder-line {
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.panel-placeholder-line.primary {
+  width: 72%;
+}
+
+.panel-placeholder-line.secondary {
+  width: 46%;
+}
+
+.panel-placeholder.is-loading .panel-placeholder-line {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08));
+  background-size: 220% 100%;
+  animation: island-shimmer 1.6s linear infinite;
+}
+
+.panel-placeholder.is-loading .panel-placeholder-indicator {
+  animation: island-pulse 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.panel-placeholder.is-error .panel-placeholder-indicator {
+  color: rgba(255, 184, 178, 0.96);
+  background: rgba(255, 69, 58, 0.16);
+}
+
 .audio-bars {
   display: flex;
   gap: 2px;
   align-items: center;
   height: 16px;
   flex-shrink: 0;
+}
+
+.audio-bars.is-idle {
+  opacity: 0.28;
 }
 
 .audio-bars .bar {
@@ -131,7 +227,38 @@ html, body {
 .audio-bars .bar:nth-child(2) { animation-delay: 0.2s; }
 .audio-bars .bar:nth-child(3) { animation-delay: 0.4s; }
 
+.audio-bars.is-idle .bar {
+  animation: none;
+  height: 8px;
+  box-shadow: none;
+}
+
 @keyframes bounce {
   0% { height: 4px; }
   100% { height: 16px; }
+}
+
+@keyframes island-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -20% 0; }
+}
+
+@keyframes island-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.72;
+  }
+
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audio-bars .bar,
+  .panel-placeholder.is-loading .panel-placeholder-line,
+  .panel-placeholder.is-loading .panel-placeholder-indicator {
+    animation: none;
+  }
 }
