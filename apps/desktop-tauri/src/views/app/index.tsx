@@ -430,13 +430,6 @@ function LyricsPlaceholder({
   state: LyricsPlaceholderState;
 }) {
   const loading = state === 'booting' || state === 'loading';
-  const skeletonWidths = state === 'idle'
-    ? ['40%', '58%', '34%']
-    : state === 'empty'
-      ? ['54%', '38%', '42%']
-      : state === 'error'
-        ? ['46%', '33%', '38%']
-        : ['82%', '96%', '74%', '88%'];
 
   return (
     <div className={`lyrics-placeholder is-${state} ${loading ? 'is-loading' : ''}`}>
@@ -448,15 +441,13 @@ function LyricsPlaceholder({
           </span>
         </div>
 
-        <div className="lyrics-skeleton" aria-hidden="true">
-          {skeletonWidths.map((width, index) => (
-            <span
-              key={`${state}-${width}`}
-              className="lyrics-skeleton-line"
-              style={{ width, animationDelay: `${index * 120}ms` }}
-            />
-          ))}
-        </div>
+        {loading ? (
+          <div className="lyrics-placeholder-dots" aria-hidden="true">
+            <span className="lyrics-placeholder-dot" />
+            <span className="lyrics-placeholder-dot" />
+            <span className="lyrics-placeholder-dot" />
+          </div>
+        ) : null}
       </div>
     </div>
   );

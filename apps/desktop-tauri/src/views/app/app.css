@@ -372,8 +372,10 @@
 .lyrics-placeholder-card {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 24px;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  min-height: 220px;
   padding: 36px 34px;
   border-radius: 28px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06));
@@ -415,29 +417,30 @@
   height: 30px;
 }
 
-.lyrics-skeleton {
+.lyrics-placeholder-dots {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-  width: min(560px, 100%);
+  align-items: center;
+  gap: 10px;
 }
 
-.lyrics-skeleton-line {
-  display: block;
-  height: 18px;
+.lyrics-placeholder-dot {
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.34);
+  animation: placeholder-dot-bounce 1s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
 .lyrics-placeholder.is-loading .lyrics-placeholder-ring {
   animation: placeholder-pulse 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
-.lyrics-placeholder.is-loading .lyrics-skeleton-line {
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.1));
-  background-size: 220% 100%;
-  animation: shimmer 1.6s linear infinite;
+.lyrics-placeholder-dot:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.lyrics-placeholder-dot:nth-child(3) {
+  animation-delay: 240ms;
 }
 
 .lyrics-placeholder.is-error .lyrics-placeholder-core {
@@ -453,13 +456,17 @@
   color: rgba(255, 255, 255, 0.76);
 }
 
-@keyframes shimmer {
-  from {
-    background-position: 200% 0;
+@keyframes placeholder-dot-bounce {
+  0%,
+  80%,
+  100% {
+    opacity: 0.28;
+    transform: translateY(0) scale(0.9);
   }
 
-  to {
-    background-position: -20% 0;
+  40% {
+    opacity: 1;
+    transform: translateY(-5px) scale(1);
   }
 }
 
@@ -561,7 +568,7 @@
 @media (prefers-reduced-motion: reduce) {
   .btn-icon,
   .lyric-line,
-  .lyrics-skeleton-line {
+  .lyrics-placeholder-dot {
     animation: none;
     transition: none;
   }

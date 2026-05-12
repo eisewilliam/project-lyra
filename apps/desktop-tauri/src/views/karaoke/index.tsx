@@ -273,10 +273,13 @@ function KaraokePlaceholder({
           <LyricsPlaceholderIcon state={state} className="karaoke-placeholder-icon" />
         </span>
       </div>
-      <div className="karaoke-placeholder-lines" aria-hidden="true">
-        <span className="karaoke-skeleton-line current" />
-        {lines >= 2 && <span className="karaoke-skeleton-line next" />}
-      </div>
+      {loading ? (
+        <div className="karaoke-placeholder-dots" aria-hidden="true">
+          <span className="karaoke-placeholder-dot" />
+          <span className="karaoke-placeholder-dot" />
+          <span className="karaoke-placeholder-dot" />
+        </div>
+      ) : lines >= 2 ? <div className="karaoke-placeholder-spacer" aria-hidden="true" /> : null}
     </div>
   );
 }

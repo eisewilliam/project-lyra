@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { getCurrentWindow, currentMonitor } from '@tauri-apps/api/window';
 import { PhysicalSize } from '@tauri-apps/api/dpi';
 import { invoke } from '@tauri-apps/api/core';
@@ -36,6 +36,7 @@ type RenderSnapshot = {
     observed_at_ms: number;
   };
   lyrics_status: LyricsStatus;
+  line_progress: number | null;
   visible_lines: VisibleLine[];
   active_line_words: LyricWord[] | null;
 };
@@ -90,7 +91,9 @@ export default function Island() {
   const [snapshotReady, setSnapshotReady] = useState(false);
   const [locked, setLocked] = useState(true);
   const [isDocked, setIsDocked] = useState(true);
+  const [hasActiveLyric, setHasActiveLyric] = useState(false);
   const [activeLineWords, setActiveLineWords] = useState<LyricWord[]>([]);
+  const [activeLineProgress, setActiveLineProgress] = useState(0);
   const saveTimerRef = useRef<number | null>(null);
   const refreshedUriRef = useRef('');
   const lastUriRef = useRef('');
@@ -194,6 +197,7 @@ export default function Island() {
         setLyricsStatus(snap.lyrics_status);
         setArtworkUrl(snap.playback.track?.artwork_url ?? null);
         setActiveLineWords(snap.active_line_words ?? []);
+        setActiveLineProgress(Math.max(0, Math.min(1, snap.line_progress ?? 0)));
 
         // Age-corrected position + continuous blend. See app view for details.
         const newPos = snap.playback.position_ms ?? 0;
@@ -221,10 +225,13 @@ export default function Island() {
           lastUriRef.current = uri;
           setActiveLine('');
           setNextLine('');
+          setHasActiveLyric(false);
           setActiveLineWords([]);
+          setActiveLineProgress(0);
         }
 
         const activeIdx = snap.visible_lines.findIndex(l => l.is_active);
+        setHasActiveLyric(activeIdx !== -1);
         if (activeIdx !== -1) {
           setActiveLine(snap.visible_lines[activeIdx].text);
           setNextLine(snap.visible_lines[activeIdx + 1]?.text ?? '');
@@ -308,7 +315,13 @@ export default function Island() {
         <div className={`panel-lyrics-stack ${panelState !== 'ready' ? 'is-placeholder' : ''}`}>
           {panelState === 'ready' ? (
             <>
-              <div className="panel-lyric-active">
+              <GlidingLine
+                className={`panel-lyric-active ${hasActiveLyric ? '' : 'is-preroll'}`}
+                contentKey={activeLineWords.length > 0
+                  ? activeLineWords.map((word) => `${word.start_ms}:${word.text}`).join('|')
+                  : activeLine}
+                syncProgress={activeLineProgress}
+              >
                 {activeLineWords.length > 0 ? (
                   activeLineWords.map((w, i) => (
                     <span
@@ -318,7 +331,7 @@ export default function Island() {
                     >{w.text}</span>
                   ))
                 ) : activeLine}
-              </div>
+              </GlidingLine>
               <div className="panel-lyric-next">{nextLine}</div>
             </>
           ) : (
@@ -331,6 +344,67 @@ export default function Island() {
           <span className="bar"></span>
           <span className="bar"></span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function GlidingLine({
+  className,
+  contentKey,
+  syncProgress,
+  children,
+}: {
+  className: string;
+  contentKey: string;
+  syncProgress: number;
+  children: ReactNode;
+}) {
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [overflowPx, setOverflowPx] = useState(0);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const content = contentRef.current;
+    if (!viewport || !content) return;
+
+    const updateOverflow = () => {
+      const nextOverflow = Math.max(0, Math.ceil(content.scrollWidth - viewport.clientWidth));
+      setOverflowPx((current) => (current === nextOverflow ? current : nextOverflow));
+    };
+
+    updateOverflow();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateOverflow);
+      return () => window.removeEventListener('resize', updateOverflow);
+    }
+
+    const observer = new ResizeObserver(updateOverflow);
+    observer.observe(viewport);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [contentKey]);
+
+  const isGliding = overflowPx > 0;
+  const normalizedReveal = syncProgress <= 0.06
+    ? 0
+    : syncProgress >= 0.78
+      ? 1
+      : (syncProgress - 0.06) / 0.72;
+  const revealProgress = normalizedReveal * normalizedReveal * (3 - 2 * normalizedReveal);
+  const style = isGliding
+    ? {
+      '--glide-shift': `${overflowPx}px`,
+      transform: `translateX(${-overflowPx * revealProgress}px)`,
+    } as CSSProperties
+    : undefined;
+
+  return (
+    <div className={`${className} ${isGliding ? 'is-gliding' : ''}`} ref={viewportRef}>
+      <div className="panel-lyric-content" ref={contentRef} style={style}>
+        {children}
       </div>
     </div>
   );

@@ -150,12 +150,19 @@ fn build_visible(
     above: usize,
     below: usize,
 ) -> Vec<VisibleLine> {
-    let Some(active_idx) = active else {
-        return vec![];
+    let (start, end, active_idx) = match active {
+        Some(active_idx) => (
+            active_idx.saturating_sub(above),
+            (active_idx + below + 1).min(doc.lines.len()),
+            Some(active_idx),
+        ),
+        None => {
+            if doc.lines.is_empty() {
+                return vec![];
+            }
+            (0, (below + 1).min(doc.lines.len()), None)
+        }
     };
-
-    let start = active_idx.saturating_sub(above);
-    let end = (active_idx + below + 1).min(doc.lines.len());
 
     doc.lines[start..end]
         .iter()
@@ -163,7 +170,7 @@ fn build_visible(
         .map(|(offset, line)| VisibleLine {
             index: start + offset,
             text: line.text.clone(),
-            is_active: (start + offset) == active_idx,
+            is_active: active_idx == Some(start + offset),
         })
         .collect()
 }
@@ -208,6 +215,17 @@ mod tests {
     fn returns_none_before_first_line() {
         let doc = make_doc(&[(5000, "First")]);
         assert_eq!(find_active_line(&doc.lines, 1000), None);
+    }
+
+    #[test]
+    fn shows_first_visible_lines_before_first_timestamp() {
+        let doc = make_doc(&[(5000, "First"), (7000, "Second"), (9000, "Third")]);
+        let visible = build_visible(&doc, None, 1, 1);
+        assert_eq!(visible.len(), 2);
+        assert_eq!(visible[0].text, "First");
+        assert_eq!(visible[1].text, "Second");
+        assert!(!visible[0].is_active);
+        assert!(!visible[1].is_active);
     }
 
     #[test]

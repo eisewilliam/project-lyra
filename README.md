@@ -68,6 +68,8 @@ The Rust core owns all behavior — playback state, lyric resolution, sync, cach
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design and [`docs/PRD.md`](docs/PRD.md) for product requirements.
 
+For release planning, see [`docs/first-alpha-release.md`](docs/first-alpha-release.md).
+
 ---
 
 ## Repository Layout
