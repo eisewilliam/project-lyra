@@ -5,7 +5,7 @@ use tauri::AppHandle;
 #[cfg(target_os = "macos")]
 use tauri::Manager;
 #[cfg(target_os = "macos")]
-use tauri_nspanel::{cocoa::appkit::NSWindowCollectionBehavior, ManagerExt, WebviewWindowExt};
+use tauri_nspanel::{ManagerExt, WebviewWindowExt};
 #[cfg(target_os = "macos")]
 use objc::runtime::Object;
 #[cfg(target_os = "macos")]
@@ -13,9 +13,13 @@ use objc::{sel, sel_impl};
 
 // NSWindowLevel constants (AppKit)
 #[cfg(target_os = "macos")]
-const NS_STATUS_WINDOW_LEVEL: i32 = 25;
-#[cfg(target_os = "macos")]
 const NS_FLOATING_WINDOW_LEVEL: i32 = 3;
+// kCGCursorWindowLevelKey == 2147483630 (INT32_MAX - 1).
+// Setting the island one step below the cursor guarantees it sits above
+// every system surface (menubar, Dock, notifications, screen saver…)
+// while still letting the hardware cursor render on top.
+#[cfg(target_os = "macos")]
+const ABOVE_EVERYTHING_LEVEL: i32 = 2147483629;
 // NSNonactivatingPanelMask = 1 << 7 = 128
 #[cfg(target_os = "macos")]
 const NS_NONACTIVATING_PANEL_MASK: i32 = 128;
@@ -42,14 +46,14 @@ struct CocoaRect {
 }
 
 #[cfg(target_os = "macos")]
-fn overlay_collection_behavior(show_on_fullscreen: bool) -> NSWindowCollectionBehavior {
-    // NSWindowCollectionBehaviorStationary = 1 << 4
-    let mut behavior = NSWindowCollectionBehavior::NSWindowCollectionBehaviorStationary;
+fn overlay_collection_behavior(show_on_fullscreen: bool) -> u64 {
+    // NSWindowCollectionBehaviorCanJoinAllSpaces  = 1 << 0  (every space, always)
+    // NSWindowCollectionBehaviorStationary        = 1 << 4  (don't animate with space switches)
+    // NSWindowCollectionBehaviorIgnoresCycle      = 1 << 6  (skip Cmd+~ / Exposé cycling)
+    let mut behavior: u64 = (1 << 0) | (1 << 4) | (1 << 6);
     if show_on_fullscreen {
-        // NSWindowCollectionBehaviorCanJoinAllSpaces = 1 << 0
         // NSWindowCollectionBehaviorFullScreenAuxiliary = 1 << 8
-        behavior |= NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces;
-        behavior |= NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary;
+        behavior |= 1 << 8;
     }
     behavior
 }
@@ -57,7 +61,9 @@ fn overlay_collection_behavior(show_on_fullscreen: bool) -> NSWindowCollectionBe
 #[cfg(target_os = "macos")]
 fn overlay_level(label: &str) -> i32 {
     match label {
-        "island" => NS_STATUS_WINDOW_LEVEL,
+        // Island must sit above the menubar (level 25) and every other system
+        // surface. The only thing that can ever be above it is the OS cursor.
+        "island" => ABOVE_EVERYTHING_LEVEL,
         _ => NS_FLOATING_WINDOW_LEVEL,
     }
 }
@@ -202,10 +208,16 @@ pub fn apply_overlay_visibility(
         return false;
     };
 
-    panel.set_level(overlay_level(label));
+    // Configure semantics first — setFloatingPanel:YES internally calls
+    // [panel setLevel: NSFloatingWindowLevel] which would clobber our custom
+    // level, so we must call set_level AFTER set_floating_panel.
     panel.set_style_mask(NS_NONACTIVATING_PANEL_MASK);
-    panel.set_collection_behaviour(overlay_collection_behavior(show_on_fullscreen));
     panel.set_floating_panel(true);
+    // Override the level that setFloatingPanel just reset to NSFloatingWindowLevel (3).
+    // Direct msg_send guarantees no wrapper can intercept or clamp the value.
+    unsafe { let _: () = objc::msg_send![&*panel, setLevel: overlay_level(label)]; }
+    // Use msg_send directly to avoid the deprecated NSWindowCollectionBehavior type
+    unsafe { let _: () = objc::msg_send![&*panel, setCollectionBehavior: overlay_collection_behavior(show_on_fullscreen)]; }
     panel.set_hides_on_deactivate(false);
     panel.set_works_when_modal(true);
     panel.set_has_shadow(false);

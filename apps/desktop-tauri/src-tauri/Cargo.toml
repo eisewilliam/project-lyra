@@ -26,3 +26,8 @@ lyra-core = { path = "../../../crates/lyra-core" }
 dirs-next = "2"
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2" }
 objc = "0.2"
+
+[lints.rust]
+# The objc 0.2 crate's macros emit `cfg(cargo-clippy)` which rustc doesn't
+# recognise as a declared cfg key; suppress the noise here.
+unexpected_cfgs = { level = "allow" }
