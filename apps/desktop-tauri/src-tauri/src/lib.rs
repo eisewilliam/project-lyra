@@ -50,8 +50,11 @@ pub fn run() {
                 fetch_in_flight: Mutex::new(HashSet::new()),
             });
 
-            // Register the nspanel plugin so get_webview_panel() works.
-            app.handle().plugin(tauri_nspanel::init())?;
+            #[cfg(target_os = "macos")]
+            {
+                // Register the nspanel plugin so get_webview_panel() works.
+                app.handle().plugin(tauri_nspanel::init())?;
+            }
 
             // Convert overlay windows to NSPanel so they can float above other apps.
             let _ = macos::init_overlay_panels(app.handle());
@@ -69,23 +72,26 @@ pub fn run() {
                 let _ = macos::set_island_size(app.handle(), w, h);
             }
 
-            // Start backend adapter polling loop
-            let handle = app.handle().clone();
-            std::thread::spawn(move || {
-                use lyra_core::player::PlayerAdapter;
-                let adapter = lyra_core::player::spotify_macos::SpotifyMacOsAdapter::new();
-                loop {
-                    let _ = adapter.poll();
-                    if let Some(snapshot) = adapter.snapshot() {
-                        if let Some(state) = handle.try_state::<AppState>() {
-                            if let Ok(mut rt) = state.runtime.lock() {
-                                rt.set_playback_snapshot(snapshot);
+            #[cfg(target_os = "macos")]
+            {
+                // Start the backend adapter polling loop only on macOS.
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    use lyra_core::player::PlayerAdapter;
+                    let adapter = lyra_core::player::spotify_macos::SpotifyMacOsAdapter::new();
+                    loop {
+                        let _ = adapter.poll();
+                        if let Some(snapshot) = adapter.snapshot() {
+                            if let Some(state) = handle.try_state::<AppState>() {
+                                if let Ok(mut rt) = state.runtime.lock() {
+                                    rt.set_playback_snapshot(snapshot);
+                                }
                             }
                         }
+                        std::thread::sleep(std::time::Duration::from_millis(250));
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(250));
-                }
-            });
+                });
+            }
 
             Ok(())
         })

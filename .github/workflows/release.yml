@@ -1,0 +1,94 @@
+name: release
+
+on:
+    push:
+        tags:
+            - "v*"
+    workflow_dispatch:
+        inputs:
+            release-tag:
+                description: Git tag to release, for example v0.1.0
+                required: true
+                type: string
+
+permissions:
+    contents: write
+
+concurrency:
+    group: release-${{ github.event_name == 'workflow_dispatch' && inputs.release-tag || github.ref_name }}
+    cancel-in-progress: false
+
+env:
+    APP_DIR: apps/desktop-tauri
+    RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release-tag || github.ref_name }}
+
+jobs:
+    publish-tauri:
+        name: ${{ matrix.name }}
+        runs-on: ${{ matrix.platform }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - name: macOS Apple Silicon
+                      platform: macos-latest
+                      rust-target: aarch64-apple-darwin
+                      args: --target aarch64-apple-darwin
+                    - name: macOS Intel
+                      platform: macos-latest
+                      rust-target: x86_64-apple-darwin
+                      args: --target x86_64-apple-darwin
+                    - name: Windows x64
+                      platform: windows-latest
+                      rust-target: ""
+                      args: ""
+
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v4
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: lts/*
+                  cache: npm
+                  cache-dependency-path: apps/desktop-tauri/package-lock.json
+
+            - name: Install Rust stable
+              uses: dtolnay/rust-toolchain@stable
+              if: matrix.rust-target == ''
+
+            - name: Install Rust stable with target
+              uses: dtolnay/rust-toolchain@stable
+              if: matrix.rust-target != ''
+              with:
+                  targets: ${{ matrix.rust-target }}
+
+            - name: Restore Rust cache
+              uses: swatinem/rust-cache@v2
+              with:
+                  workspaces: ./apps/desktop-tauri/src-tauri -> target
+
+            - name: Install frontend dependencies
+              working-directory: ${{ env.APP_DIR }}
+              run: npm ci
+
+            - name: Run frontend lint
+              working-directory: ${{ env.APP_DIR }}
+              run: npm run lint
+
+            - name: Run core tests
+              run: cargo test -p lyra-core
+
+            - name: Build and publish Tauri bundles
+              uses: tauri-apps/tauri-action@v0
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              with:
+                  projectPath: ${{ env.APP_DIR }}
+                  tagName: ${{ env.RELEASE_TAG }}
+                  releaseName: Lyra ${{ env.RELEASE_TAG }}
+                  releaseBody: See the assets attached to this release for the Windows and macOS bundles.
+                  releaseDraft: false
+                  prerelease: false
+                  args: ${{ matrix.args }}
