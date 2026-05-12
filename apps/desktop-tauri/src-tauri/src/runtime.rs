@@ -2,20 +2,22 @@ use lyra_core::{
     config::ConfigStore,
     domain::{LyricDocument, LyricsStatus, PlaybackSnapshot, PlaybackState, RenderSnapshot, SettingsSnapshot, TrackRef},
     lyrics::cache::LyricCache,
-    player::{spotify_macos::SpotifyMacOsAdapter, PlayerAdapter},
     sync::compute_render,
 };
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Mutable, lock-protected runtime state. Does NOT hold the HTTP client
 /// so commands can release this lock before awaiting network calls.
 pub struct LyraRuntime {
-    pub adapter: SpotifyMacOsAdapter,
+    pub last_playback_snapshot: Option<PlaybackSnapshot>,
     pub cache: LyricCache,
     config: ConfigStore,
     settings: SettingsSnapshot,
     current_doc: Option<LyricDocument>,
     last_track_key: Option<String>,
+    last_tick_ms: u64,
+    last_tick_result: Option<RenderSnapshot>,
 }
 
 impl LyraRuntime {
@@ -27,12 +29,14 @@ impl LyraRuntime {
         let _ = cache.ensure_dirs();
 
         Self {
-            adapter: SpotifyMacOsAdapter::new(),
+            last_playback_snapshot: None,
             cache,
             config,
             settings,
             current_doc: None,
             last_track_key: None,
+            last_tick_ms: 0,
+            last_tick_result: None,
         }
     }
 
@@ -46,7 +50,11 @@ impl LyraRuntime {
     }
 
     pub fn current_track(&self) -> Option<TrackRef> {
-        self.adapter.snapshot().and_then(|s| s.track)
+        self.last_playback_snapshot.as_ref().and_then(|s| s.track.clone())
+    }
+
+    pub fn set_playback_snapshot(&mut self, snap: PlaybackSnapshot) {
+        self.last_playback_snapshot = Some(snap);
     }
 
     pub fn is_negative(&self, track_key: &str) -> bool {
@@ -66,10 +74,30 @@ impl LyraRuntime {
         let _ = self.cache.mark_negative(track_key);
     }
 
-    /// Poll + compute render snapshot. Call on every UI tick.
+    /// Return every lyric line text for the currently loaded document.
+    pub fn all_lyrics_lines(&self) -> Vec<String> {
+        self.current_doc
+            .as_ref()
+            .map(|d| d.lines.iter().map(|l| l.text.clone()).collect())
+            .unwrap_or_default()
+    }
+
+    /// Poll + compute render snapshot. Debounced: if called again within 150 ms
+    /// returns the cached result without re-running AppleScript.
     pub fn tick(&mut self) -> RenderSnapshot {
-        let _ = self.adapter.poll();
-        let snapshot = self.adapter.snapshot().unwrap_or(PlaybackSnapshot {
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        if now_ms.saturating_sub(self.last_tick_ms) < 150 {
+            if let Some(cached) = &self.last_tick_result {
+                return cached.clone();
+            }
+        }
+        self.last_tick_ms = now_ms;
+
+        let snapshot = self.last_playback_snapshot.clone().unwrap_or(PlaybackSnapshot {
             track: None,
             state: PlaybackState::Stopped,
             position_ms: None,
@@ -92,10 +120,18 @@ impl LyraRuntime {
         let status = match (&track_key, &self.current_doc) {
             (None, _) => LyricsStatus::NotFound,
             (Some(_), Some(_)) => LyricsStatus::Ready,
-            (Some(_), None) => LyricsStatus::Loading,
+            (Some(key), None) => {
+                if self.cache.is_negative(key) {
+                    LyricsStatus::NotFound
+                } else {
+                    LyricsStatus::Loading
+                }
+            }
         };
 
-        compute_render(snapshot, self.current_doc.as_ref(), status, above, below)
+        let result = compute_render(snapshot, self.current_doc.as_ref(), status, above, below);
+        self.last_tick_result = Some(result.clone());
+        result
     }
 }
 

@@ -52,10 +52,9 @@ impl LyricSource for LrclibClient {
         }
 
         let results: Vec<LrclibResponse> = resp.json().await?;
-        let synced = results
-            .into_iter()
-            .find_map(|r| r.synced_lyrics)
-            .ok_or_else(|| anyhow!("no synced lyrics"))?;
+        let Some(synced) = results.into_iter().find_map(|r| r.synced_lyrics) else {
+            return Ok(None);
+        };
 
         let doc = parser::parse_lrc(&track.uri, &synced, LyricSourceKind::Lrclib)
             .map_err(|e| anyhow!("parse error: {e}"))?;

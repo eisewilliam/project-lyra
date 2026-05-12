@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { getCurrentWindow, currentMonitor } from '@tauri-apps/api/window';
+import { PhysicalSize } from '@tauri-apps/api/dpi';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { MOCK_LYRICS, ALBUM_COVER } from '../../constants';
 import './island.css';
 
 type UiState = {
@@ -18,7 +18,20 @@ type UiState = {
   floating_font_scale: number;
 };
 
+type VisibleLine = { index: number; text: string; is_active: boolean };
+
+type RenderSnapshot = {
+  playback: {
+    track: { artwork_url: string | null } | null;
+    state: 'Playing' | 'Paused' | 'Stopped';
+  };
+  lyrics_status: 'Loading' | 'Ready' | 'NotFound' | { Error: string };
+  visible_lines: VisibleLine[];
+};
+
 const TOP_DOCK_SNAP_PX = 80;
+const POLL_MS = 300;
+const FALLBACK_ART = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
 
 function applyIslandFont(scale: number) {
   document.documentElement.style.setProperty('--font-scale', String(scale));
@@ -37,11 +50,14 @@ async function setIslandPanelPosition(x: number, y: number) {
 }
 
 export default function Island() {
-  const [activeLine, setActiveLine] = useState(3);
-  const [isPlaying] = useState(true);
+  const [activeLine, setActiveLine] = useState('');
+  const [nextLine, setNextLine] = useState('');
+  const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
   const [locked, setLocked] = useState(true);
   const [isDocked, setIsDocked] = useState(true);
   const saveTimerRef = useRef<number | null>(null);
+  const refreshedUriRef = useRef('');
+  const lastUriRef = useRef('');
 
   // Init: read persisted state, position window, subscribe to lock + settings changes.
   useEffect(() => {
@@ -87,10 +103,9 @@ export default function Island() {
       unlistenSettings = await listen<UiState>('ui-settings-changed', (e) => {
         setLocked(e.payload.island_locked);
         applyIslandFont(e.payload.island_font_scale);
-        // If settings changed the island size, resize this window to match.
         if (e.payload.island_width && e.payload.island_height) {
           getCurrentWindow().setSize(
-            { type: 'Physical', width: e.payload.island_width, height: e.payload.island_height }
+            new PhysicalSize(e.payload.island_width, e.payload.island_height)
           ).catch(() => { });
         }
       });
@@ -126,13 +141,48 @@ export default function Island() {
     };
   }, []);
 
+  // Poll real render snapshot every 300 ms.
   useEffect(() => {
-    if (!isPlaying) return;
-    const timer = setInterval(() => {
-      setActiveLine(prev => (prev + 1) % MOCK_LYRICS.length);
-    }, 4000);
+    const poll = async () => {
+      try {
+        const snap = await invoke<RenderSnapshot>('get_render_snapshot');
+        const uri = snap.playback.track
+          ? (snap.playback.track as unknown as { uri: string }).uri
+          : '';
+
+        setArtworkUrl(snap.playback.track?.artwork_url ?? null);
+
+        // Trigger lyrics fetch once per URI.
+        if (uri && snap.lyrics_status === 'Loading' && refreshedUriRef.current !== uri) {
+          refreshedUriRef.current = uri;
+          invoke('refresh_lyrics').catch(() => { });
+        }
+
+        if (uri !== lastUriRef.current) {
+          lastUriRef.current = uri;
+          setActiveLine('');
+          setNextLine('');
+        }
+
+        const activeIdx = snap.visible_lines.findIndex(l => l.is_active);
+        if (activeIdx !== -1) {
+          setActiveLine(snap.visible_lines[activeIdx].text);
+          setNextLine(snap.visible_lines[activeIdx + 1]?.text ?? '');
+        } else if (snap.visible_lines.length > 0) {
+          setActiveLine(snap.visible_lines[0].text);
+          setNextLine(snap.visible_lines[1]?.text ?? '');
+        }
+      } catch {
+        // Ignore transient errors.
+      }
+    };
+
+    const timer = setInterval(poll, POLL_MS);
+    void poll();
     return () => clearInterval(timer);
-  }, [isPlaying]);
+  }, []);
+
+  const artSrc = artworkUrl ?? FALLBACK_ART;
 
   return (
     <div
@@ -144,21 +194,21 @@ export default function Island() {
       }}
     >
       <div className="island-background">
-        <img src={ALBUM_COVER} alt="" className="island-bg-img" />
+        <img src={artSrc} alt="" className="island-bg-img" />
         <div className="island-bg-dimmer"></div>
       </div>
 
       <div className="panel-content">
         <div className="panel-art">
-          <img src={ALBUM_COVER} className="panel-cover" draggable={false} alt="Album" />
+          <img src={artSrc} className="panel-cover" draggable={false} alt="Album" />
         </div>
 
         <div className="panel-lyrics-stack">
           <div className="panel-lyric-active">
-            {MOCK_LYRICS[activeLine]}
+            {activeLine}
           </div>
           <div className="panel-lyric-next">
-            {MOCK_LYRICS[(activeLine + 1) % MOCK_LYRICS.length]}
+            {nextLine}
           </div>
         </div>
 
@@ -171,3 +221,4 @@ export default function Island() {
     </div>
   );
 }
+

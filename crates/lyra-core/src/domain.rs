@@ -16,6 +16,7 @@ pub struct TrackRef {
     pub artist: String,
     pub album: Option<String>,
     pub duration_ms: u64,
+    pub artwork_url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

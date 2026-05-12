@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { getCurrentWindow, currentMonitor, PhysicalPosition, PhysicalSize } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { MOCK_LYRICS } from '../../constants';
 import './karaoke.css';
 
 type UiState = {
@@ -14,6 +13,14 @@ type UiState = {
   karaoke_lines: number;
   karaoke_bg_opacity: number;
   karaoke_bold: boolean;
+};
+
+type VisibleLine = { index: number; text: string; is_active: boolean };
+
+type RenderSnapshot = {
+  playback: { track: { uri: string } | null; state: 'Playing' | 'Paused' | 'Stopped' };
+  lyrics_status: 'Loading' | 'Ready' | 'NotFound' | { Error: string };
+  visible_lines: VisibleLine[];
 };
 
 function applyStyle(s: UiState) {
@@ -47,10 +54,15 @@ async function applyLayout(s: UiState) {
   }
 }
 
+const POLL_MS = 300;
+
 export default function Karaoke() {
-  const [activeLine, setActiveLine] = useState(3);
+  const [activeLine, setActiveLine] = useState('');
+  const [nextLine, setNextLine] = useState('');
   const [lines, setLines] = useState(2);
   const layoutTimerRef = useRef<number | null>(null);
+  const refreshedUriRef = useRef('');
+  const lastUriRef = useRef('');
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -73,19 +85,47 @@ export default function Karaoke() {
     };
   }, []);
 
+  // Poll real render snapshot every 300 ms.
   useEffect(() => {
-    const timer = setInterval(() => {
-      setActiveLine(prev => (prev + 1) % MOCK_LYRICS.length);
-    }, 4000);
+    const poll = async () => {
+      try {
+        const snap = await invoke<RenderSnapshot>('get_render_snapshot');
+        const uri = snap.playback.track?.uri ?? '';
+
+        if (uri && snap.lyrics_status === 'Loading' && refreshedUriRef.current !== uri) {
+          refreshedUriRef.current = uri;
+          invoke('refresh_lyrics').catch(() => { });
+        }
+
+        if (uri !== lastUriRef.current) {
+          lastUriRef.current = uri;
+          setActiveLine('');
+          setNextLine('');
+        }
+
+        const activeIdx = snap.visible_lines.findIndex(l => l.is_active);
+        if (activeIdx !== -1) {
+          setActiveLine(snap.visible_lines[activeIdx].text);
+          setNextLine(snap.visible_lines[activeIdx + 1]?.text ?? '');
+        } else if (snap.visible_lines.length > 0) {
+          setActiveLine(snap.visible_lines[0].text);
+          setNextLine(snap.visible_lines[1]?.text ?? '');
+        }
+      } catch {
+        // Ignore transient errors.
+      }
+    };
+
+    const timer = setInterval(poll, POLL_MS);
+    void poll();
     return () => clearInterval(timer);
   }, []);
 
-  const next = (activeLine + 1) % MOCK_LYRICS.length;
-
   return (
     <div className="karaoke-root">
-      <div className="karaoke-current">{MOCK_LYRICS[activeLine]}</div>
-      {lines >= 2 && <div className="karaoke-next">{MOCK_LYRICS[next]}</div>}
+      <div className="karaoke-current">{activeLine}</div>
+      {lines >= 2 && <div className="karaoke-next">{nextLine}</div>}
     </div>
   );
 }
+

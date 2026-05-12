@@ -1,6 +1,6 @@
 use std::process::Command;
-use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{mpsc, Mutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::domain::{PlaybackSnapshot, PlaybackState, PlayerSource, TrackRef};
 use crate::events::PlayerEvent;
@@ -17,8 +17,8 @@ impl SpotifyMacOsAdapter {
 
     fn query() -> Option<RawSpotifyState> {
         let script = r#"
+if application "Spotify" is not running then return "not_running"
 tell application "Spotify"
-    if it is not running then return "not_running"
     set ps to player state as string
     if ps is "stopped" then return "stopped"
     set tid to id of current track
@@ -27,21 +27,36 @@ tell application "Spotify"
     set tal to album of current track
     set tdur to duration of current track
     set pos to player position
-    return ps & "|" & tid & "|" & tn & "|" & ta & "|" & tal & "|" & (tdur as string) & "|" & (pos as string)
+    set tart to ""
+    try
+        set tart to artwork url of current track
+    end try
+    return ps & "|" & tid & "|" & tn & "|" & ta & "|" & tal & "|" & (tdur as string) & "|" & (pos as string) & "|" & tart
 end tell
 "#;
 
-        let out = Command::new("osascript").arg("-e").arg(script).output().ok()?;
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let out = Command::new("osascript").arg("-e").arg(script).output();
+            let _ = tx.send(out);
+        });
+
+        let out = match rx.recv_timeout(Duration::from_secs(3)) {
+            Ok(Ok(o)) => o,
+            _ => return None,
+        };
         let raw = String::from_utf8_lossy(&out.stdout).trim().to_string();
 
         if raw == "not_running" || raw == "stopped" || raw.is_empty() {
             return Some(RawSpotifyState::Stopped);
         }
 
-        let parts: Vec<&str> = raw.splitn(7, '|').collect();
-        if parts.len() != 7 {
+        let parts: Vec<&str> = raw.splitn(8, '|').collect();
+        if parts.len() < 7 {
             return None;
         }
+
+        let artwork_url = parts.get(7).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
 
         Some(RawSpotifyState::Track {
             state: parts[0].to_string(),
@@ -51,6 +66,7 @@ end tell
             album: parts[4].to_string(),
             duration_ms: (parts[5].parse::<f64>().unwrap_or(0.0) * 1000.0) as u64,
             position_ms: (parts[6].parse::<f64>().unwrap_or(0.0) * 1000.0) as u64,
+            artwork_url,
         })
     }
 }
@@ -65,6 +81,7 @@ enum RawSpotifyState {
         album: String,
         duration_ms: u64,
         position_ms: u64,
+        artwork_url: Option<String>,
     },
 }
 
@@ -103,7 +120,7 @@ impl PlayerAdapter for SpotifyMacOsAdapter {
                 position_ms: None,
                 observed_at_ms,
             },
-            RawSpotifyState::Track { state, uri, title, artist, album, duration_ms, position_ms } => {
+            RawSpotifyState::Track { state, uri, title, artist, album, duration_ms, position_ms, artwork_url } => {
                 let pb_state = if state == "playing" {
                     PlaybackState::Playing
                 } else {
@@ -117,6 +134,7 @@ impl PlayerAdapter for SpotifyMacOsAdapter {
                         artist,
                         album: if album.is_empty() { None } else { Some(album) },
                         duration_ms,
+                        artwork_url,
                     }),
                     state: pb_state,
                     position_ms: Some(position_ms),

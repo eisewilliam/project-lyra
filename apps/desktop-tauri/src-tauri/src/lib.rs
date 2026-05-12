@@ -6,6 +6,7 @@ mod ui_state;
 
 use lyra_core::lyrics::lrclib::LrclibClient;
 use runtime::LyraRuntime;
+use std::collections::HashSet;
 use std::sync::Mutex;
 use tauri::Manager;
 use ui_state::UiStateStore;
@@ -16,6 +17,8 @@ pub struct AppState {
     /// release `runtime` before awaiting network calls.
     pub lrclib: LrclibClient,
     pub ui: UiStateStore,
+    /// URIs currently being fetched — prevents concurrent duplicate requests.
+    pub fetch_in_flight: Mutex<HashSet<String>>,
 }
 
 fn app_support_dir() -> std::path::PathBuf {
@@ -44,6 +47,7 @@ pub fn run() {
                 runtime: Mutex::new(LyraRuntime::new()),
                 lrclib: LrclibClient::new(),
                 ui,
+                fetch_in_flight: Mutex::new(HashSet::new()),
             });
 
             // Register the nspanel plugin so get_webview_panel() works.
@@ -65,6 +69,24 @@ pub fn run() {
                 let _ = macos::set_island_size(app.handle(), w, h);
             }
 
+            // Start backend adapter polling loop
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                use lyra_core::player::PlayerAdapter;
+                let adapter = lyra_core::player::spotify_macos::SpotifyMacOsAdapter::new();
+                loop {
+                    let _ = adapter.poll();
+                    if let Some(snapshot) = adapter.snapshot() {
+                        if let Some(state) = handle.try_state::<AppState>() {
+                            if let Ok(mut rt) = state.runtime.lock() {
+                                rt.set_playback_snapshot(snapshot);
+                            }
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -79,6 +101,7 @@ pub fn run() {
             commands::save_island_position,
             commands::set_island_size,
             commands::get_render_snapshot,
+            commands::get_all_lyrics,
             commands::get_settings,
             commands::set_click_through,
             commands::refresh_lyrics,

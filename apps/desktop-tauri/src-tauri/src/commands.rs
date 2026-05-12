@@ -114,6 +114,11 @@ pub fn get_render_snapshot(state: State<'_, AppState>) -> RenderSnapshot {
 }
 
 #[tauri::command]
+pub fn get_all_lyrics(state: State<'_, AppState>) -> Vec<String> {
+    state.runtime.lock().unwrap().all_lyrics_lines()
+}
+
+#[tauri::command]
 pub fn get_settings(state: State<'_, AppState>) -> SettingsSnapshot {
     state.runtime.lock().unwrap().settings().clone()
 }
@@ -141,15 +146,27 @@ pub async fn refresh_lyrics(state: State<'_, AppState>) -> Result<(), String> {
     let Some(track) = track else { return Ok(()) };
     if is_neg || already_cached { return Ok(()); }
 
-    // 2. Network call — no lock held.
+    // 2. Claim the URI so concurrent callers skip the fetch.
+    {
+        let mut in_flight = state.fetch_in_flight.lock().map_err(|e| e.to_string())?;
+        if !in_flight.insert(track.uri.clone()) {
+            return Ok(());
+        }
+    }
+
+    // 3. Network call — no lock held.
     let result = state.lrclib.fetch(&track).await;
 
-    // 3. Re-lock to persist result.
+    // 4. Release in-flight claim.
+    if let Ok(mut in_flight) = state.fetch_in_flight.lock() {
+        in_flight.remove(&track.uri);
+    }
+
+    // 5. Re-lock to persist result.
     let mut rt = state.runtime.lock().map_err(|e| e.to_string())?;
     match result {
         Ok(Some(doc)) => rt.store_lyrics(doc),
-        Ok(None) => rt.store_negative(&track.uri),
-        Err(_) => {}
+        Ok(None) | Err(_) => rt.store_negative(&track.uri),
     }
     Ok(())
 }

@@ -31,7 +31,7 @@
         "title": "Dynamic Island",
         "url": "/island",
         "width": 400,
-        "height": 64,
+        "height": 48,
         "y": 0,
         "resizable": false,
         "fullscreen": false,
