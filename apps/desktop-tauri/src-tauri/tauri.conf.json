@@ -10,13 +10,74 @@
     "beforeBuildCommand": "npm run build"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
+        "label": "main",
         "title": "Lyra",
         "width": 800,
         "height": 600,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "alwaysOnTop": false,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "visible": false,
+        "acceptFirstMouse": true
+      },
+      {
+        "label": "island",
+        "title": "Dynamic Island",
+        "url": "/island",
+        "width": 600,
+        "height": 72,
+        "y": 0,
+        "resizable": false,
+        "fullscreen": false,
+        "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "skipTaskbar": true,
+        "acceptFirstMouse": true,
+        "hiddenTitle": true,
+        "visible": false
+      },
+      {
+        "label": "settings",
+        "title": "Lyra — Settings",
+        "url": "/settings",
+        "width": 560,
+        "height": 640,
+        "resizable": false,
+        "fullscreen": false,
+        "alwaysOnTop": false,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "visible": false
+      },
+      {
+        "label": "karaoke",
+        "title": "Karaoke",
+        "url": "/karaoke",
+        "width": 1440,
+        "height": 180,
+        "x": 0,
+        "y": 0,
+        "resizable": false,
+        "fullscreen": false,
+        "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "skipTaskbar": true,
+        "hiddenTitle": true,
+        "focus": false,
+        "visible": false
       }
     ],
     "security": {

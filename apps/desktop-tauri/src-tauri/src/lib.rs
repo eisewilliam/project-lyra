@@ -1,16 +1,27 @@
 mod commands;
+mod macos;
 mod runtime;
+mod tray;
+mod ui_state;
 
 use lyra_core::lyrics::lrclib::LrclibClient;
 use runtime::LyraRuntime;
 use std::sync::Mutex;
 use tauri::Manager;
+use ui_state::UiStateStore;
 
 pub struct AppState {
     pub runtime: Mutex<LyraRuntime>,
     /// Shared HTTP client — lives outside the Mutex so commands can
     /// release `runtime` before awaiting network calls.
     pub lrclib: LrclibClient,
+    pub ui: UiStateStore,
+}
+
+fn app_support_dir() -> std::path::PathBuf {
+    dirs_next::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("lyra")
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -25,14 +36,41 @@ pub fn run() {
                 )?;
             }
 
+            let dir = app_support_dir();
+            let ui = UiStateStore::load(&dir);
+            let initial = ui.snapshot();
+
             app.manage(AppState {
                 runtime: Mutex::new(LyraRuntime::new()),
                 lrclib: LrclibClient::new(),
+                ui,
             });
+
+            // Register the nspanel plugin so get_webview_panel() works.
+            app.handle().plugin(tauri_nspanel::init())?;
+
+            // Convert overlay windows to NSPanel so they can float above other apps.
+            let _ = macos::init_overlay_panels(app.handle());
+
+            // Build the system tray menu.
+            tray::create_tray(app.handle(), &initial)?;
+
+            // Apply initial visibility for every surface.
+            for label in &["main", "island", "karaoke"] {
+                tray::apply_window_visibility(app.handle(), label, &initial);
+            }
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::get_ui_state,
+            commands::toggle_surface,
+            commands::set_show_on_fullscreen,
+            commands::set_island_locked,
+            commands::set_font_scale,
+            commands::set_theme,
+            commands::update_karaoke_settings,
+            commands::set_overlay_position,
             commands::get_render_snapshot,
             commands::get_settings,
             commands::set_click_through,

@@ -5,13 +5,20 @@ use tauri::AppHandle;
 #[cfg(target_os = "macos")]
 use tauri::Manager;
 #[cfg(target_os = "macos")]
-use tauri_nspanel::{
-    tauri_panel, CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt,
-};
+use tauri_nspanel::{cocoa::appkit::NSWindowCollectionBehavior, ManagerExt, WebviewWindowExt};
 #[cfg(target_os = "macos")]
 use objc::runtime::Object;
 #[cfg(target_os = "macos")]
 use objc::{sel, sel_impl};
+
+// NSWindowLevel constants (AppKit)
+#[cfg(target_os = "macos")]
+const NS_STATUS_WINDOW_LEVEL: i32 = 25;
+#[cfg(target_os = "macos")]
+const NS_FLOATING_WINDOW_LEVEL: i32 = 3;
+// NSNonactivatingPanelMask = 1 << 7 = 128
+#[cfg(target_os = "macos")]
+const NS_NONACTIVATING_PANEL_MASK: i32 = 128;
 
 #[cfg(target_os = "macos")]
 #[repr(C)]
@@ -35,58 +42,34 @@ struct CocoaRect {
 }
 
 #[cfg(target_os = "macos")]
-tauri_panel! {
-    panel!(IslandPanel {
-        config: {
-            can_become_key_window: true,
-            can_become_main_window: false,
-            becomes_key_only_if_needed: true,
-            is_floating_panel: true,
-            hides_on_deactivate: false
-        }
-    })
-
-    panel!(KaraokePanel {
-        config: {
-            can_become_key_window: false,
-            can_become_main_window: false,
-            is_floating_panel: true,
-            hides_on_deactivate: false
-        }
-    })
-}
-
-#[cfg(target_os = "macos")]
-fn overlay_collection_behavior(show_on_fullscreen: bool) -> CollectionBehavior {
-    let mut behavior = CollectionBehavior::new().stationary();
+fn overlay_collection_behavior(show_on_fullscreen: bool) -> NSWindowCollectionBehavior {
+    // NSWindowCollectionBehaviorStationary = 1 << 4
+    let mut behavior = NSWindowCollectionBehavior::NSWindowCollectionBehaviorStationary;
     if show_on_fullscreen {
-        behavior = behavior.can_join_all_spaces().full_screen_auxiliary();
+        // NSWindowCollectionBehaviorCanJoinAllSpaces = 1 << 0
+        // NSWindowCollectionBehaviorFullScreenAuxiliary = 1 << 8
+        behavior |= NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces;
+        behavior |= NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary;
     }
     behavior
 }
 
 #[cfg(target_os = "macos")]
-fn overlay_level(label: &str) -> PanelLevel {
+fn overlay_level(label: &str) -> i32 {
     match label {
-        "island" => PanelLevel::Status,
-        "karaoke" => PanelLevel::Floating,
-        _ => PanelLevel::Normal,
+        "island" => NS_STATUS_WINDOW_LEVEL,
+        _ => NS_FLOATING_WINDOW_LEVEL,
     }
-}
-
-#[cfg(target_os = "macos")]
-fn overlay_style() -> StyleMask {
-    StyleMask::empty().borderless().nonactivating_panel()
 }
 
 #[cfg(target_os = "macos")]
 pub fn init_overlay_panels(app: &AppHandle) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("island") {
-        let _ = window.to_panel::<IslandPanel>()?;
+        let _ = window.to_panel()?;
         unconstrain_from_screen(&window);
     }
     if let Some(window) = app.get_webview_window("karaoke") {
-        let _ = window.to_panel::<KaraokePanel>()?;
+        let _ = window.to_panel()?;
         unconstrain_from_screen(&window);
     }
     Ok(())
@@ -219,14 +202,14 @@ pub fn apply_overlay_visibility(
         return false;
     };
 
-    panel.set_level(overlay_level(label).value());
-    panel.set_style_mask(overlay_style().into());
-    panel.set_collection_behavior(overlay_collection_behavior(show_on_fullscreen).into());
+    panel.set_level(overlay_level(label));
+    panel.set_style_mask(NS_NONACTIVATING_PANEL_MASK);
+    panel.set_collection_behaviour(overlay_collection_behavior(show_on_fullscreen));
     panel.set_floating_panel(true);
     panel.set_hides_on_deactivate(false);
     panel.set_works_when_modal(true);
     panel.set_has_shadow(false);
-    panel.set_ignores_mouse_events(label == "karaoke");
+    panel.set_ignore_mouse_events(label == "karaoke");
 
     if label == "island" {
         panel.set_becomes_key_only_if_needed(true);
@@ -235,7 +218,7 @@ pub fn apply_overlay_visibility(
     if visible {
         panel.show();
     } else {
-        panel.hide();
+        panel.order_out(None);
     }
 
     true
