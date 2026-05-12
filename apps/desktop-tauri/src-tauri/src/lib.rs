@@ -111,6 +111,7 @@ pub fn run() {
             commands::get_all_lines,
             commands::get_settings,
             commands::set_click_through,
+            commands::update_settings,
             commands::refresh_lyrics,
             commands::playback_play_pause,
             commands::playback_next,

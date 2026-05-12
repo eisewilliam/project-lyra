@@ -22,6 +22,7 @@
         "alwaysOnTop": false,
         "decorations": true,
         "titleBarStyle": "Overlay",
+        "transparent": true,
         "hiddenTitle": true,
         "visible": false,
         "acceptFirstMouse": true
@@ -47,7 +48,7 @@
       },
       {
         "label": "settings",
-        "title": "Lyra — Settings",
+        "title": "Lyra \u2014 Settings",
         "url": "/settings",
         "width": 860,
         "height": 640,
@@ -56,6 +57,7 @@
         "alwaysOnTop": false,
         "decorations": true,
         "titleBarStyle": "Overlay",
+        "transparent": true,
         "hiddenTitle": true,
         "visible": false
       },

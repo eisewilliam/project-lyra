@@ -197,3 +197,16 @@ pub async fn refresh_lyrics(state: State<'_, AppState>) -> Result<(), String> {
     }
     Ok(())
 }
+use lyra_core::domain::SettingsPatch;
+
+#[tauri::command]
+pub fn update_settings(patch: SettingsPatch, state: State<'_, AppState>) {
+    let mut rt = state.runtime.lock().unwrap();
+    let mut s = rt.settings().clone();
+    
+    if let Some(w) = patch.window { s.window = w; }
+    if let Some(a) = patch.appearance { s.appearance = a; }
+    if let Some(b) = patch.behavior { s.behavior = b; }
+    
+    rt.update_settings(s);
+}

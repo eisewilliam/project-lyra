@@ -236,7 +236,7 @@ export default function Karaoke() {
     <div className={`karaoke-root ${karaokeState !== 'ready' ? 'is-placeholder' : ''}`}>
       {karaokeState === 'ready' ? (
         <>
-          <div className="karaoke-current">
+          <div className={`karaoke-current ${activeLineWords.length > 0 ? 'has-word-sync' : ''}`}>
             {activeLineWords.length > 0 ? (
               activeLineWords.map((w, i) => (
                 <span
