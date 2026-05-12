@@ -15,3 +15,10 @@ reqwest = { workspace = true }
 lru = { workspace = true }
 urlencoding = { workspace = true }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.58", features = [
+    "Media_Control",
+    "Foundation",
+    "Foundation_Collections",
+    "Win32_System_Com",
+] }

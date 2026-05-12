@@ -93,6 +93,28 @@ pub fn run() {
                 });
             }
 
+            #[cfg(target_os = "windows")]
+            {
+                // Windows: poll Spotify via SMTC (System Media Transport Controls).
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    use lyra_core::player::PlayerAdapter;
+                    let adapter =
+                        lyra_core::player::spotify_windows::SpotifyWindowsAdapter::new();
+                    loop {
+                        let _ = adapter.poll();
+                        if let Some(snapshot) = adapter.snapshot() {
+                            if let Some(state) = handle.try_state::<AppState>() {
+                                if let Ok(mut rt) = state.runtime.lock() {
+                                    rt.set_playback_snapshot(snapshot);
+                                }
+                            }
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

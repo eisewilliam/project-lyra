@@ -1,4 +1,6 @@
 pub mod spotify_macos;
+#[cfg(target_os = "windows")]
+pub mod spotify_windows;
 
 use crate::domain::{PlaybackSnapshot, PlayerSource};
 use crate::events::PlayerEvent;
