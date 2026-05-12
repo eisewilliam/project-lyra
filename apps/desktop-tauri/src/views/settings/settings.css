@@ -1,0 +1,354 @@
+/* Finder-style settings shell */
+
+.settings-shell {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  background: #1d1d1f;
+  color: #f1f2f6;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+@media (prefers-color-scheme: light) {
+  .settings-shell {
+    background: #f5f5f5;
+    color: #111;
+  }
+}
+
+/* Sidebar — translucent vibrancy panel */
+
+.settings-sidebar {
+  width: 210px;
+  flex-shrink: 0;
+  background: rgba(36, 36, 38, 0.92);
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px 12px;
+  box-sizing: border-box;
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+}
+
+@media (prefers-color-scheme: light) {
+  .settings-sidebar {
+    background: rgba(245, 245, 245, 0.88);
+    border-right-color: rgba(0, 0, 0, 0.08);
+  }
+}
+
+.sidebar-traffic-spacer {
+  height: 38px;
+  flex-shrink: 0;
+}
+
+.settings-sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nav-section {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: rgba(255, 255, 255, 0.42);
+  padding: 4px 10px 2px;
+}
+
+@media (prefers-color-scheme: light) {
+  .nav-section {
+    color: rgba(0, 0, 0, 0.52);
+  }
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.1s ease;
+  width: 100%;
+  outline: none;
+  line-height: 1.2;
+}
+
+@media (prefers-color-scheme: light) {
+  .nav-item {
+    color: rgba(0, 0, 0, 0.88);
+  }
+}
+
+.nav-item:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.nav-item.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+@media (prefers-color-scheme: light) {
+  .nav-item.active {
+    background: rgba(0, 0, 0, 0.1);
+    color: #000;
+  }
+}
+
+.nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.nav-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Main pane */
+
+.settings-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #1d1d1f;
+}
+
+@media (prefers-color-scheme: light) {
+  .settings-pane {
+    background: #f5f5f5;
+  }
+}
+
+.pane-header {
+  padding: 14px 28px 6px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+@media (prefers-color-scheme: light) {
+  .pane-header {
+    border-bottom-color: rgba(0, 0, 0, 0.06);
+  }
+}
+
+.pane-header h1 {
+  margin: 14px 0 6px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+
+@media (prefers-color-scheme: light) {
+  .pane-header h1 {
+    color: #0a0a0a;
+  }
+}
+
+.pane-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 28px 32px;
+}
+
+.pane-loading {
+  color: rgba(255, 255, 255, 0.5);
+  padding: 60px 0;
+  text-align: center;
+}
+
+/* Groups */
+
+.group {
+  margin-top: 22px;
+}
+
+.group:first-child {
+  margin-top: 0;
+}
+
+.group-title {
+  margin: 0 0 8px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+@media (prefers-color-scheme: light) {
+  .group-title {
+    color: rgba(0, 0, 0, 0.5);
+  }
+}
+
+.group-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+@media (prefers-color-scheme: light) {
+  .group-card {
+    background: #ffffff;
+    border-color: rgba(0, 0, 0, 0.08);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+}
+
+/* Rows */
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  min-height: 32px;
+}
+
+@media (prefers-color-scheme: light) {
+  .row {
+    border-bottom-color: rgba(0, 0, 0, 0.06);
+  }
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.row-label {
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+@media (prefers-color-scheme: light) {
+  .row-label {
+    color: #1a1a1a;
+  }
+}
+
+.row-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* Select */
+
+.row select {
+  cursor: pointer;
+  outline: none;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+@media (prefers-color-scheme: light) {
+  .row select {
+    /* let native theming handle light mode */
+  }
+}
+
+/* Range */
+
+.row input[type="range"] {
+  width: 220px;
+  accent-color: #0a84ff;
+  cursor: pointer;
+}
+
+/* Toggle (macOS switch) */
+
+.native-toggle {
+  margin: 0;
+  cursor: pointer;
+}
+
+/* Segmented control */
+
+.segmented {
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  padding: 2px;
+  gap: 2px;
+}
+
+@media (prefers-color-scheme: light) {
+  .segmented {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.1);
+  }
+}
+
+.segmented-option {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  border: none;
+  border-radius: 5px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  min-width: 44px;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+@media (prefers-color-scheme: light) {
+  .segmented-option {
+    color: rgba(0, 0, 0, 0.75);
+  }
+}
+
+.segmented-option:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.segmented-option.active {
+  background: #5a5a5e;
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+@media (prefers-color-scheme: light) {
+  .segmented-option.active {
+    background: #fff;
+    color: #000;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  }
+}

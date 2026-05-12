@@ -1,0 +1,360 @@
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+img {
+  -webkit-user-drag: none;
+}
+
+.lyra-window {
+  width: 100vw;
+  height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: row;
+  background: rgba(22, 22, 26, 0.4); 
+  backdrop-filter: blur(24px) saturate(120%);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  color: white;
+  position: relative;
+}
+
+/* Invisible full-width drag strip at top — allows window dragging over all content */
+.drag-region {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  z-index: 100;
+  pointer-events: auto;
+}
+
+/*
+  Ambient Background Layer (Color Bounce)
+  Sits behind everything and glows with the cover art colors.
+*/
+.ambient-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ambient-bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Massive blur and scaling to create a cinematic gradient wash */
+  filter: blur(120px) saturate(160%);
+  transform: scale(1.4);
+  opacity: 0.65;
+}
+
+.ambient-dimmer {
+  position: absolute;
+  inset: 0;
+  /* A dark vignette to ensure text stays readable while edges glow */
+  background: radial-gradient(circle at center, rgba(10,10,12,0.1) 0%, rgba(10,10,12,0.65) 100%),
+              linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.5));
+}
+
+/* 
+  Left Pane: Sidebar
+*/
+.player-sidebar {
+  width: 45%;
+  max-width: 500px;
+  min-width: 380px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 64px 48px 48px;
+  position: relative;
+  z-index: 1; /* Above ambient bg */
+}
+
+/* Large Sidebar Album Art */
+.album-art-large {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-height: 520px;
+  margin: auto 0;
+}
+
+.album-cover {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 12px;
+  /* Strong shadow to lift it off the glowing ambient background */
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255,255,255,0.08);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Bottom Sidebar Info & Transport */
+.player-controls-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding-top: 32px;
+}
+
+.track-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.track-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.track-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+
+.track-artist {
+  font-size: 1rem;
+  font-weight: 500;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.track-actions {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding-bottom: 2px;
+}
+
+.action-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: color 0.2s;
+}
+
+.action-btn:hover {
+  color: #fff;
+}
+
+.progress-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.time-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  position: relative;
+  cursor: pointer;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #fff;
+  border-radius: 4px;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.transport-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 36px;
+  margin-top: 8px;
+}
+
+.btn-icon {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: color 0.2s, transform 0.2s;
+}
+
+.btn-icon:hover {
+  color: #fff;
+  transform: scale(1.05);
+}
+
+.btn-icon.skip {
+  color: rgba(255, 255, 255, 0.65);
+}
+.btn-icon.skip:hover {
+  color: #fff;
+}
+
+
+/* 
+  Right Pane: Lyrics Scene
+*/
+.lyrics-pane {
+  flex: 1;
+  display: flex;
+  align-items: center; /* keep center for initial vertical alignment, but wait, if it scrolls it should alight to top/start? Overriding height is better. */
+  position: relative;
+  padding: 80px 64px 64px 24px;
+  z-index: 1;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.lyrics-pane::-webkit-scrollbar {
+  display: none;
+}
+
+.lyrics-container {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  width: 100%;
+  margin: auto 0; /* allows centering when small height, but scrolling when large */
+  padding: 50vh 0; /* Add padding so first and last lyrics can reach the center */
+}
+
+.lyric-line {
+  font-size: calc(2.6rem * var(--font-scale, 1));
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.03em;
+  color: rgba(255, 255, 255, 0.4);
+  filter: blur(5px);
+  transition: color 0.4s ease, font-size 0.4s ease, opacity 0.4s ease, filter 0.4s ease;
+  cursor: pointer;
+  transform-origin: left center;
+}
+
+.lyric-line.active {
+  color: rgba(255, 255, 255, 1);
+  font-size: calc(2.8rem * var(--font-scale, 1));
+  filter: blur(0px);
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.3); /* Let it pop against the new background */
+}
+
+/* If a line has been passed, make it fade back */
+.lyric-line.passed {
+  color: rgba(255, 255, 255, 0.25);
+  filter: blur(2px);
+}
+
+/* 
+  Responsive Layout Adjustments
+*/
+@media (max-width: 900px) {
+  .lyra-window {
+    flex-direction: column;
+  }
+
+  .player-sidebar {
+    width: 100%;
+    max-width: none;
+    min-width: unset;
+    flex-direction: row;
+    align-items: center;
+    padding: 48px 32px 24px;
+    height: auto;
+    flex: 0 0 auto;
+    gap: 32px;
+  }
+
+  .album-art-large {
+    flex: 0 0 160px;
+    max-height: 160px;
+    margin: 0;
+  }
+
+  .album-cover {
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+
+  .player-controls-bottom {
+    flex: 1;
+    padding-top: 0;
+  }
+
+  .lyrics-pane {
+    padding: 0 32px 32px;
+    mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+  }
+
+  .lyric-line {
+    font-size: 2rem;
+  }
+  .lyric-line.active {
+    font-size: 2.2rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .player-sidebar {
+    flex-direction: column;
+    padding: 48px 24px 24px;
+  }
+
+  .album-art-large {
+    flex: 0 0 auto;
+    width: 60%;
+    max-width: 240px;
+    max-height: unset;
+  }
+
+  .lyrics-pane {
+    padding: 0 24px 24px;
+  }
+
+  .lyric-line {
+    font-size: 1.6rem;
+  }
+  .lyric-line.active {
+    font-size: 1.8rem;
+  }
+}

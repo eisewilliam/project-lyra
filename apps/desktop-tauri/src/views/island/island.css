@@ -1,0 +1,137 @@
+html, body {
+  background: transparent !important;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.floating-panel {
+  background: rgba(22, 22, 26, 0.4);
+  /* border-radius: 24px; */
+  width: 100%;
+  height: 100%;
+  color: white;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.6);
+  cursor: grab;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  user-select: none;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(24px) saturate(120%);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+}
+
+.floating-panel.docked {
+  border-radius: 0 0 24px 24px;
+  border-top: none;
+}
+
+.floating-panel:active {
+  cursor: grabbing;
+}
+
+.island-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.island-bg-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(40px) saturate(160%);
+  transform: scale(1.6);
+  opacity: 0.65;
+}
+
+.island-bg-dimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(10,10,12,0.2), rgba(10,10,12,0.7));
+}
+
+.panel-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  box-sizing: border-box;
+  gap: 16px;
+}
+
+.panel-art {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  box-shadow: 0 8px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+
+.panel-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.panel-lyrics-stack {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0; 
+}
+
+.panel-lyric-active {
+  font-size: calc(16px * var(--font-scale, 1));
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.02em;
+}
+
+.panel-lyric-next {
+  font-size: calc(14px * var(--font-scale, 1));
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  filter: blur(1.5px);
+  letter-spacing: -0.01em;
+}
+
+.audio-bars {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.audio-bars .bar {
+  width: 3px;
+  background: #fff;
+  border-radius: 2px;
+  animation: bounce 1s infinite alternate;
+  box-shadow: 0 0 8px rgba(255,255,255,0.4);
+}
+.audio-bars .bar:nth-child(2) { animation-delay: 0.2s; }
+.audio-bars .bar:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes bounce {
+  0% { height: 4px; }
+  100% { height: 16px; }
+}
