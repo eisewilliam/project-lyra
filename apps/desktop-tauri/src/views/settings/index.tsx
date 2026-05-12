@@ -12,6 +12,8 @@ type UiState = {
   karaoke_visible: boolean;
   island_locked: boolean;
   island_pos: [number, number] | null;
+  island_width: number | null;
+  island_height: number | null;
   island_font_scale: number;
   karaoke_font_scale: number;
   floating_font_scale: number;
@@ -97,6 +99,16 @@ export default function Settings() {
     setLock: (locked: boolean) => {
       patch({ island_locked: locked });
       invoke('set_island_locked', { locked });
+    },
+    setIslandSize: (width: number, height: number) => {
+      patch({ island_width: width, island_height: height });
+      debounced('island-size', 120, () => {
+        invoke('set_island_size', { width, height });
+      });
+    },
+    resetIslandPosition: () => {
+      patch({ island_pos: null });
+      invoke('save_island_position', { x: -1, y: -1 });
     },
     setFont: (surface: Surface, scale: number) => {
       const map: Record<Surface, keyof UiState> = {
@@ -189,6 +201,8 @@ type Actions = {
   toggleVisible: (s: Surface) => void;
   setFullscreen: (s: Surface, v: boolean) => void;
   setLock: (v: boolean) => void;
+  setIslandSize: (w: number, h: number) => void;
+  resetIslandPosition: () => void;
   setFont: (s: Surface, v: number) => void;
   setTheme: (t: string) => void;
   karaoke: (k: keyof UiState, v: unknown, dbKey?: string) => void;
@@ -329,6 +343,7 @@ function Body({
     fontScale: number;
     showFullscreen: boolean;
     extra?: ReactNode;
+    sizeSection?: ReactNode;
   }> = {
     main: {
       visible: state.floating_visible,
@@ -340,9 +355,48 @@ function Body({
       fontScale: state.island_font_scale,
       showFullscreen: state.island_show_on_fullscreen,
       extra: (
-        <Row label="Lock position">
-          <Toggle value={state.island_locked} onChange={(v) => actions.setLock(v)} />
-        </Row>
+        <>
+          <Row label="Lock position">
+            <Toggle value={state.island_locked} onChange={(v) => actions.setLock(v)} />
+          </Row>
+        </>
+      ),
+      sizeSection: (
+        <Group title="Size">
+          <Row label={`Width (${state.island_width ?? 600}px)`}>
+            <input
+              type="range"
+              min={300}
+              max={1000}
+              step={10}
+              value={state.island_width ?? 600}
+              onChange={(e) =>
+                actions.setIslandSize(parseInt(e.target.value, 10), state.island_height ?? 72)
+              }
+            />
+          </Row>
+          <Row label={`Height (${state.island_height ?? 72}px)`}>
+            <input
+              type="range"
+              min={48}
+              max={200}
+              step={2}
+              value={state.island_height ?? 72}
+              onChange={(e) =>
+                actions.setIslandSize(state.island_width ?? 600, parseInt(e.target.value, 10))
+              }
+            />
+          </Row>
+          <Row label="Position">
+            <button
+              type="button"
+              className="action-btn"
+              onClick={() => actions.resetIslandPosition()}
+            >
+              Reset to top-center
+            </button>
+          </Row>
+        </Group>
       ),
     },
   };
@@ -374,6 +428,8 @@ function Body({
           />
         </Row>
       </Group>
+
+      {c.sizeSection}
     </>
   );
 }

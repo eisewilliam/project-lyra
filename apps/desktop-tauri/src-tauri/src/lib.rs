@@ -60,6 +60,11 @@ pub fn run() {
                 tray::apply_window_visibility(app.handle(), label, &initial);
             }
 
+            // Restore persisted island size (before position so the frame is correct).
+            if let (Some(w), Some(h)) = (initial.island_width, initial.island_height) {
+                let _ = macos::set_island_size(app.handle(), w, h);
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -71,6 +76,8 @@ pub fn run() {
             commands::set_theme,
             commands::update_karaoke_settings,
             commands::set_overlay_position,
+            commands::save_island_position,
+            commands::set_island_size,
             commands::get_render_snapshot,
             commands::get_settings,
             commands::set_click_through,

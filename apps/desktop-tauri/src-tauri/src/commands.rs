@@ -86,6 +86,26 @@ pub fn set_overlay_position(label: String, x: i32, y: i32, app: AppHandle) {
     let _ = crate::macos::set_overlay_position(&app, &label, x, y);
 }
 
+/// Called by the island frontend after each drag — persists position to disk.
+/// Pass x = -1 to clear the saved position (reset to default top-center).
+#[tauri::command]
+pub fn save_island_position(x: i32, y: i32, state: State<'_, AppState>) {
+    state.ui.mutate(|s| {
+        s.island_pos = if x == -1 { None } else { Some((x, y)) };
+    });
+}
+
+/// Resize the island window and persist the new dimensions.
+#[tauri::command]
+pub fn set_island_size(width: u32, height: u32, state: State<'_, AppState>, app: AppHandle) {
+    let new_state = state.ui.mutate(|s| {
+        s.island_width = Some(width);
+        s.island_height = Some(height);
+    });
+    let _ = crate::macos::set_island_size(&app, width, height);
+    let _ = app.emit("ui-settings-changed", new_state);
+}
+
 // ── Core Runtime ──────────────────────────────────────────────────────────────
 
 #[tauri::command]

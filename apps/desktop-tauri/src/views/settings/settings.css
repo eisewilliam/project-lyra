@@ -352,3 +352,29 @@
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
   }
 }
+
+.action-btn {
+  appearance: none;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  background: rgba(120, 120, 128, 0.18);
+  color: inherit;
+  transition: background 0.15s;
+}
+
+.action-btn:hover {
+  background: rgba(120, 120, 128, 0.28);
+}
+
+@media (prefers-color-scheme: light) {
+  .action-btn {
+    background: rgba(120, 120, 128, 0.14);
+  }
+  .action-btn:hover {
+    background: rgba(120, 120, 128, 0.22);
+  }
+}

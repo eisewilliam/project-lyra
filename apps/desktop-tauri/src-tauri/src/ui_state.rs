@@ -14,6 +14,11 @@ pub struct UiState {
     pub island_locked: bool,
     #[serde(default)]
     pub island_pos: Option<(i32, i32)>,
+    /// Physical pixels — None means use the tauri.conf.json defaults.
+    #[serde(default)]
+    pub island_width: Option<u32>,
+    #[serde(default)]
+    pub island_height: Option<u32>,
 
     #[serde(default = "default_font_scale")]
     pub island_font_scale: f32,
@@ -65,6 +70,8 @@ impl Default for UiState {
             karaoke_visible: false,
             island_locked: true,
             island_pos: None,
+            island_width: None,
+            island_height: None,
             island_font_scale: 1.0,
             karaoke_font_scale: 1.0,
             floating_font_scale: 1.0,

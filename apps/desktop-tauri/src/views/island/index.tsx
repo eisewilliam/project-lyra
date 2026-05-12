@@ -11,6 +11,8 @@ type UiState = {
   karaoke_visible: boolean;
   island_locked: boolean;
   island_pos: [number, number] | null;
+  island_width: number | null;
+  island_height: number | null;
   island_font_scale: number;
   karaoke_font_scale: number;
   floating_font_scale: number;
@@ -85,6 +87,12 @@ export default function Island() {
       unlistenSettings = await listen<UiState>('ui-settings-changed', (e) => {
         setLocked(e.payload.island_locked);
         applyIslandFont(e.payload.island_font_scale);
+        // If settings changed the island size, resize this window to match.
+        if (e.payload.island_width && e.payload.island_height) {
+          getCurrentWindow().setSize(
+            { type: 'Physical', width: e.payload.island_width, height: e.payload.island_height }
+          ).catch(() => { });
+        }
       });
 
       unlistenMove = await win.onMoved(({ payload }) => {

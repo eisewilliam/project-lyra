@@ -260,3 +260,18 @@ pub fn apply_overlay_visibility(
 ) -> bool {
     false
 }
+
+// ── Island size ────────────────────────────────────────────────────────────────
+
+#[cfg(target_os = "macos")]
+pub fn set_island_size(app: &AppHandle, width: u32, height: u32) -> tauri::Result<()> {
+    if let Some(window) = app.get_webview_window("island") {
+        window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(width, height)))?;
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn set_island_size(_app: &AppHandle, _width: u32, _height: u32) -> tauri::Result<()> {
+    Ok(())
+}
