@@ -36,10 +36,22 @@ pub struct PlaybackSnapshot {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LyricWord {
+    pub start_ms: u64,
+    pub end_ms: u64,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LyricLine {
     pub start_ms: u64,
     pub end_ms: Option<u64>,
     pub text: String,
+    /// Per-word timing parsed from enhanced LRC (`<mm:ss.xx>` markers).
+    /// `None` means the line had no inline word markers — sync engine will
+    /// interpolate from line bounds + character count.
+    #[serde(default)]
+    pub words: Option<Vec<LyricWord>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +92,11 @@ pub struct RenderSnapshot {
     /// 0.0–1.0 progress within the active line (for karaoke).
     pub line_progress: Option<f32>,
     pub visible_lines: Vec<VisibleLine>,
+    /// Word-level timing for the active line. Either parsed from enhanced LRC
+    /// or interpolated from line bounds and character distribution.
+    /// `None` when no active line or line has no end_ms.
+    #[serde(default)]
+    pub active_line_words: Option<Vec<LyricWord>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

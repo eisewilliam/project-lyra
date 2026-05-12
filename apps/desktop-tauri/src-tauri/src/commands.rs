@@ -119,6 +119,11 @@ pub fn get_all_lyrics(state: State<'_, AppState>) -> Vec<String> {
 }
 
 #[tauri::command]
+pub fn get_all_lines(state: State<'_, AppState>) -> Vec<lyra_core::domain::LyricLine> {
+    state.runtime.lock().unwrap().all_lines()
+}
+
+#[tauri::command]
 pub fn get_settings(state: State<'_, AppState>) -> SettingsSnapshot {
     state.runtime.lock().unwrap().settings().clone()
 }
@@ -129,6 +134,28 @@ pub fn set_click_through(enabled: bool, state: State<'_, AppState>) {
     let mut s = rt.settings().clone();
     s.window.click_through = enabled;
     rt.update_settings(s);
+}
+
+// ── Playback Control ──────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn playback_play_pause() {
+    lyra_core::player::spotify_macos::play_pause();
+}
+
+#[tauri::command]
+pub fn playback_next() {
+    lyra_core::player::spotify_macos::next_track();
+}
+
+#[tauri::command]
+pub fn playback_previous() {
+    lyra_core::player::spotify_macos::previous_track();
+}
+
+#[tauri::command]
+pub fn playback_seek_ms(position_ms: u64) {
+    lyra_core::player::spotify_macos::seek_to_seconds(position_ms as f64 / 1000.0);
 }
 
 #[tauri::command]

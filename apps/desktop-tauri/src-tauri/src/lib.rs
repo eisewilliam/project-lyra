@@ -83,7 +83,7 @@ pub fn run() {
                             }
                         }
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    std::thread::sleep(std::time::Duration::from_millis(250));
                 }
             });
 
@@ -102,9 +102,14 @@ pub fn run() {
             commands::set_island_size,
             commands::get_render_snapshot,
             commands::get_all_lyrics,
+            commands::get_all_lines,
             commands::get_settings,
             commands::set_click_through,
             commands::refresh_lyrics,
+            commands::playback_play_pause,
+            commands::playback_next,
+            commands::playback_previous,
+            commands::playback_seek_ms,
         ])
         .run(tauri::generate_context!())
         .expect("error running Lyra");

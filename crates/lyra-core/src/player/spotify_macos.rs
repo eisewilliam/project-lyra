@@ -64,7 +64,7 @@ end tell
             title: parts[2].to_string(),
             artist: parts[3].to_string(),
             album: parts[4].to_string(),
-            duration_ms: (parts[5].parse::<f64>().unwrap_or(0.0) * 1000.0) as u64,
+            duration_ms: parts[5].parse::<f64>().unwrap_or(0.0) as u64,
             position_ms: (parts[6].parse::<f64>().unwrap_or(0.0) * 1000.0) as u64,
             artwork_url,
         })
@@ -89,6 +89,36 @@ impl Default for SpotifyMacOsAdapter {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn run_spotify_command(command: &str) -> bool {
+    let script = format!(
+        "if application \"Spotify\" is not running then return\ntell application \"Spotify\" to {}",
+        command
+    );
+    Command::new("osascript")
+        .arg("-e")
+        .arg(&script)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+pub fn play_pause() -> bool {
+    run_spotify_command("playpause")
+}
+
+pub fn next_track() -> bool {
+    run_spotify_command("next track")
+}
+
+pub fn previous_track() -> bool {
+    run_spotify_command("previous track")
+}
+
+/// Seek to a position in seconds (Spotify's `player position` is seconds, double).
+pub fn seek_to_seconds(seconds: f64) -> bool {
+    run_spotify_command(&format!("set player position to {}", seconds))
 }
 
 impl PlayerAdapter for SpotifyMacOsAdapter {

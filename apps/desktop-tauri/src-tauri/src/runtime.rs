@@ -82,6 +82,15 @@ impl LyraRuntime {
             .unwrap_or_default()
     }
 
+    /// Return every line with its start timestamp — used by the frontend to
+    /// implement click-to-seek on the lyrics list.
+    pub fn all_lines(&self) -> Vec<lyra_core::domain::LyricLine> {
+        self.current_doc
+            .as_ref()
+            .map(|d| d.lines.clone())
+            .unwrap_or_default()
+    }
+
     /// Poll + compute render snapshot. Debounced: if called again within 150 ms
     /// returns the cached result without re-running AppleScript.
     pub fn tick(&mut self) -> RenderSnapshot {
