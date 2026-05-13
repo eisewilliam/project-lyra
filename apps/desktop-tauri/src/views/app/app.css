@@ -173,9 +173,12 @@
   padding-bottom: 2px;
 }
 
-.action-btn {
-  background: transparent;
+.track-action-btn {
+  background: transparent !important;
   border: none;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
   color: rgba(255, 255, 255, 0.6);
   cursor: pointer;
   display: flex;
@@ -185,11 +188,11 @@
   transition: color 0.2s;
 }
 
-.action-btn:hover {
+.track-action-btn:hover {
   color: #fff;
 }
 
-.action-btn:disabled {
+.track-action-btn:disabled {
   color: rgba(255, 255, 255, 0.28);
   cursor: default;
 }
@@ -242,6 +245,9 @@
 .btn-icon {
   background: transparent;
   border: none;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
   color: rgba(255, 255, 255, 0.9);
   cursor: pointer;
   display: flex;
@@ -377,12 +383,6 @@
   gap: 18px;
   min-height: 220px;
   padding: 36px 34px;
-  border-radius: 28px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06));
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(20px) saturate(110%);
-  -webkit-backdrop-filter: blur(20px) saturate(110%);
 }
 
 .lyrics-placeholder-orb {
