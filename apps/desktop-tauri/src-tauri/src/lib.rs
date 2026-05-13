@@ -125,6 +125,7 @@ pub fn run() {
             commands::set_font_scale,
             commands::set_theme,
             commands::update_karaoke_settings,
+            commands::update_island_settings,
             commands::set_overlay_position,
             commands::save_island_position,
             commands::set_island_size,

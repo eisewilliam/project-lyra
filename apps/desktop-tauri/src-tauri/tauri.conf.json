@@ -58,6 +58,7 @@
         "decorations": true,
         "titleBarStyle": "Overlay",
         "transparent": true,
+        "acceptFirstMouse": true,
         "hiddenTitle": true,
         "visible": false
       },

@@ -17,6 +17,9 @@ type UiState = {
   island_font_scale: number;
   karaoke_font_scale: number;
   floating_font_scale: number;
+  island_show_cover: boolean;
+  island_cover_circle: boolean;
+  island_cover_spin: boolean;
   island_show_on_fullscreen: boolean;
   karaoke_show_on_fullscreen: boolean;
   floating_show_on_fullscreen: boolean;
@@ -63,6 +66,10 @@ export default function Settings() {
   const debounceRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
+    const isMac = navigator.userAgent.toLowerCase().includes('mac');
+    const detectedOs = isMac ? 'macos' : 'windows';
+    document.body.dataset.os = detectedOs;
+
     let unlisten: (() => void) | undefined;
     (async () => {
       const [ui, app] = await Promise.all([
@@ -144,6 +151,23 @@ export default function Settings() {
         invoke('set_font_scale', { surface, scale });
       });
     },
+    island: (key: keyof UiState, value: unknown) => {
+      patchUi({ [key]: value } as Partial<UiState>);
+      const payload = {
+        show_cover: undefined,
+        cover_circle: undefined,
+        cover_spin: undefined,
+      } as Record<string, unknown>;
+      const fieldMap: Record<string, string> = {
+        island_show_cover: 'show_cover',
+        island_cover_circle: 'cover_circle',
+        island_cover_spin: 'cover_spin',
+      };
+      const field = fieldMap[key as string];
+      if (!field) return;
+      payload[field] = value;
+      invoke('update_island_settings', { patch: payload });
+    },
     setTheme: (theme: string) => {
       patchUi({ theme });
       invoke('set_theme', { theme });
@@ -201,7 +225,7 @@ export default function Settings() {
                   className={`nav-item ${section === item.id ? 'active' : ''}`}
                   onClick={() => setSection(item.id)}
                 >
-                  <span className="nav-icon" style={{ color: section === item.id ? 'white' : item.color }}>
+                  <span className="nav-icon">
                     {item.icon}
                   </span>
                   <span className="nav-label">{item.label}</span>
@@ -237,6 +261,7 @@ type Actions = {
   setFont: (surface: Surface, scale: number) => void;
   setTheme: (theme: string) => void;
   updateAppSetting: (category: keyof AppSettings, key: string, value: unknown, dbKey?: string) => void;
+  island: (key: keyof UiState, value: unknown) => void;
   karaoke: (key: keyof UiState, value: unknown, dbKey?: string) => void;
 };
 
@@ -307,41 +332,48 @@ function Body({
               onChange={(v: string) => actions.karaoke('karaoke_position', v)}
             />
           </Row>
-          <Row label={`Screen edge offset (${ui.karaoke_offset_px}px)`}>
-            <input
-              type="range"
-              min={0}
-              max={200}
-              step={2}
+          <Row label="Screen edge offset">
+            <SnapSlider
+              steps={[
+                { value: 0, label: '0px' },
+                { value: 24, label: '24px' },
+                { value: 48, label: '48px' },
+                { value: 72, label: '72px' },
+                { value: 96, label: '96px' },
+                { value: 120, label: '120px' },
+              ]}
               value={ui.karaoke_offset_px}
-              onChange={(e) =>
-                actions.karaoke('karaoke_offset_px', parseInt(e.target.value, 10), 'k-offset')
-              }
+              onChange={(v) => actions.karaoke('karaoke_offset_px', v, 'k-offset')}
             />
           </Row>
-          <Row label={`Line width (${ui.karaoke_width_pct}%)`}>
-            <input
-              type="range"
-              min={30}
-              max={100}
-              step={1}
+          <Row label="Line width">
+            <SnapSlider
+              steps={[
+                { value: 50, label: '50%' },
+                { value: 60, label: '60%' },
+                { value: 70, label: '70%' },
+                { value: 80, label: '80%' },
+                { value: 90, label: '90%' },
+                { value: 100, label: '100%' },
+              ]}
               value={ui.karaoke_width_pct}
-              onChange={(e) =>
-                actions.karaoke('karaoke_width_pct', parseInt(e.target.value, 10), 'k-width')
-              }
+              onChange={(v) => actions.karaoke('karaoke_width_pct', v, 'k-width')}
             />
           </Row>
         </Group>
 
         <Group title="Typography & Styling">
-          <Row label={`Text size (${Math.round(ui.karaoke_font_scale * 100)}%)`}>
-            <input
-              type="range"
-              min={0.6}
-              max={2.0}
-              step={0.05}
+          <Row label="Text size">
+            <SnapSlider
+              steps={[
+                { value: 0.75, label: '75%' },
+                { value: 1.0, label: 'Normal' },
+                { value: 1.25, label: '125%' },
+                { value: 1.5, label: '150%' },
+                { value: 2.0, label: '200%' },
+              ]}
               value={ui.karaoke_font_scale}
-              onChange={(e) => actions.setFont('karaoke', parseFloat(e.target.value))}
+              onChange={(v) => actions.setFont('karaoke', v)}
             />
           </Row>
           <Row label="Alignment">
@@ -371,16 +403,16 @@ function Body({
               onChange={(v: boolean) => actions.karaoke('karaoke_bold', v)}
             />
           </Row>
-          <Row label={`Background shading (${Math.round(ui.karaoke_bg_opacity * 100)}%)`}>
-            <input
-              type="range"
-              min={0}
-              max={0.95}
-              step={0.05}
+          <Row label="Background shading">
+            <SnapSlider
+              steps={[
+                { value: 0, label: 'None' },
+                { value: 0.25, label: '25%' },
+                { value: 0.5, label: '50%' },
+                { value: 0.75, label: '75%' },
+              ]}
               value={ui.karaoke_bg_opacity}
-              onChange={(e) =>
-                actions.karaoke('karaoke_bg_opacity', parseFloat(e.target.value), 'k-bg')
-              }
+              onChange={(v) => actions.karaoke('karaoke_bg_opacity', v, 'k-bg')}
             />
           </Row>
         </Group>
@@ -439,16 +471,17 @@ function Body({
               }
             />
           </Row>
-          <Row label={`Background darkness (${Math.round(app.appearance.background_opacity * 100)}%)`}>
-            <input
-              type="range"
-              min={0}
-              max={1.0}
-              step={0.05}
+          <Row label="Background darkness">
+            <SnapSlider
+              steps={[
+                { value: 0, label: 'None' },
+                { value: 0.25, label: '25%' },
+                { value: 0.5, label: '50%' },
+                { value: 0.75, label: '75%' },
+                { value: 1.0, label: '100%' },
+              ]}
               value={app.appearance.background_opacity}
-              onChange={(e) =>
-                actions.updateAppSetting('appearance', 'background_opacity', parseFloat(e.target.value))
-              }
+              onChange={(v) => actions.updateAppSetting('appearance', 'background_opacity', v)}
             />
           </Row>
           <Row label="Buffer lines above">
@@ -495,28 +528,40 @@ function Body({
       ),
       extraLayout: (
         <>
-          <Row label={`Overlay Width (${ui.island_width ?? 600}px)`}>
-            <input
-              type="range"
-              min={300}
-              max={1000}
-              step={10}
+          <Row label="Show cover art">
+            <Toggle value={ui.island_show_cover ?? true} onChange={(v: boolean) => actions.island('island_show_cover', v)} />
+          </Row>
+          <Row label="Circular cover art">
+            <Toggle value={ui.island_cover_circle ?? false} onChange={(v: boolean) => actions.island('island_cover_circle', v)} />
+          </Row>
+          <Row label="Spinning cover art">
+            <Toggle value={ui.island_cover_spin ?? false} onChange={(v: boolean) => actions.island('island_cover_spin', v)} />
+          </Row>
+          <Row label="Overlay width">
+            <SnapSlider
+              steps={[
+                { value: 400, label: '400' },
+                { value: 500, label: '500' },
+                { value: 600, label: '600' },
+                { value: 700, label: '700' },
+                { value: 800, label: '800' },
+                { value: 900, label: '900' },
+              ]}
               value={ui.island_width ?? 600}
-              onChange={(e) =>
-                actions.setIslandSize(parseInt(e.target.value, 10), ui.island_height ?? 72)
-              }
+              onChange={(v) => actions.setIslandSize(v, ui.island_height ?? 72)}
             />
           </Row>
-          <Row label={`Overlay Height (${ui.island_height ?? 72}px)`}>
-            <input
-              type="range"
-              min={48}
-              max={200}
-              step={2}
+          <Row label="Overlay height">
+            <SnapSlider
+              steps={[
+                { value: 52, label: '52' },
+                { value: 64, label: '64' },
+                { value: 72, label: '72' },
+                { value: 88, label: '88' },
+                { value: 104, label: '104' },
+              ]}
               value={ui.island_height ?? 72}
-              onChange={(e) =>
-                actions.setIslandSize(ui.island_width ?? 600, parseInt(e.target.value, 10))
-              }
+              onChange={(v) => actions.setIslandSize(ui.island_width ?? 600, v)}
             />
           </Row>
           <Row label="Position">
@@ -548,14 +593,17 @@ function Body({
       </Group>
 
       <Group title="Layout & Appearance">
-        <Row label={`Font scaling (${Math.round(c.fontScale * 100)}%)`}>
-          <input
-            type="range"
-            min={0.6}
-            max={2.0}
-            step={0.05}
+        <Row label="Font scaling">
+          <SnapSlider
+            steps={[
+              { value: 0.75, label: '75%' },
+              { value: 1.0, label: 'Normal' },
+              { value: 1.25, label: '125%' },
+              { value: 1.5, label: '150%' },
+              { value: 2.0, label: '200%' },
+            ]}
             value={c.fontScale}
-            onChange={(e) => actions.setFont(surface, parseFloat(e.target.value))}
+            onChange={(v) => actions.setFont(surface, v)}
           />
         </Row>
         {c.extraLayout}
@@ -654,6 +702,41 @@ function Segmented({
   );
 }
 
+function SnapSlider({
+  steps,
+  value,
+  onChange,
+}: {
+  steps: Array<{ value: number; label: string }>;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const idx = steps.reduce(
+    (best, s, i) =>
+      Math.abs(s.value - value) < Math.abs(steps[best].value - value) ? i : best,
+    0
+  );
+  return (
+    <div className="snap-slider">
+      <input
+        type="range"
+        min={0}
+        max={steps.length - 1}
+        step={1}
+        value={idx}
+        onChange={(e) => onChange(steps[parseInt(e.target.value, 10)].value)}
+      />
+      <div className="snap-slider-labels">
+        {steps.map((s, i) => (
+          <span key={i} className={`snap-label${i === idx ? ' active' : ''}`}>
+            {s.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function IconGear() {
   return (
     <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
@@ -664,26 +747,36 @@ function IconGear() {
 
 function IconWindow() {
   return (
-    <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-      <rect x="1.5" y="3" width="13" height="10" rx="2" />
-      <rect x="1.5" y="3" width="13" height="3" rx="2" fillOpacity="0.4" />
+    <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2.5" y="4" width="15" height="12" rx="2.5" />
+      <line x1="2.5" y1="8" x2="17.5" y2="8" />
+      <circle cx="5.5" cy="6" r="0.75" fill="currentColor" stroke="none" />
+      <circle cx="8" cy="6" r="0.75" fill="currentColor" stroke="none" />
+      <circle cx="10.5" cy="6" r="0.75" fill="currentColor" stroke="none" />
     </svg>
   );
 }
 
 function IconIsland() {
   return (
-    <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-      <rect x="2" y="5" width="12" height="6" rx="3" />
+    <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="7" width="14" height="6" rx="3" />
+      <circle cx="7.5" cy="10" r="1.5" fill="currentColor" stroke="none" />
+      <line x1="10.5" y1="8.75" x2="14.5" y2="8.75" strokeWidth="1.25" />
+      <line x1="10.5" y1="11.25" x2="13" y2="11.25" strokeWidth="1.25" />
     </svg>
   );
 }
 
 function IconKaraoke() {
   return (
-    <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-      <path d="M11 2v7.2a2.4 2.4 0 1 0 1.2 2.1V4.5l2-.5V2.5L11 2Z" />
-      <path d="M2 5h6v1.5H2zM2 8h5v1.5H2zM2 11h3v1.5H2z" opacity="0.6" />
+    <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="3" y1="6" x2="11" y2="6" />
+      <line x1="3" y1="10" x2="9" y2="10" />
+      <line x1="3" y1="14" x2="7" y2="14" />
+      <path d="M14 3.5v8.2" />
+      <path d="M14 3.5l3.5 1v2l-3.5-1" />
+      <circle cx="12.5" cy="13.5" r="1.8" />
     </svg>
   );
 }

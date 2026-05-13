@@ -1,6 +1,6 @@
 :root {
   --bg-sidebar: #e8e8ed;
-  --bg-pane: #f2f2f7;
+  --bg-pane: #ffffff;
   --bg-card: #ffffff;
   --text-primary: #1c1c1e;
   --text-secondary: #6c6c70;
@@ -19,7 +19,7 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --bg-sidebar: #2c2c2e;
-    --bg-pane: #1c1c1e;
+    --bg-pane: #1D1D1F;
     --bg-card: #3a3a3c;
     --text-primary: #ffffff;
     --text-secondary: #98989d;
@@ -103,7 +103,7 @@ body {
   text-align: left;
   font-family: inherit;
   font-size: 13px;
-  font-weight: 400;
+  font-weight: 600;
   transition: all 0.15s ease;
   width: 100%;
 }
@@ -119,7 +119,6 @@ body {
 .nav-item.active {
   background: var(--item-active-bg);
   color: var(--item-active-text);
-  font-weight: 500;
   box-shadow: 0 1px 3px rgba(10, 132, 255, 0.25);
 }
 
@@ -247,29 +246,62 @@ select:hover {
 
 input[type="range"] {
   -webkit-appearance: none;
-  width: 140px;
+  width: 100%;
   background: transparent;
 }
 input[type="range"]::-webkit-slider-runnable-track {
   width: 100%;
-  height: 4px;
+  height: 3px;
   cursor: pointer;
   background: var(--input-bg);
   border-radius: 2px;
 }
 input[type="range"]::-webkit-slider-thumb {
-  height: 18px;
-  width: 18px;
+  height: 16px;
+  width: 16px;
   border-radius: 50%;
-  background: #ffffff;
+  background: #d0d0d0;
   box-shadow: var(--knob-shadow);
   cursor: pointer;
   -webkit-appearance: none;
-  margin-top: -7px;
-  transition: transform 0.1s;
+  margin-top: -6.5px;
+  transition: transform 0.1s, background 0.1s;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  background: #ffffff;
 }
 input[type="range"]::-webkit-slider-thumb:active {
-  transform: scale(1.1);
+  transform: scale(1.12);
+  background: #ffffff;
+}
+
+/* Snap Slider */
+.snap-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 250px;
+}
+
+.snap-slider-labels {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 8px;
+}
+
+.snap-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: center;
+  flex: 1;
+  line-height: 1;
+  transition: color 0.15s;
+  white-space: nowrap;
+}
+
+.snap-label.active {
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 .segmented {
@@ -366,3 +398,161 @@ input[type="range"]::-webkit-slider-thumb:active {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
+
+/* ----------------================ macOS / Raycast Theme ================---------------- */
+
+body[data-os="macos"] {
+  --bg-sidebar: #1e1e1e;
+  --bg-pane: #252522;
+  --bg-card: transparent;
+  --text-primary: #ededed;
+  --text-secondary: #909090;
+  --border-color: rgba(255, 255, 255, 0.06);
+  --input-bg: rgba(255, 255, 255, 0.06);
+  --input-hover: rgba(255, 255, 255, 0.1);
+  --item-active: rgba(255, 255, 255, 0.05);
+  --item-active-bg: rgba(255, 255, 255, 0.1);
+  --item-active-text: #ffffff;
+  --knob-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+@media (prefers-color-scheme: light) {
+  body[data-os="macos"] {
+    --bg-sidebar: #ffffff;
+    --bg-pane: #ffffff;
+    --text-primary: #000000;
+    --text-secondary: #797979;
+    --border-color: rgba(0, 0, 0, 0.06);
+    --input-bg: rgba(0, 0, 0, 0.05);
+    --input-hover: rgba(0, 0, 0, 0.08);
+    --item-active: rgba(0, 0, 0, 0.04);
+    --item-active-bg: rgba(0, 0, 0, 0.08);
+    --item-active-text: #1c1c1e;
+  }
+}
+
+/* MacOS Layout adjustments */
+
+body[data-os="macos"] .settings-sidebar {
+  border-right: 1px solid var(--border-color);
+}
+body[data-os="macos"] .nav-section {
+  display: none; /* Hide uppercase group headers for cleaner look */
+}
+body[data-os="macos"] .nav-item {
+  color: var(--text-secondary);
+}
+body[data-os="macos"] .nav-item.active {
+  box-shadow: none;
+  /* font-weight: 500; */
+}
+body[data-os="macos"] .nav-item.active .nav-icon {
+  filter: none;
+  color: var(--item-active-text) !important;
+}
+
+body[data-os="macos"] .pane-header {
+  display: none;
+}
+body[data-os="macos"] .pane-body::before {
+  content: '';
+  display: block;
+  height: 48px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+/* Form Groups: Mac has borders between groups, transparent cards */
+body[data-os="macos"] .group {
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 24px;
+}
+body[data-os="macos"] .group:last-child {
+  border-bottom: none;
+}
+body[data-os="macos"] .group-title {
+  display: none;
+}
+body[data-os="macos"] .group-card {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-radius: 0;
+}
+
+/* MacOS Segmented Controls Override */
+body[data-os="macos"] .segmented-option.active {
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(255, 255, 255, 0.04);
+}
+@media (prefers-color-scheme: light) {
+  body[data-os="macos"] .segmented-option.active {
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 0 0 0.5px rgba(0,0,0,0.06);
+  }
+}
+
+/* Row Grid Alignment */
+body[data-os="macos"] .row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 20px;
+  padding: 8px 0;
+  border-bottom: none;
+}
+body[data-os="macos"] .row-label {
+  text-align: right;
+  color: var(--text-primary);
+  font-weight: 500;
+  flex: 0 0 160px;
+  max-width: none;
+}
+body[data-os="macos"] .row-control {
+  flex: 1;
+  justify-content: flex-start;
+}
+
+/* Toggle Checkbox substitution for MacOS */
+body[data-os="macos"] .native-toggle {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: transparent;
+  border: 0.5px solid var(--text-secondary);
+  box-shadow: none;
+}
+body[data-os="macos"] .native-toggle::after {
+  content: '';
+  width: 10px;
+  height: 8px;
+  background: transparent;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 8' fill='none'%3E%3Cpath d='M1 3.5L4 6.5L9 1' stroke='rgba(255,255,255,0.9)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  box-shadow: none;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%) scale(0.5);
+  opacity: 0;
+  transition: all 0.15s;
+}
+@media (prefers-color-scheme: light) {
+  body[data-os="macos"] .native-toggle::after {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 8' fill='none'%3E%3Cpath d='M1 3.5L4 6.5L9 1' stroke='rgba(0,0,0,0.8)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+}
+body[data-os="macos"] .native-toggle:checked {
+  background: transparent;
+  border-color: var(--text-primary);
+}
+body[data-os="macos"] .native-toggle:checked::after {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+

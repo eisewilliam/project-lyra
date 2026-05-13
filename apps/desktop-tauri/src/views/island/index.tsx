@@ -22,6 +22,9 @@ type UiState = {
   island_font_scale: number;
   karaoke_font_scale: number;
   floating_font_scale: number;
+  island_show_cover: boolean;
+  island_cover_circle: boolean;
+  island_cover_spin: boolean;
 };
 
 type VisibleLine = { index: number; text: string; is_active: boolean };
@@ -94,6 +97,9 @@ export default function Island() {
   const [hasActiveLyric, setHasActiveLyric] = useState(false);
   const [activeLineWords, setActiveLineWords] = useState<LyricWord[]>([]);
   const [activeLineProgress, setActiveLineProgress] = useState(0);
+  const [showCover, setShowCover] = useState(true);
+  const [coverCircle, setCoverCircle] = useState(false);
+  const [coverSpin, setCoverSpin] = useState(false);
   const saveTimerRef = useRef<number | null>(null);
   const refreshedUriRef = useRef('');
   const lastUriRef = useRef('');
@@ -110,6 +116,9 @@ export default function Island() {
       const win = getCurrentWindow();
       const state = await invoke<UiState>('get_ui_state');
       setLocked(state.island_locked);
+      setShowCover(state.island_show_cover ?? true);
+      setCoverCircle(state.island_cover_circle ?? false);
+      setCoverSpin(state.island_cover_spin ?? false);
       applyIslandFont(state.island_font_scale);
 
       try {
@@ -143,6 +152,9 @@ export default function Island() {
 
       unlistenSettings = await listen<UiState>('ui-settings-changed', (e) => {
         setLocked(e.payload.island_locked);
+        setShowCover(e.payload.island_show_cover ?? true);
+        setCoverCircle(e.payload.island_cover_circle ?? false);
+        setCoverSpin(e.payload.island_cover_spin ?? false);
         applyIslandFont(e.payload.island_font_scale);
         if (e.payload.island_width && e.payload.island_height) {
           getCurrentWindow().setSize(
@@ -303,14 +315,16 @@ export default function Island() {
       </div>
 
       <div className="panel-content">
-        <div className="panel-art">
-          <img
-            src={artSrc}
-            className={`panel-cover ${artworkUrl ? '' : 'placeholder'}`}
-            draggable={false}
-            alt={hasTrack ? 'Album' : ''}
-          />
-        </div>
+        {showCover && (
+          <div className={`panel-art ${coverCircle ? 'is-circle' : ''} ${coverSpin ? 'is-spinning' : ''} ${!isPlaying ? 'is-paused' : ''}`}>
+            <img
+              src={artSrc}
+              className={`panel-cover ${artworkUrl ? '' : 'placeholder'}`}
+              draggable={false}
+              alt={hasTrack ? 'Album' : ''}
+            />
+          </div>
+        )}
 
         <div className={`panel-lyrics-stack ${panelState !== 'ready' ? 'is-placeholder' : ''}`}>
           {panelState === 'ready' ? (

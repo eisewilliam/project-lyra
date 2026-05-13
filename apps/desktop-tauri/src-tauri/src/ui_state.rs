@@ -28,6 +28,13 @@ pub struct UiState {
     pub floating_font_scale: f32,
 
     #[serde(default = "default_true")]
+    pub island_show_cover: bool,
+    #[serde(default)]
+    pub island_cover_circle: bool,
+    #[serde(default)]
+    pub island_cover_spin: bool,
+
+    #[serde(default = "default_true")]
     pub island_show_on_fullscreen: bool,
     #[serde(default = "default_true")]
     pub karaoke_show_on_fullscreen: bool,
@@ -75,6 +82,9 @@ impl Default for UiState {
             island_font_scale: 1.0,
             karaoke_font_scale: 1.0,
             floating_font_scale: 1.0,
+            island_show_cover: true,
+            island_cover_circle: false,
+            island_cover_spin: false,
             island_show_on_fullscreen: true,
             karaoke_show_on_fullscreen: true,
             floating_show_on_fullscreen: false,

@@ -67,6 +67,23 @@ pub struct KaraokePatch {
     bold: Option<bool>,
 }
 
+#[derive(serde::Deserialize)]
+pub struct IslandPatch {
+    pub show_cover: Option<bool>,
+    pub cover_circle: Option<bool>,
+    pub cover_spin: Option<bool>,
+}
+
+#[tauri::command]
+pub fn update_island_settings(patch: IslandPatch, state: State<'_, AppState>, app: AppHandle) {
+    let new_state = state.ui.mutate(|s| {
+        if let Some(v) = patch.show_cover { s.island_show_cover = v; }
+        if let Some(v) = patch.cover_circle { s.island_cover_circle = v; }
+        if let Some(v) = patch.cover_spin { s.island_cover_spin = v; }
+    });
+    let _ = app.emit("ui-settings-changed", new_state);
+}
+
 #[tauri::command]
 pub fn update_karaoke_settings(patch: KaraokePatch, state: State<'_, AppState>, app: AppHandle) {
     let new_state = state.ui.mutate(|s| {
