@@ -7,12 +7,16 @@
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use base64::{engine::general_purpose::STANDARD, Engine};
 use windows::{
     Media::Control::{
         GlobalSystemMediaTransportControlsSession,
         GlobalSystemMediaTransportControlsSessionManager,
+        GlobalSystemMediaTransportControlsSessionMediaProperties,
         GlobalSystemMediaTransportControlsSessionPlaybackStatus,
+        GlobalSystemMediaTransportControlsSessionTimelineProperties,
     },
+    Storage::Streams::{DataReader, IInputStream},
     Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED},
 };
 
@@ -51,8 +55,95 @@ fn find_spotify_session() -> Option<GlobalSystemMediaTransportControlsSession> {
     None
 }
 
+/// Read the SMTC thumbnail stream and return a `data:` URL, or `None` if unavailable.
+fn fetch_thumbnail_data_url(
+    props: &GlobalSystemMediaTransportControlsSessionMediaProperties,
+) -> Option<String> {
+    use windows::core::Interface;
+    let stream_ref = props.Thumbnail().ok()?;
+    let stream = stream_ref.OpenReadAsync().ok()?.get().ok()?;
+    let size = stream.Size().ok()? as u32;
+    if size == 0 || size > 10 * 1024 * 1024 {
+        return None;
+    }
+    let input: IInputStream = stream.cast().ok()?;
+    let reader = DataReader::CreateDataReader(&input).ok()?;
+    reader.LoadAsync(size).ok()?.get().ok()?;
+    let mut buf = vec![0u8; size as usize];
+    reader.ReadBytes(&mut buf).ok()?;
+
+    let mime = if buf.starts_with(&[0xFF, 0xD8]) {
+        "image/jpeg"
+    } else if buf.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
+        "image/png"
+    } else {
+        "image/jpeg"
+    };
+
+    Some(format!("data:{};base64,{}", mime, STANDARD.encode(&buf)))
+}
+
+/// Extrapolate SMTC playback position to wall-clock "now".
+///
+/// SMTC's `Position` is the position at `LastUpdatedTime` — Spotify only pushes
+/// updates periodically, so the raw value can be several seconds stale. Adding
+/// `(now − LastUpdatedTime)` gives an accurate current position and avoids the
+/// large discrete jumps the polling loop would otherwise see.
+///
+/// When paused, the raw position is returned unchanged.
+fn extrapolate_position(
+    timeline: &Option<GlobalSystemMediaTransportControlsSessionTimelineProperties>,
+    duration_ms: u64,
+    state: &PlaybackState,
+) -> (Option<u64>, u64) {
+    let raw_pos_ms = timeline
+        .as_ref()
+        .and_then(|t| t.Position().ok())
+        .map(|ts| (ts.Duration.max(0) / 10_000) as u64);
+
+    let now = now_ms();
+
+    if *state != PlaybackState::Playing {
+        return (raw_pos_ms, now);
+    }
+
+    let last_updated_unix_ms = timeline
+        .as_ref()
+        .and_then(|t| t.LastUpdatedTime().ok())
+        .and_then(|dt| {
+            // DateTime.UniversalTime = 100ns ticks since 1601-01-01.
+            // Subtract Windows→Unix epoch offset (116,444,736,000,000,000 ticks).
+            const EPOCH_OFFSET: i64 = 116_444_736_000_000_000;
+            if dt.UniversalTime > EPOCH_OFFSET {
+                Some(((dt.UniversalTime - EPOCH_OFFSET) / 10_000) as u64)
+            } else {
+                None
+            }
+        });
+
+    match (raw_pos_ms, last_updated_unix_ms) {
+        (Some(pos), Some(last_upd)) => {
+            let elapsed = now.saturating_sub(last_upd);
+            let extrapolated = pos + elapsed;
+            let capped = if duration_ms > 0 {
+                extrapolated.min(duration_ms)
+            } else {
+                extrapolated
+            };
+            (Some(capped), now)
+        }
+        _ => (raw_pos_ms, now),
+    }
+}
+
+struct ArtworkCache {
+    key: String,
+    data_url: String,
+}
+
 pub struct SpotifyWindowsAdapter {
     last: Mutex<Option<PlaybackSnapshot>>,
+    artwork: Mutex<Option<ArtworkCache>>,
 }
 
 impl SpotifyWindowsAdapter {
@@ -63,7 +154,10 @@ impl SpotifyWindowsAdapter {
         unsafe {
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         }
-        Self { last: Mutex::new(None) }
+        Self {
+            last: Mutex::new(None),
+            artwork: Mutex::new(None),
+        }
     }
 }
 
@@ -100,10 +194,7 @@ impl PlayerAdapter for SpotifyWindowsAdapter {
 
             Some(session) => {
                 // Media properties fetch is async; block on it.
-                let props = match session
-                    .TryGetMediaPropertiesAsync()
-                    .and_then(|op| op.get())
-                {
+                let props = match session.TryGetMediaPropertiesAsync().and_then(|op| op.get()) {
                     Ok(p) => p,
                     Err(_) => return None, // transient WinRT error — keep last snapshot
                 };
@@ -130,7 +221,8 @@ impl PlayerAdapter for SpotifyWindowsAdapter {
 
                 let state = match pb_status {
                     Some(s)
-                        if s == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing =>
+                        if s
+                            == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing =>
                     {
                         PlaybackState::Playing
                     }
@@ -157,10 +249,9 @@ impl PlayerAdapter for SpotifyWindowsAdapter {
                         .and_then(|t| t.EndTime().ok())
                         .map(|ts| (ts.Duration.max(0) / 10_000) as u64)
                         .unwrap_or(0);
-                    let position_ms = timeline
-                        .as_ref()
-                        .and_then(|t| t.Position().ok())
-                        .map(|ts| (ts.Duration.max(0) / 10_000) as u64);
+
+                    let (position_ms, observed_at_ms) =
+                        extrapolate_position(&timeline, duration_ms, &state);
 
                     // Build a synthetic URI from artist + title for cache keying.
                     // SMTC doesn't expose the Spotify URI; lrclib fetches by
@@ -171,6 +262,21 @@ impl PlayerAdapter for SpotifyWindowsAdapter {
                         urlencoding::encode(&title.to_lowercase()),
                     );
 
+                    // Fetch thumbnail only when the track changes (cache by URI).
+                    let artwork_url = {
+                        let mut cache = self.artwork.lock().unwrap_or_else(|e| e.into_inner());
+                        if cache.as_ref().map(|c| c.key.as_str()) == Some(uri.as_str()) {
+                            cache.as_ref().map(|c| c.data_url.clone())
+                        } else {
+                            let url = fetch_thumbnail_data_url(&props);
+                            *cache = url.as_ref().map(|u| ArtworkCache {
+                                key: uri.clone(),
+                                data_url: u.clone(),
+                            });
+                            url
+                        }
+                    };
+
                     PlaybackSnapshot {
                         track: Some(TrackRef {
                             source: PlayerSource::WindowsSmtc,
@@ -179,11 +285,11 @@ impl PlayerAdapter for SpotifyWindowsAdapter {
                             artist,
                             album,
                             duration_ms,
-                            artwork_url: None, // SMTC artwork is a stream ref, not a URL
+                            artwork_url,
                         }),
                         state,
                         position_ms,
-                        observed_at_ms: now_ms(),
+                        observed_at_ms,
                     }
                 }
             }
@@ -197,7 +303,10 @@ impl PlayerAdapter for SpotifyWindowsAdapter {
 
 fn derive_event(prev: &Option<PlaybackSnapshot>, next: &PlaybackSnapshot) -> Option<PlayerEvent> {
     let Some(prev) = prev else {
-        return next.track.as_ref().map(|t| PlayerEvent::TrackChanged(t.clone()));
+        return next
+            .track
+            .as_ref()
+            .map(|t| PlayerEvent::TrackChanged(t.clone()));
     };
 
     let prev_uri = prev.track.as_ref().map(|t| &t.uri);
@@ -231,7 +340,9 @@ fn derive_event(prev: &Option<PlaybackSnapshot>, next: &PlaybackSnapshot) -> Opt
 // ── Playback control free functions ──────────────────────────────────────────
 
 pub fn play_pause() -> bool {
-    let Some(session) = find_spotify_session() else { return false };
+    let Some(session) = find_spotify_session() else {
+        return false;
+    };
     let is_playing = session
         .GetPlaybackInfo()
         .and_then(|info| info.PlaybackStatus())

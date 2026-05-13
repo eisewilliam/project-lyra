@@ -1,9 +1,6 @@
 [workspace]
 resolver = "2"
-members = [
-    "crates/lyra-core",
-    "apps/desktop-tauri/src-tauri",
-]
+members = ["crates/lyra-core", "apps/desktop-tauri/src-tauri"]
 
 [workspace.package]
 version = "0.1.0"
@@ -20,3 +17,4 @@ anyhow = "1"
 reqwest = { version = "0.12", features = ["json"] }
 lru = "0.12"
 urlencoding = "2"
+base64 = "0.22"
