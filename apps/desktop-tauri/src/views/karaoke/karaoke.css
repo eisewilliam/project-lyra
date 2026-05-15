@@ -30,8 +30,15 @@
     0 0 1px rgba(0, 0, 0, 0.9);
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   line-height: 1.1;
+}
+
+.karaoke-lyric-content {
+  display: inline-block;
+  min-width: max-content;
+  max-width: none;
+  will-change: transform;
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .karaoke-current.has-word-sync {

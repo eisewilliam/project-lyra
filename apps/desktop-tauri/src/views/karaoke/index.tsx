@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { getCurrentWindow, currentMonitor, PhysicalPosition, PhysicalSize } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -34,6 +34,7 @@ type RenderSnapshot = {
     observed_at_ms: number;
   };
   lyrics_status: LyricsStatus;
+  line_progress: number | null;
   visible_lines: VisibleLine[];
   active_line_words: LyricWord[] | null;
 };
@@ -101,6 +102,7 @@ function interpolatePosition(b: PositionBaseline, now: number, playing: boolean)
 export default function Karaoke() {
   const [activeLine, setActiveLine] = useState('');
   const [nextLine, setNextLine] = useState('');
+  const [activeLineProgress, setActiveLineProgress] = useState(0);
   const [trackTitle, setTrackTitle] = useState('');
   const [trackArtist, setTrackArtist] = useState('');
   const [hasTrack, setHasTrack] = useState(false);
@@ -155,6 +157,7 @@ export default function Karaoke() {
         setLyricsStatus(snap.lyrics_status);
         setTrackTitle(track?.title ?? '');
         setTrackArtist(track?.artist ?? '');
+        setActiveLineProgress(Math.max(0, Math.min(1, snap.line_progress ?? 0)));
         const playingNow = snap.playback.state === 'Playing';
         setIsPlaying(playingNow);
         setActiveLineWords(snap.active_line_words ?? []);
@@ -184,6 +187,7 @@ export default function Karaoke() {
           lastUriRef.current = uri;
           setActiveLine('');
           setNextLine('');
+          setActiveLineProgress(0);
           setActiveLineWords([]);
         }
 
@@ -252,7 +256,13 @@ export default function Karaoke() {
     <div className={`karaoke-root ${karaokeState !== 'ready' && !showTrackIntro ? 'is-placeholder' : ''}`}>
       {karaokeState === 'ready' ? (
         <>
-          <div className={`karaoke-current ${activeLineWords.length > 0 ? 'has-word-sync' : ''}`}>
+          <GlidingLine
+            className={`karaoke-current ${activeLineWords.length > 0 ? 'has-word-sync' : ''}`}
+            contentKey={activeLineWords.length > 0
+              ? activeLineWords.map((word) => `${word.start_ms}:${word.text}`).join('|')
+              : activeLine}
+            syncProgress={activeLineProgress}
+          >
             {activeLineWords.length > 0 ? (
               activeLineWords.map((w, i) => (
                 <span
@@ -262,7 +272,7 @@ export default function Karaoke() {
                 >{w.text}</span>
               ))
             ) : activeLine}
-          </div>
+          </GlidingLine>
           {lines >= 2 && <div className="karaoke-next">{nextLine}</div>}
         </>
       ) : showTrackIntro ? (
@@ -273,6 +283,67 @@ export default function Karaoke() {
       ) : (
         <KaraokePlaceholder state={karaokeState} lines={lines} />
       )}
+    </div>
+  );
+}
+
+function GlidingLine({
+  className,
+  contentKey,
+  syncProgress,
+  children,
+}: {
+  className: string;
+  contentKey: string;
+  syncProgress: number;
+  children: ReactNode;
+}) {
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [overflowPx, setOverflowPx] = useState(0);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const content = contentRef.current;
+    if (!viewport || !content) return;
+
+    const updateOverflow = () => {
+      const nextOverflow = Math.max(0, Math.ceil(content.scrollWidth - viewport.clientWidth));
+      setOverflowPx((current) => (current === nextOverflow ? current : nextOverflow));
+    };
+
+    updateOverflow();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateOverflow);
+      return () => window.removeEventListener('resize', updateOverflow);
+    }
+
+    const observer = new ResizeObserver(updateOverflow);
+    observer.observe(viewport);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [contentKey]);
+
+  const isGliding = overflowPx > 0;
+  const normalizedReveal = syncProgress <= 0.06
+    ? 0
+    : syncProgress >= 0.78
+      ? 1
+      : (syncProgress - 0.06) / 0.72;
+  const revealProgress = normalizedReveal * normalizedReveal * (3 - 2 * normalizedReveal);
+  const style = isGliding
+    ? {
+      '--glide-shift': `${overflowPx}px`,
+      transform: `translateX(${-overflowPx * revealProgress}px)`,
+    } as CSSProperties
+    : undefined;
+
+  return (
+    <div className={`${className} ${isGliding ? 'is-gliding' : ''}`} ref={viewportRef}>
+      <div className="karaoke-lyric-content" ref={contentRef} style={style}>
+        {children}
+      </div>
     </div>
   );
 }
