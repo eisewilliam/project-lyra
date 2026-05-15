@@ -4,6 +4,7 @@ import { PhysicalSize } from '@tauri-apps/api/dpi';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
+  isLyricsError,
   resolveLyricsSurfaceState,
   type LyricsPlaceholderState,
   type LyricsStatus,
@@ -33,7 +34,7 @@ type LyricWord = { start_ms: number; end_ms: number; text: string };
 
 type RenderSnapshot = {
   playback: {
-    track: { uri: string; artwork_url: string | null } | null;
+    track: { uri: string; title: string; artist: string; artwork_url: string | null } | null;
     state: 'Playing' | 'Paused' | 'Stopped';
     position_ms: number | null;
     observed_at_ms: number;
@@ -87,6 +88,8 @@ export default function Island() {
   const [activeLine, setActiveLine] = useState('');
   const [nextLine, setNextLine] = useState('');
   const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
+  const [trackTitle, setTrackTitle] = useState('');
+  const [trackArtist, setTrackArtist] = useState('');
   const [hasTrack, setHasTrack] = useState(false);
   const [hasVisibleLyrics, setHasVisibleLyrics] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -199,15 +202,20 @@ export default function Island() {
     const poll = async () => {
       try {
         const snap = await invoke<RenderSnapshot>('get_render_snapshot');
-        const uri = snap.playback.track?.uri ?? '';
+        const track = snap.playback.track;
+        const uri = track?.uri ?? '';
+        const activeIdx = snap.visible_lines.findIndex((line) => line.is_active);
+        const hasActiveLine = activeIdx !== -1;
 
         setSnapshotReady(true);
-        setHasTrack(Boolean(snap.playback.track));
-        setHasVisibleLyrics(snap.visible_lines.length > 0);
+        setHasTrack(Boolean(track));
+        setHasVisibleLyrics(hasActiveLine);
         const playingNow = snap.playback.state === 'Playing';
         setIsPlaying(playingNow);
         setLyricsStatus(snap.lyrics_status);
-        setArtworkUrl(snap.playback.track?.artwork_url ?? null);
+        setArtworkUrl(track?.artwork_url ?? null);
+        setTrackTitle(track?.title ?? '');
+        setTrackArtist(track?.artist ?? '');
         setActiveLineWords(snap.active_line_words ?? []);
         setActiveLineProgress(Math.max(0, Math.min(1, snap.line_progress ?? 0)));
 
@@ -242,14 +250,13 @@ export default function Island() {
           setActiveLineProgress(0);
         }
 
-        const activeIdx = snap.visible_lines.findIndex(l => l.is_active);
-        setHasActiveLyric(activeIdx !== -1);
-        if (activeIdx !== -1) {
+        setHasActiveLyric(hasActiveLine);
+        if (hasActiveLine) {
           setActiveLine(snap.visible_lines[activeIdx].text);
           setNextLine(snap.visible_lines[activeIdx + 1]?.text ?? '');
-        } else if (snap.visible_lines.length > 0) {
-          setActiveLine(snap.visible_lines[0].text);
-          setNextLine(snap.visible_lines[1]?.text ?? '');
+        } else {
+          setActiveLine('');
+          setNextLine('');
         }
       } catch {
         // Ignore transient errors.
@@ -298,11 +305,18 @@ export default function Island() {
     lyricsStatus,
     hasContent: hasVisibleLyrics,
   });
-  const barsActive = panelState === 'ready' && isPlaying;
+  const showTrackIntro =
+    snapshotReady &&
+    hasTrack &&
+    !hasActiveLyric &&
+    trackTitle.length > 0 &&
+    !isLyricsError(lyricsStatus) &&
+    lyricsStatus !== 'NotFound';
+  const barsActive = (panelState === 'ready' || showTrackIntro) && isPlaying;
 
   return (
     <div
-      className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${isDocked ? 'docked' : 'floating'} ${panelState !== 'ready' ? 'has-placeholder' : ''}`}
+      className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${isDocked ? 'docked' : 'floating'} ${panelState !== 'ready' && !showTrackIntro ? 'has-placeholder' : ''}`}
       onMouseDown={(e) => {
         if (locked || e.button !== 0) return;
         e.preventDefault();
@@ -326,7 +340,7 @@ export default function Island() {
           </div>
         )}
 
-        <div className={`panel-lyrics-stack ${panelState !== 'ready' ? 'is-placeholder' : ''}`}>
+        <div className={`panel-lyrics-stack ${panelState !== 'ready' && !showTrackIntro ? 'is-placeholder' : ''}`}>
           {panelState === 'ready' ? (
             <>
               <GlidingLine
@@ -347,6 +361,11 @@ export default function Island() {
                 ) : activeLine}
               </GlidingLine>
               <div className="panel-lyric-next">{nextLine}</div>
+            </>
+          ) : showTrackIntro ? (
+            <>
+              <div className="panel-lyric-active is-track-intro">{trackTitle}</div>
+              <div className="panel-lyric-next is-track-intro">{trackArtist}</div>
             </>
           ) : (
             <PanelPlaceholder state={panelState} />

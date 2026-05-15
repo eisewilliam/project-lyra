@@ -139,6 +139,12 @@ html, body {
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
 }
 
+.panel-lyric-active.is-track-intro {
+  color: rgba(255, 255, 255, 0.96);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.42);
+  text-overflow: ellipsis;
+}
+
 .panel-lyric-content {
   display: inline-block;
   min-width: max-content;
@@ -174,6 +180,11 @@ html, body {
   text-overflow: ellipsis;
   filter: blur(1.5px);
   letter-spacing: -0.01em;
+}
+
+.panel-lyric-next.is-track-intro {
+  color: rgba(255, 255, 255, 0.7);
+  filter: none;
 }
 
 .panel-placeholder {

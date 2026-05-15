@@ -39,6 +39,13 @@
   filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.55)) drop-shadow(0 4px 22px rgba(0, 0, 0, 0.38));
 }
 
+.karaoke-current.is-track-intro {
+  font-size: calc(3.25rem * var(--font-scale, 1));
+  text-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.78),
+    0 4px 24px rgba(0, 0, 0, 0.58);
+}
+
 /* All word states share one gradient rule. --word-progress (0..1) is updated
    60fps via refs; the dim → bright wipe moves with the cursor without any
    class-swap repaint. */
@@ -67,6 +74,10 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.karaoke-next.is-track-intro {
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .karaoke-placeholder {

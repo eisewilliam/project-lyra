@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "lyra",
   "version": "0.1.0",
-  "identifier": "com.lyra.app",
+  "identifier": "com.lyra",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",

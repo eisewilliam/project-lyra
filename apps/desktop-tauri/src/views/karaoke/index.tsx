@@ -3,6 +3,7 @@ import { getCurrentWindow, currentMonitor, PhysicalPosition, PhysicalSize } from
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
+  isLyricsError,
   resolveLyricsSurfaceState,
   type LyricsPlaceholderState,
   type LyricsStatus,
@@ -27,7 +28,7 @@ type LyricWord = { start_ms: number; end_ms: number; text: string };
 
 type RenderSnapshot = {
   playback: {
-    track: { uri: string } | null;
+    track: { uri: string; title: string; artist: string } | null;
     state: 'Playing' | 'Paused' | 'Stopped';
     position_ms: number | null;
     observed_at_ms: number;
@@ -100,8 +101,11 @@ function interpolatePosition(b: PositionBaseline, now: number, playing: boolean)
 export default function Karaoke() {
   const [activeLine, setActiveLine] = useState('');
   const [nextLine, setNextLine] = useState('');
+  const [trackTitle, setTrackTitle] = useState('');
+  const [trackArtist, setTrackArtist] = useState('');
   const [hasTrack, setHasTrack] = useState(false);
   const [hasVisibleLyrics, setHasVisibleLyrics] = useState(false);
+  const [hasActiveLyric, setHasActiveLyric] = useState(false);
   const [lyricsStatus, setLyricsStatus] = useState<LyricsStatus>('Loading');
   const [snapshotReady, setSnapshotReady] = useState(false);
   const [lines, setLines] = useState(2);
@@ -139,12 +143,18 @@ export default function Karaoke() {
     const poll = async () => {
       try {
         const snap = await invoke<RenderSnapshot>('get_render_snapshot');
-        const uri = snap.playback.track?.uri ?? '';
+        const track = snap.playback.track;
+        const uri = track?.uri ?? '';
+        const activeIdx = snap.visible_lines.findIndex((line) => line.is_active);
+        const hasActiveLine = activeIdx !== -1;
 
         setSnapshotReady(true);
-        setHasTrack(Boolean(snap.playback.track));
-        setHasVisibleLyrics(snap.visible_lines.length > 0);
+        setHasTrack(Boolean(track));
+        setHasVisibleLyrics(hasActiveLine);
+        setHasActiveLyric(hasActiveLine);
         setLyricsStatus(snap.lyrics_status);
+        setTrackTitle(track?.title ?? '');
+        setTrackArtist(track?.artist ?? '');
         const playingNow = snap.playback.state === 'Playing';
         setIsPlaying(playingNow);
         setActiveLineWords(snap.active_line_words ?? []);
@@ -177,13 +187,12 @@ export default function Karaoke() {
           setActiveLineWords([]);
         }
 
-        const activeIdx = snap.visible_lines.findIndex(l => l.is_active);
-        if (activeIdx !== -1) {
+        if (hasActiveLine) {
           setActiveLine(snap.visible_lines[activeIdx].text);
           setNextLine(snap.visible_lines[activeIdx + 1]?.text ?? '');
-        } else if (snap.visible_lines.length > 0) {
-          setActiveLine(snap.visible_lines[0].text);
-          setNextLine(snap.visible_lines[1]?.text ?? '');
+        } else {
+          setActiveLine('');
+          setNextLine('');
         }
       } catch {
         // Ignore transient errors.
@@ -231,9 +240,16 @@ export default function Karaoke() {
     lyricsStatus,
     hasContent: hasVisibleLyrics,
   });
+  const showTrackIntro =
+    snapshotReady &&
+    hasTrack &&
+    !hasActiveLyric &&
+    trackTitle.length > 0 &&
+    !isLyricsError(lyricsStatus) &&
+    lyricsStatus !== 'NotFound';
 
   return (
-    <div className={`karaoke-root ${karaokeState !== 'ready' ? 'is-placeholder' : ''}`}>
+    <div className={`karaoke-root ${karaokeState !== 'ready' && !showTrackIntro ? 'is-placeholder' : ''}`}>
       {karaokeState === 'ready' ? (
         <>
           <div className={`karaoke-current ${activeLineWords.length > 0 ? 'has-word-sync' : ''}`}>
@@ -248,6 +264,11 @@ export default function Karaoke() {
             ) : activeLine}
           </div>
           {lines >= 2 && <div className="karaoke-next">{nextLine}</div>}
+        </>
+      ) : showTrackIntro ? (
+        <>
+          <div className="karaoke-current is-track-intro">{trackTitle}</div>
+          {lines >= 2 && trackArtist ? <div className="karaoke-next is-track-intro">{trackArtist}</div> : null}
         </>
       ) : (
         <KaraokePlaceholder state={karaokeState} lines={lines} />
