@@ -435,7 +435,7 @@ function App() {
                       >{w.text}</span>
                     ))
                   ) : (
-                    line.text
+                    line.text || (index === lyrics.length - 1 ? '' : '♪')
                   )}
                 </div>
               )

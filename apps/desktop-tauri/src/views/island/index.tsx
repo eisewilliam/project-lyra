@@ -86,8 +86,8 @@ async function setIslandPanelPosition(x: number, y: number) {
 }
 
 export default function Island() {
-  const [activeLine, setActiveLine] = useState('');
-  const [nextLine, setNextLine] = useState('');
+  const [activeLine, setActiveLine] = useState<string | null>(null);
+  const [nextLine, setNextLine] = useState<string | null>(null);
   const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
   const [trackTitle, setTrackTitle] = useState('');
   const [trackArtist, setTrackArtist] = useState('');
@@ -245,8 +245,8 @@ export default function Island() {
 
       if (uri !== lastUriRef.current) {
         lastUriRef.current = uri;
-        setActiveLine('');
-        setNextLine('');
+        setActiveLine(null);
+        setNextLine(null);
         setHasActiveLyric(false);
         setActiveLineWords([]);
         setActiveLineProgress(0);
@@ -255,10 +255,14 @@ export default function Island() {
       setHasActiveLyric(hasActiveLine);
       if (hasActiveLine) {
         setActiveLine(snap.visible_lines[activeIdx].text);
-        setNextLine(snap.visible_lines[activeIdx + 1]?.text ?? '');
+        setNextLine(
+          activeIdx + 1 < snap.visible_lines.length
+            ? snap.visible_lines[activeIdx + 1].text
+            : null
+        );
       } else {
-        setActiveLine('');
-        setNextLine('');
+        setActiveLine(null);
+        setNextLine(null);
       }
     };
 
@@ -355,7 +359,7 @@ export default function Island() {
                 className={`panel-lyric-active ${hasActiveLyric ? '' : 'is-preroll'}`}
                 contentKey={activeLineWords.length > 0
                   ? activeLineWords.map((word) => `${word.start_ms}:${word.text}`).join('|')
-                  : activeLine}
+                  : activeLine || ''}
                 syncProgress={activeLineProgress}
               >
                 {activeLineWords.length > 0 ? (
@@ -366,9 +370,13 @@ export default function Island() {
                       className="lyric-word upcoming"
                     >{w.text}</span>
                   ))
-                ) : activeLine}
+                ) : (
+                  activeLine || (nextLine !== null ? '♪' : '')
+                )}
               </GlidingLine>
-              <div className="panel-lyric-next">{nextLine}</div>
+              <div className="panel-lyric-next">
+                {nextLine === '' ? '♪' : (nextLine || '')}
+              </div>
             </>
           ) : showTrackIntro ? (
             <>

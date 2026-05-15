@@ -101,8 +101,8 @@ function interpolatePosition(b: PositionBaseline, now: number, playing: boolean)
 }
 
 export default function Karaoke() {
-  const [activeLine, setActiveLine] = useState('');
-  const [nextLine, setNextLine] = useState('');
+  const [activeLine, setActiveLine] = useState<string | null>(null);
+  const [nextLine, setNextLine] = useState<string | null>(null);
   const [activeLineProgress, setActiveLineProgress] = useState(0);
   const [trackTitle, setTrackTitle] = useState('');
   const [trackArtist, setTrackArtist] = useState('');
@@ -188,18 +188,22 @@ export default function Karaoke() {
 
       if (uri !== lastUriRef.current) {
         lastUriRef.current = uri;
-        setActiveLine('');
-        setNextLine('');
+        setActiveLine(null);
+        setNextLine(null);
         setActiveLineProgress(0);
         setActiveLineWords([]);
       }
 
       if (hasActiveLine) {
         setActiveLine(snap.visible_lines[activeIdx].text);
-        setNextLine(snap.visible_lines[activeIdx + 1]?.text ?? '');
+        setNextLine(
+          activeIdx + 1 < snap.visible_lines.length
+            ? snap.visible_lines[activeIdx + 1].text
+            : null
+        );
       } else {
-        setActiveLine('');
-        setNextLine('');
+        setActiveLine(null);
+        setNextLine(null);
       }
     };
 
@@ -269,7 +273,7 @@ export default function Karaoke() {
             className={`karaoke-current ${activeLineWords.length > 0 ? 'has-word-sync' : ''}`}
             contentKey={activeLineWords.length > 0
               ? activeLineWords.map((word) => `${word.start_ms}:${word.text}`).join('|')
-              : activeLine}
+              : activeLine || ''}
             syncProgress={activeLineProgress}
           >
             {activeLineWords.length > 0 ? (
@@ -280,9 +284,13 @@ export default function Karaoke() {
                   className="lyric-word upcoming"
                 >{w.text}</span>
               ))
-            ) : activeLine}
+            ) : (
+              activeLine || (nextLine !== null ? '♪' : '')
+            )}
           </GlidingLine>
-          {lines >= 2 && <div className="karaoke-next">{nextLine}</div>}
+          {lines >= 2 && <div className="karaoke-next">
+            {nextLine === '' ? '♪' : (nextLine || '')}
+          </div>}
         </>
       ) : showTrackIntro ? (
         <>
