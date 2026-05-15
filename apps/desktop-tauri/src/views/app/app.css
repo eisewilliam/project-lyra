@@ -456,6 +456,36 @@
   color: rgba(255, 255, 255, 0.76);
 }
 
+.lyrics-placeholder-label {
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  text-align: center;
+  max-width: 24ch;
+}
+
+.lyrics-placeholder-retry {
+  margin-top: 12px;
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.lyrics-placeholder-retry:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.32);
+}
+
+.lyrics-placeholder-retry:active {
+  transform: translateY(1px);
+}
+
 @keyframes placeholder-dot-bounce {
   0%,
   80%,

@@ -4,11 +4,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
   isLyricsError,
+  isLyricsNotFound,
   resolveLyricsSurfaceState,
   type LyricsPlaceholderState,
   type LyricsStatus,
 } from '../../utils/lyrics-state';
 import { LyricsPlaceholderIcon } from '../../utils/lyrics-placeholder-icon';
+import { usePageVisible } from '../../utils/use-page-visible';
 import './karaoke.css';
 
 type UiState = {
@@ -78,7 +80,6 @@ async function applyLayout(s: UiState) {
   }
 }
 
-const POLL_MS = 300;
 const BLEND_MS = 500;
 
 type PositionBaseline = {
@@ -118,6 +119,7 @@ export default function Karaoke() {
   const lastUriRef = useRef('');
   const baselineRef = useRef<PositionBaseline>({ ms: 0, at: 0, targetMs: 0, targetAt: 0, blendDur: 1 });
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const pageVisible = usePageVisible();
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -140,76 +142,83 @@ export default function Karaoke() {
     };
   }, []);
 
-  // Poll real render snapshot every 300 ms.
+  // Subscribe to backend `playback-tick` events. See app view for rationale.
   useEffect(() => {
-    const poll = async () => {
-      try {
-        const snap = await invoke<RenderSnapshot>('get_render_snapshot');
-        const track = snap.playback.track;
-        const uri = track?.uri ?? '';
-        const activeIdx = snap.visible_lines.findIndex((line) => line.is_active);
-        const hasActiveLine = activeIdx !== -1;
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
 
-        setSnapshotReady(true);
-        setHasTrack(Boolean(track));
-        setHasVisibleLyrics(hasActiveLine);
-        setHasActiveLyric(hasActiveLine);
-        setLyricsStatus(snap.lyrics_status);
-        setTrackTitle(track?.title ?? '');
-        setTrackArtist(track?.artist ?? '');
-        setActiveLineProgress(Math.max(0, Math.min(1, snap.line_progress ?? 0)));
-        const playingNow = snap.playback.state === 'Playing';
-        setIsPlaying(playingNow);
-        setActiveLineWords(snap.active_line_words ?? []);
+    const apply = (snap: RenderSnapshot) => {
+      if (cancelled) return;
+      const track = snap.playback.track;
+      const uri = track?.uri ?? '';
+      const activeIdx = snap.visible_lines.findIndex((line) => line.is_active);
+      const hasActiveLine = activeIdx !== -1;
 
-        // Age-corrected position + continuous blend. See app view for details.
-        const newPos = snap.playback.position_ms ?? 0;
-        const now = performance.now();
-        const ageMs = playingNow
-          ? Math.max(0, Math.min(2000, Date.now() - snap.playback.observed_at_ms))
-          : 0;
-        const correctedPos = newPos + ageMs;
-        const currentInterp = interpolatePosition(baselineRef.current, now, playingNow);
-        const drift = correctedPos - currentInterp;
+      setSnapshotReady(true);
+      setHasTrack(Boolean(track));
+      setHasVisibleLyrics(hasActiveLine);
+      setHasActiveLyric(hasActiveLine);
+      setLyricsStatus(snap.lyrics_status);
+      setTrackTitle(track?.title ?? '');
+      setTrackArtist(track?.artist ?? '');
+      setActiveLineProgress(Math.max(0, Math.min(1, snap.line_progress ?? 0)));
+      const playingNow = snap.playback.state === 'Playing';
+      setIsPlaying(playingNow);
+      setActiveLineWords(snap.active_line_words ?? []);
 
-        if (!playingNow || Math.abs(drift) > 1000) {
-          baselineRef.current = { ms: correctedPos, at: now, targetMs: correctedPos, targetAt: now, blendDur: 1 };
-        } else {
-          baselineRef.current = { ms: currentInterp, at: now, targetMs: correctedPos, targetAt: now, blendDur: BLEND_MS };
-        }
+      const newPos = snap.playback.position_ms ?? 0;
+      const now = performance.now();
+      const ageMs = playingNow
+        ? Math.max(0, Math.min(2000, Date.now() - snap.playback.observed_at_ms))
+        : 0;
+      const correctedPos = newPos + ageMs;
+      const currentInterp = interpolatePosition(baselineRef.current, now, playingNow);
+      const drift = correctedPos - currentInterp;
 
-        if (uri && snap.lyrics_status === 'Loading' && refreshedUriRef.current !== uri) {
-          refreshedUriRef.current = uri;
-          invoke('refresh_lyrics').catch(() => { });
-        }
+      if (!playingNow || Math.abs(drift) > 1000) {
+        baselineRef.current = { ms: correctedPos, at: now, targetMs: correctedPos, targetAt: now, blendDur: 1 };
+      } else {
+        baselineRef.current = { ms: currentInterp, at: now, targetMs: correctedPos, targetAt: now, blendDur: BLEND_MS };
+      }
 
-        if (uri !== lastUriRef.current) {
-          lastUriRef.current = uri;
-          setActiveLine('');
-          setNextLine('');
-          setActiveLineProgress(0);
-          setActiveLineWords([]);
-        }
+      if (uri && snap.lyrics_status === 'Loading' && refreshedUriRef.current !== uri) {
+        refreshedUriRef.current = uri;
+        invoke('refresh_lyrics').catch(() => { });
+      }
 
-        if (hasActiveLine) {
-          setActiveLine(snap.visible_lines[activeIdx].text);
-          setNextLine(snap.visible_lines[activeIdx + 1]?.text ?? '');
-        } else {
-          setActiveLine('');
-          setNextLine('');
-        }
-      } catch {
-        // Ignore transient errors.
+      if (uri !== lastUriRef.current) {
+        lastUriRef.current = uri;
+        setActiveLine('');
+        setNextLine('');
+        setActiveLineProgress(0);
+        setActiveLineWords([]);
+      }
+
+      if (hasActiveLine) {
+        setActiveLine(snap.visible_lines[activeIdx].text);
+        setNextLine(snap.visible_lines[activeIdx + 1]?.text ?? '');
+      } else {
+        setActiveLine('');
+        setNextLine('');
       }
     };
 
-    const timer = setInterval(poll, POLL_MS);
-    void poll();
-    return () => clearInterval(timer);
+    (async () => {
+      try {
+        const initial = await invoke<RenderSnapshot>('get_render_snapshot');
+        apply(initial);
+      } catch { /* transient */ }
+      unlisten = await listen<RenderSnapshot>('playback-tick', (e) => apply(e.payload));
+    })();
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, []);
 
   useEffect(() => {
-    if (activeLineWords.length === 0) return;
+    if (activeLineWords.length === 0 || !pageVisible) return;
     let raf = 0;
     const tick = () => {
       const pos = interpolatePosition(baselineRef.current, performance.now(), isPlaying);
@@ -232,11 +241,11 @@ export default function Karaoke() {
         if (el.className !== cls) el.className = cls;
         el.style.setProperty('--word-progress', progress.toFixed(3));
       }
-      raf = requestAnimationFrame(tick);
+      if (isPlaying) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [activeLineWords, isPlaying]);
+  }, [activeLineWords, isPlaying, pageVisible]);
 
   const karaokeState = resolveLyricsSurfaceState({
     booted: snapshotReady,
@@ -250,7 +259,7 @@ export default function Karaoke() {
     !hasActiveLyric &&
     trackTitle.length > 0 &&
     !isLyricsError(lyricsStatus) &&
-    lyricsStatus !== 'NotFound';
+    !isLyricsNotFound(lyricsStatus);
 
   return (
     <div className={`karaoke-root ${karaokeState !== 'ready' && !showTrackIntro ? 'is-placeholder' : ''}`}>

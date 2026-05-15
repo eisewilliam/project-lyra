@@ -76,11 +76,21 @@ pub struct VisibleLine {
     pub is_active: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NotFoundReason {
+    /// Provider confirmed it has no lyrics for this track.
+    Miss,
+    /// Network/IO failure prevented the lookup. Retryable.
+    NetworkError,
+    /// Provider rate-limited the request. Retryable after backoff.
+    RateLimit,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LyricsStatus {
     Loading,
     Ready,
-    NotFound,
+    NotFound { reason: NotFoundReason },
     Error(String),
 }
 

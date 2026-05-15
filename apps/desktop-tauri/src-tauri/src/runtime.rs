@@ -1,9 +1,13 @@
 use lyra_core::{
     config::ConfigStore,
-    domain::{LyricDocument, LyricsStatus, PlaybackSnapshot, PlaybackState, RenderSnapshot, SettingsSnapshot, TrackRef},
+    domain::{
+        LyricDocument, LyricsStatus, NotFoundReason, PlaybackSnapshot, PlaybackState,
+        RenderSnapshot, SettingsSnapshot, TrackRef,
+    },
     lyrics::cache::LyricCache,
     sync::compute_render,
 };
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -18,6 +22,10 @@ pub struct LyraRuntime {
     last_track_key: Option<String>,
     last_tick_ms: u64,
     last_tick_result: Option<RenderSnapshot>,
+    /// In-memory map of URIs whose last fetch failed with a *transient* error
+    /// (network, rate limit). Not persisted: a restart clears them, which is
+    /// the right behaviour — transient by definition.
+    transient_errors: HashMap<String, NotFoundReason>,
 }
 
 impl LyraRuntime {
@@ -37,6 +45,7 @@ impl LyraRuntime {
             last_track_key: None,
             last_tick_ms: 0,
             last_tick_result: None,
+            transient_errors: HashMap::new(),
         }
     }
 
@@ -66,12 +75,44 @@ impl LyraRuntime {
     }
 
     pub fn store_lyrics(&mut self, doc: LyricDocument) {
+        self.transient_errors.remove(&doc.track_key);
         let _ = self.cache.put(&doc.track_key.clone(), &doc.raw_lrc.clone());
         self.current_doc = Some(doc);
+        self.last_tick_result = None;
     }
 
     pub fn store_negative(&mut self, track_key: &str) {
+        self.transient_errors.remove(track_key);
         let _ = self.cache.mark_negative(track_key);
+        self.last_tick_result = None;
+    }
+
+    /// Record a transient (network/rate-limit) failure so the UI can render a
+    /// distinct message instead of the generic "no lyrics" state. Cleared on
+    /// the next successful fetch or on a manual force-refresh.
+    pub fn store_transient_error(&mut self, track_key: &str, reason: NotFoundReason) {
+        self.transient_errors.insert(track_key.to_string(), reason);
+        self.last_tick_result = None;
+    }
+
+    pub fn clear_transient_error(&mut self, track_key: &str) {
+        self.transient_errors.remove(track_key);
+        self.last_tick_result = None;
+    }
+
+    /// Drop the negative sentinel and any cached doc so the next refresh
+    /// re-queries the upstream provider. Used by the manual-retry command.
+    pub fn forget_track(&mut self, track_key: &str) {
+        let _ = self.cache.clear_negative(track_key);
+        self.transient_errors.remove(track_key);
+        if self
+            .current_doc
+            .as_ref()
+            .is_some_and(|d| d.track_key == track_key)
+        {
+            self.current_doc = None;
+        }
+        self.last_tick_result = None;
     }
 
     /// Return every lyric line text for the currently loaded document.
@@ -127,11 +168,13 @@ impl LyraRuntime {
         let below = self.settings.appearance.context_lines_below as usize;
 
         let status = match (&track_key, &self.current_doc) {
-            (None, _) => LyricsStatus::NotFound,
+            (None, _) => LyricsStatus::NotFound { reason: NotFoundReason::Miss },
             (Some(_), Some(_)) => LyricsStatus::Ready,
             (Some(key), None) => {
                 if self.cache.is_negative(key) {
-                    LyricsStatus::NotFound
+                    LyricsStatus::NotFound { reason: NotFoundReason::Miss }
+                } else if let Some(reason) = self.transient_errors.get(key).copied() {
+                    LyricsStatus::NotFound { reason }
                 } else {
                     LyricsStatus::Loading
                 }

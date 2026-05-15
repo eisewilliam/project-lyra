@@ -20,8 +20,10 @@ export function LyricsPlaceholderIcon({
     if (state === 'empty') {
         return (
             <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                <path d="M14 5v9.2a3.5 3.5 0 1 1-1.8-3.07L12.2 8.5l6.3-1.7v5.9a3.5 3.5 0 1 1-1.8-3.07V5.8L14 6.5" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M5 5l14 14" strokeLinecap="round" />
+                <path d="M9 18V5l12-2v13" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="6" cy="18" r="3" />
+                <circle cx="18" cy="16" r="3" />
+                <path d="m3 3 18 18" strokeLinecap="round" />
             </svg>
         );
     }
@@ -29,7 +31,9 @@ export function LyricsPlaceholderIcon({
     if (state === 'idle') {
         return (
             <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                <path d="M14 5v9.2a3.5 3.5 0 1 1-1.8-3.07L12.2 8.5l6.3-1.7v5.9a3.5 3.5 0 1 1-1.8-3.07V5.8L14 6.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M9 18V5l12-2v13" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="6" cy="18" r="3" />
+                <circle cx="18" cy="16" r="3" />
             </svg>
         );
     }

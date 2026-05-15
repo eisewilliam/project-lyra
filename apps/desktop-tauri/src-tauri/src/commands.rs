@@ -1,7 +1,10 @@
 use crate::tray;
 use crate::ui_state::UiState;
 use crate::AppState;
-use lyra_core::{domain::{RenderSnapshot, SettingsSnapshot}, lyrics::LyricSource};
+use lyra_core::{
+    domain::{NotFoundReason, RenderSnapshot, SettingsSnapshot},
+    lyrics::LyricSource,
+};
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -219,12 +222,37 @@ pub async fn refresh_lyrics(state: State<'_, AppState>) -> Result<(), String> {
     }
 
     // 5. Re-lock to persist result.
+    //
+    // A confirmed miss (`Ok(None)`) writes a `.nomatch` sentinel so we don't
+    // re-query forever. A network/transport error is recorded in-memory only
+    // — poisoning the cache for transient failures was the worst behaviour
+    // in the old code. Status flips to `NotFound { NetworkError }` until the
+    // user hits Retry or restarts the app.
     let mut rt = state.runtime.lock().map_err(|e| e.to_string())?;
     match result {
         Ok(Some(doc)) => rt.store_lyrics(doc),
-        Ok(None) | Err(_) => rt.store_negative(&track.uri),
+        Ok(None) => rt.store_negative(&track.uri),
+        Err(_) => rt.store_transient_error(&track.uri, NotFoundReason::NetworkError),
     }
     Ok(())
+}
+
+/// Force a re-fetch for the currently playing track, ignoring any negative
+/// or transient cache entries. Used by the UI Retry button.
+#[tauri::command]
+pub async fn force_refresh_lyrics(state: State<'_, AppState>) -> Result<(), String> {
+    let uri = {
+        let rt = state.runtime.lock().map_err(|e| e.to_string())?;
+        rt.current_track().map(|t| t.uri)
+    };
+    let Some(uri) = uri else { return Ok(()) };
+
+    {
+        let mut rt = state.runtime.lock().map_err(|e| e.to_string())?;
+        rt.forget_track(&uri);
+    }
+
+    refresh_lyrics(state).await
 }
 use lyra_core::domain::SettingsPatch;
 

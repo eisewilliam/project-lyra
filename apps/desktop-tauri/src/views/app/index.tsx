@@ -3,11 +3,16 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import {
+  getNotFoundReason,
+  isLyricsNotFound,
+  isRetryableNotFound,
   resolveLyricsSurfaceState,
   type LyricsPlaceholderState,
   type LyricsStatus,
+  type NotFoundReason,
 } from '../../utils/lyrics-state'
 import { LyricsPlaceholderIcon } from '../../utils/lyrics-placeholder-icon'
+import { usePageVisible } from '../../utils/use-page-visible'
 import './app.css'
 
 type UiState = { floating_font_scale: number };
@@ -53,7 +58,6 @@ function formatMs(ms: number): string {
 }
 
 const FALLBACK_ART = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
-const POLL_MS = 300;
 const BLEND_MS = 500;
 
 type PositionBaseline = {
@@ -92,6 +96,7 @@ function App() {
   const baselineRef = useRef<PositionBaseline>({ ms: 0, at: 0, targetMs: 0, targetAt: 0, blendDur: 1 })
   const lyricsRef = useRef<(HTMLDivElement | null)[]>([])
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([])
+  const pageVisible = usePageVisible()
   const progressTrackRef = useRef<HTMLDivElement | null>(null)
   const lastUriRef = useRef('')
   const refreshedUriRef = useRef('')
@@ -127,77 +132,83 @@ function App() {
     invoke('playback_seek_ms', { positionMs: targetMs }).catch(() => { })
   }
 
-  // Poll render snapshot every 300 ms for real playback + lyrics state.
+  // Subscribe to backend `playback-tick` events. The backend polls Spotify
+  // (adaptive cadence: 250ms playing → 2.5s stopped) and emits a snapshot to
+  // every window — frontends used to setInterval-poll which burned ~10 IPC/sec
+  // idle and prevented App Nap.
   useEffect(() => {
-    const poll = async () => {
-      try {
-        const snap = await invoke<RenderSnapshot>('get_render_snapshot');
-        const uri = snap.playback.track?.uri ?? '';
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
 
-        setSnapshotReady(true);
-        const playingNow = snap.playback.state === 'Playing';
-        setIsPlaying(playingNow);
-        setTrack(snap.playback.track);
-        setLyricsStatus(snap.lyrics_status);
+    const apply = (snap: RenderSnapshot) => {
+      if (cancelled) return;
+      const uri = snap.playback.track?.uri ?? '';
 
-        // Position sync:
-        //  1. Age-correct the backend value using observed_at_ms — the snapshot
-        //     may be up to 500ms stale (background thread polls every 500ms).
-        //     Adding (Date.now() - observed_at_ms) projects to "now".
-        //  2. Lock current interpolated value as new baseline; aim toward the
-        //     corrected target with a 500ms continuous blend. Each rAF tick
-        //     reads via `interpolatePosition` so the trajectory bends smoothly
-        //     instead of jumping at poll boundaries.
-        //  3. Snap immediately on big drifts (seek, track change, pause/resume).
-        const newPos = snap.playback.position_ms ?? 0;
-        const now = performance.now();
-        const ageMs = playingNow
-          ? Math.max(0, Math.min(2000, Date.now() - snap.playback.observed_at_ms))
-          : 0;
-        const correctedPos = newPos + ageMs;
-        const currentInterp = interpolatePosition(baselineRef.current, now, playingNow);
-        const drift = correctedPos - currentInterp;
+      setSnapshotReady(true);
+      const playingNow = snap.playback.state === 'Playing';
+      setIsPlaying(playingNow);
+      setTrack(snap.playback.track);
+      setLyricsStatus(snap.lyrics_status);
 
-        if (!playingNow || Math.abs(drift) > 1000) {
-          baselineRef.current = { ms: correctedPos, at: now, targetMs: correctedPos, targetAt: now, blendDur: 1 };
-          setPositionMs(correctedPos);
-        } else {
-          baselineRef.current = { ms: currentInterp, at: now, targetMs: correctedPos, targetAt: now, blendDur: BLEND_MS };
-        }
+      // Position sync:
+      //  1. Age-correct via observed_at_ms — the backend snapshot may be
+      //     up to one poll-interval stale.
+      //  2. Lock current interpolated value as new baseline; blend toward
+      //     the corrected target over BLEND_MS so the trajectory bends
+      //     smoothly instead of jumping.
+      //  3. Snap on big drifts (seek, track change, pause/resume).
+      const newPos = snap.playback.position_ms ?? 0;
+      const now = performance.now();
+      const ageMs = playingNow
+        ? Math.max(0, Math.min(2000, Date.now() - snap.playback.observed_at_ms))
+        : 0;
+      const correctedPos = newPos + ageMs;
+      const currentInterp = interpolatePosition(baselineRef.current, now, playingNow);
+      const drift = correctedPos - currentInterp;
 
-        setActiveLine(snap.active_line_index ?? null);
-        setActiveLineWords(snap.active_line_words ?? []);
+      if (!playingNow || Math.abs(drift) > 1000) {
+        baselineRef.current = { ms: correctedPos, at: now, targetMs: correctedPos, targetAt: now, blendDur: 1 };
+        setPositionMs(correctedPos);
+      } else {
+        baselineRef.current = { ms: currentInterp, at: now, targetMs: correctedPos, targetAt: now, blendDur: BLEND_MS };
+      }
 
-        // Track changed — clear lyrics so stale lines don't show.
-        if (uri !== lastUriRef.current) {
-          lastUriRef.current = uri;
-          setLyrics([]);
-          setActiveLine(null);
-          setActiveLineWords([]);
-          lyricsLoadedUriRef.current = '';
-        }
+      setActiveLine(snap.active_line_index ?? null);
+      setActiveLineWords(snap.active_line_words ?? []);
 
-        // Trigger network fetch once per URI when lyrics are missing.
-        if (uri && snap.lyrics_status === 'Loading' && refreshedUriRef.current !== uri) {
-          refreshedUriRef.current = uri;
-          invoke('refresh_lyrics').catch(() => { });
-        }
+      if (uri !== lastUriRef.current) {
+        lastUriRef.current = uri;
+        setLyrics([]);
+        setActiveLine(null);
+        setActiveLineWords([]);
+        lyricsLoadedUriRef.current = '';
+      }
 
-        // Load all lyric lines (with timestamps) once the cache is ready.
-        if (uri && snap.lyrics_status === 'Ready' && lyricsLoadedUriRef.current !== uri) {
-          lyricsLoadedUriRef.current = uri;
-          invoke<Array<{ start_ms: number; text: string }>>('get_all_lines')
-            .then(lines => setLyrics(lines.map(l => ({ start_ms: l.start_ms, text: l.text }))))
-            .catch(() => { });
-        }
-      } catch {
-        // Ignore transient errors during poll.
+      if (uri && snap.lyrics_status === 'Loading' && refreshedUriRef.current !== uri) {
+        refreshedUriRef.current = uri;
+        invoke('refresh_lyrics').catch(() => { });
+      }
+
+      if (uri && snap.lyrics_status === 'Ready' && lyricsLoadedUriRef.current !== uri) {
+        lyricsLoadedUriRef.current = uri;
+        invoke<Array<{ start_ms: number; text: string }>>('get_all_lines')
+          .then(lines => setLyrics(lines.map(l => ({ start_ms: l.start_ms, text: l.text }))))
+          .catch(() => { });
       }
     };
 
-    const timer = setInterval(poll, POLL_MS);
-    void poll();
-    return () => clearInterval(timer);
+    (async () => {
+      try {
+        const initial = await invoke<RenderSnapshot>('get_render_snapshot');
+        apply(initial);
+      } catch { /* transient */ }
+      unlisten = await listen<RenderSnapshot>('playback-tick', (e) => apply(e.payload));
+    })();
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, []);
 
   // Subscribe to UI settings (font scale).
@@ -227,8 +238,10 @@ function App() {
   }, [activeLine])
 
   // Interpolate position between backend polls so the progress bar moves smoothly.
+  // Skipped when the page is hidden — nothing to render, browser would throttle
+  // the rAF callback anyway but we'd still incur the setState/reconcile cost.
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isPlaying || !pageVisible) return;
     let raf = 0;
     const tick = () => {
       setPositionMs(interpolatePosition(baselineRef.current, performance.now(), true));
@@ -236,12 +249,15 @@ function App() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [isPlaying])
+  }, [isPlaying, pageVisible])
 
   // 60fps word-state updater. Mutates className/CSS var directly on span refs
   // so the React tree is NOT re-rendered every frame.
+  //
+  // When paused or hidden: position is frozen, so run the loop body once to
+  // lock visual state and exit. Avoids a 60Hz no-op while no user can see it.
   useEffect(() => {
-    if (activeLineWords.length === 0) return;
+    if (activeLineWords.length === 0 || !pageVisible) return;
     let raf = 0;
     const tick = () => {
       const pos = interpolatePosition(baselineRef.current, performance.now(), isPlaying);
@@ -264,11 +280,11 @@ function App() {
         if (el.className !== cls) el.className = cls;
         el.style.setProperty('--word-progress', progress.toFixed(3));
       }
-      raf = requestAnimationFrame(tick);
+      if (isPlaying) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [activeLineWords, isPlaying])
+  }, [activeLineWords, isPlaying, pageVisible])
 
   const artworkSrc = track?.artwork_url ?? FALLBACK_ART;
   const hasTrack = Boolean(track);
@@ -282,6 +298,15 @@ function App() {
     lyricsStatus,
     hasContent: lyrics.length > 0,
   });
+  const notFoundReason = isLyricsNotFound(lyricsStatus)
+    ? getNotFoundReason(lyricsStatus)
+    : null;
+  const canRetry = isRetryableNotFound(lyricsStatus);
+
+  function retryLyrics() {
+    refreshedUriRef.current = '';
+    invoke('force_refresh_lyrics').catch(() => { });
+  }
 
   return (
     <main className="lyra-window">
@@ -417,7 +442,11 @@ function App() {
             })}
           </div>
         ) : (
-          <LyricsPlaceholder state={lyricsViewState} />
+          <LyricsPlaceholder
+            state={lyricsViewState}
+            notFoundReason={notFoundReason}
+            onRetry={canRetry ? retryLyrics : undefined}
+          />
         )}
       </section>
     </main>
@@ -426,14 +455,19 @@ function App() {
 
 function LyricsPlaceholder({
   state,
+  notFoundReason,
+  onRetry,
 }: {
   state: LyricsPlaceholderState;
+  notFoundReason?: NotFoundReason | null;
+  onRetry?: () => void;
 }) {
   const loading = state === 'booting' || state === 'loading';
+  const label = getPlaceholderLabel(state, notFoundReason ?? null);
 
   return (
     <div className={`lyrics-placeholder is-${state} ${loading ? 'is-loading' : ''}`}>
-      <div className="lyrics-placeholder-card" role="status" aria-label={getPlaceholderLabel(state)}>
+      <div className="lyrics-placeholder-card" role="status" aria-label={label}>
         <div className="lyrics-placeholder-orb" aria-hidden="true">
           <span className="lyrics-placeholder-ring" />
           <span className="lyrics-placeholder-core">
@@ -447,13 +481,24 @@ function LyricsPlaceholder({
             <span className="lyrics-placeholder-dot" />
             <span className="lyrics-placeholder-dot" />
           </div>
+        ) : (
+          <p className="lyrics-placeholder-label">{label}</p>
+        )}
+
+        {onRetry ? (
+          <button type="button" className="lyrics-placeholder-retry" onClick={onRetry}>
+            Retry
+          </button>
         ) : null}
       </div>
     </div>
   );
 }
 
-function getPlaceholderLabel(state: LyricsPlaceholderState) {
+function getPlaceholderLabel(
+  state: LyricsPlaceholderState,
+  notFoundReason: NotFoundReason | null,
+) {
   switch (state) {
     case 'booting':
       return 'Connecting to Spotify';
@@ -462,9 +507,16 @@ function getPlaceholderLabel(state: LyricsPlaceholderState) {
     case 'loading':
       return 'Loading lyrics';
     case 'empty':
-      return 'No synced lyrics';
+      return 'No synced lyrics for this track';
     case 'error':
-      return 'Lyrics unavailable';
+      switch (notFoundReason) {
+        case 'NetworkError':
+          return "Couldn't reach lyric server";
+        case 'RateLimit':
+          return 'Lyric server busy — backing off';
+        default:
+          return 'Lyrics unavailable';
+      }
     default:
       return '';
   }

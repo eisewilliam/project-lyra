@@ -1,6 +1,6 @@
 use crate::domain::{
-    LyricDocument, LyricWord, LyricsStatus, PlaybackState, PlaybackSnapshot, RenderSnapshot,
-    VisibleLine,
+    LyricDocument, LyricWord, LyricsStatus, NotFoundReason, PlaybackState, PlaybackSnapshot,
+    RenderSnapshot, VisibleLine,
 };
 
 /// Compute a `RenderSnapshot` from current playback + resolved lyrics.
@@ -14,7 +14,7 @@ pub fn compute_render(
     if playback.state == PlaybackState::Stopped || playback.track.is_none() {
         return RenderSnapshot {
             playback,
-            lyrics_status: LyricsStatus::NotFound,
+            lyrics_status: LyricsStatus::NotFound { reason: NotFoundReason::Miss },
             active_line_index: None,
             line_progress: None,
             visible_lines: vec![],

@@ -4,6 +4,11 @@ use anyhow::{anyhow, Result};
 use serde::Deserialize;
 
 const BASE_URL: &str = "https://lrclib.net/api";
+const USER_AGENT: &str = concat!(
+    "Lyra/",
+    env!("CARGO_PKG_VERSION"),
+    " (https://github.com/lyra-app/lyra)",
+);
 
 pub struct LrclibClient {
     http: reqwest::Client,
@@ -43,7 +48,7 @@ impl LyricSource for LrclibClient {
         let resp = self
             .http
             .get(&url)
-            .header("User-Agent", "Lyra/0.1 (https://github.com/lyra-app/lyra)")
+            .header("User-Agent", USER_AGENT)
             .send()
             .await?;
 

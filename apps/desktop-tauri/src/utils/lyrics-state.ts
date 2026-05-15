@@ -1,4 +1,10 @@
-export type LyricsStatus = 'Loading' | 'Ready' | 'NotFound' | { Error: string };
+export type NotFoundReason = 'Miss' | 'NetworkError' | 'RateLimit';
+
+export type LyricsStatus =
+  | 'Loading'
+  | 'Ready'
+  | { NotFound: { reason: NotFoundReason } }
+  | { Error: string };
 
 export type LyricsPlaceholderState =
   | 'booting'
@@ -14,6 +20,21 @@ export function isLyricsError(status: LyricsStatus): status is { Error: string }
 
 export function getLyricsError(status: LyricsStatus): string | null {
   return isLyricsError(status) ? status.Error : null;
+}
+
+export function isLyricsNotFound(
+  status: LyricsStatus,
+): status is { NotFound: { reason: NotFoundReason } } {
+  return typeof status === 'object' && status !== null && 'NotFound' in status;
+}
+
+export function getNotFoundReason(status: LyricsStatus): NotFoundReason | null {
+  return isLyricsNotFound(status) ? status.NotFound.reason : null;
+}
+
+export function isRetryableNotFound(status: LyricsStatus): boolean {
+  const reason = getNotFoundReason(status);
+  return reason === 'NetworkError' || reason === 'RateLimit';
 }
 
 export function resolveLyricsSurfaceState({
@@ -43,8 +64,8 @@ export function resolveLyricsSurfaceState({
     return 'loading';
   }
 
-  if (lyricsStatus === 'NotFound') {
-    return 'empty';
+  if (isLyricsNotFound(lyricsStatus)) {
+    return isRetryableNotFound(lyricsStatus) ? 'error' : 'empty';
   }
 
   if (!hasContent) {
