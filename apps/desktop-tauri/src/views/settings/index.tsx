@@ -36,7 +36,7 @@ type UiState = {
 type AppSettings = {
   window: { click_through: boolean; hide_when_idle: boolean; always_on_top: boolean };
   appearance: { font_family: string; font_size: number; text_color: string; background_opacity: number; context_lines_above: number; context_lines_below: number };
-  behavior: { karaoke_mode: boolean; poll_interval_ms: number };
+  behavior: { karaoke_mode: boolean; poll_interval_ms: number; hide_when_paused: boolean };
 };
 
 type ConsolidatedState = { ui: UiState; app: AppSettings };
@@ -300,6 +300,9 @@ function Body({
               <option value="1000">Normal (1s)</option>
               <option value="2000">Slow (2s)</option>
             </select>
+          </Row>
+          <Row label="Hide all displays when paused">
+            <Toggle value={app.behavior.hide_when_paused} onChange={(v: boolean) => actions.updateAppSetting('behavior', 'hide_when_paused', v)} />
           </Row>
         </Group>
       </>

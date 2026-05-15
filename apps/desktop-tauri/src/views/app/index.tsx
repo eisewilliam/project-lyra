@@ -101,6 +101,8 @@ function App() {
   const lastUriRef = useRef('')
   const refreshedUriRef = useRef('')
   const lyricsLoadedUriRef = useRef('')
+  const hideWhenPausedRef = useRef(false)
+  const autoHiddenRef = useRef(false)
 
   function startWindowDrag(event: React.MouseEvent<HTMLDivElement>) {
     if (event.button !== 0) return
@@ -215,7 +217,11 @@ function App() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     (async () => {
-      const s = await invoke<UiState>('get_ui_state');
+      const [s, appSettings] = await Promise.all([
+        invoke<UiState>('get_ui_state'),
+        invoke<{ behavior: { hide_when_paused: boolean } }>('get_settings'),
+      ]);
+      hideWhenPausedRef.current = appSettings.behavior.hide_when_paused;
       applyFloatingFont(s.floating_font_scale);
       unlisten = await listen<UiState>('ui-settings-changed', (e) => {
         applyFloatingFont(e.payload.floating_font_scale);
@@ -223,6 +229,19 @@ function App() {
     })();
     return () => unlisten?.();
   }, []);
+
+  // Auto-hide/show the window when playback state changes, if hide_when_paused is enabled.
+  useEffect(() => {
+    if (!snapshotReady) return;
+    const win = getCurrentWindow();
+    if (hideWhenPausedRef.current && !isPlaying) {
+      autoHiddenRef.current = true;
+      void win.hide();
+    } else if (autoHiddenRef.current && isPlaying) {
+      autoHiddenRef.current = false;
+      void win.show();
+    }
+  }, [isPlaying, snapshotReady]);
 
   // Smooth-scroll the active lyric to vertical center using a single rAF after
   // layout settles. scrollIntoView with smooth behavior provides hardware-accel

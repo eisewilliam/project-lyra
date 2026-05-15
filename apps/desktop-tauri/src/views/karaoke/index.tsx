@@ -120,11 +120,17 @@ export default function Karaoke() {
   const baselineRef = useRef<PositionBaseline>({ ms: 0, at: 0, targetMs: 0, targetAt: 0, blendDur: 1 });
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const pageVisible = usePageVisible();
+  const hideWhenPausedRef = useRef(false);
+  const autoHiddenRef = useRef(false);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     (async () => {
-      const state = await invoke<UiState>('get_ui_state');
+      const [state, appSettings] = await Promise.all([
+        invoke<UiState>('get_ui_state'),
+        invoke<{ behavior: { hide_when_paused: boolean } }>('get_settings'),
+      ]);
+      hideWhenPausedRef.current = appSettings.behavior.hide_when_paused;
       applyStyle(state);
       setLines(state.karaoke_lines);
       await applyLayout(state);
@@ -141,6 +147,19 @@ export default function Karaoke() {
       if (layoutTimerRef.current) window.clearTimeout(layoutTimerRef.current);
     };
   }, []);
+
+  // Auto-hide/show the window when playback state changes, if hide_when_paused is enabled.
+  useEffect(() => {
+    if (!snapshotReady) return;
+    const win = getCurrentWindow();
+    if (hideWhenPausedRef.current && !isPlaying) {
+      autoHiddenRef.current = true;
+      void win.hide();
+    } else if (autoHiddenRef.current && isPlaying) {
+      autoHiddenRef.current = false;
+      void win.show();
+    }
+  }, [isPlaying, snapshotReady]);
 
   // Subscribe to backend `playback-tick` events. See app view for rationale.
   useEffect(() => {

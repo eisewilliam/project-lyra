@@ -134,6 +134,8 @@ pub struct AppearanceSettings {
 pub struct BehaviorSettings {
     pub karaoke_mode: bool,
     pub poll_interval_ms: u64,
+    #[serde(default)]
+    pub hide_when_paused: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,6 +193,7 @@ impl Default for BehaviorSettings {
         Self {
             karaoke_mode: false,
             poll_interval_ms: 300,
+            hide_when_paused: false,
         }
     }
 }

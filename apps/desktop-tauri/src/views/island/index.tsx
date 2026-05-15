@@ -110,6 +110,8 @@ export default function Island() {
   const baselineRef = useRef<PositionBaseline>({ ms: 0, at: 0, targetMs: 0, targetAt: 0, blendDur: 1 });
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const pageVisible = usePageVisible();
+  const hideWhenPausedRef = useRef(false);
+  const autoHiddenRef = useRef(false);
 
   // Init: read persisted state, position window, subscribe to lock + settings changes.
   useEffect(() => {
@@ -119,7 +121,11 @@ export default function Island() {
 
     (async () => {
       const win = getCurrentWindow();
-      const state = await invoke<UiState>('get_ui_state');
+      const [state, appSettings] = await Promise.all([
+        invoke<UiState>('get_ui_state'),
+        invoke<{ behavior: { hide_when_paused: boolean } }>('get_settings'),
+      ]);
+      hideWhenPausedRef.current = appSettings.behavior.hide_when_paused;
       setLocked(state.island_locked);
       setShowCover(state.island_show_cover ?? true);
       setCoverCircle(state.island_cover_circle ?? false);
@@ -198,6 +204,19 @@ export default function Island() {
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     };
   }, []);
+
+  // Auto-hide/show the window when playback state changes, if hide_when_paused is enabled.
+  useEffect(() => {
+    if (!snapshotReady) return;
+    const win = getCurrentWindow();
+    if (hideWhenPausedRef.current && !isPlaying) {
+      autoHiddenRef.current = true;
+      void win.hide();
+    } else if (autoHiddenRef.current && isPlaying) {
+      autoHiddenRef.current = false;
+      void win.show();
+    }
+  }, [isPlaying, snapshotReady]);
 
   // Subscribe to backend `playback-tick` events. See app view for rationale.
   useEffect(() => {
