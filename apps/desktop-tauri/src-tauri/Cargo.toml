@@ -24,10 +24,13 @@ tauri = { version = "2.11.1", features = ["macos-private-api", "tray-icon"] }
 tauri-plugin-log = "2"
 lyra-core = { path = "../../../crates/lyra-core" }
 dirs-next = "2"
+tokio = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2" }
 objc = "0.2"
+libc = "0.2"
+dispatch2 = { version = "0.3", default-features = false, features = ["std", "libc"] }
 
 [lints.rust]
 # The objc 0.2 crate's macros emit `cfg(cargo-clippy)` which rustc doesn't

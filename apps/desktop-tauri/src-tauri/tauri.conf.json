@@ -25,7 +25,8 @@
         "transparent": true,
         "hiddenTitle": true,
         "visible": false,
-        "acceptFirstMouse": true
+        "acceptFirstMouse": true,
+        "backgroundThrottling": "suspend"
       },
       {
         "label": "island",
@@ -60,7 +61,8 @@
         "transparent": true,
         "acceptFirstMouse": true,
         "hiddenTitle": true,
-        "visible": false
+        "visible": false,
+        "backgroundThrottling": "suspend"
       },
       {
         "label": "karaoke",

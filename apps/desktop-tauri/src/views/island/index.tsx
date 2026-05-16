@@ -355,7 +355,7 @@ export default function Island() {
       }}
     >
       <div className="island-background">
-        <img src={artSrc} alt="" className="island-bg-img" />
+        <img src={artSrc} alt="" className="island-bg-img" decoding="async" />
         <div className="island-bg-dimmer"></div>
       </div>
 
@@ -367,6 +367,7 @@ export default function Island() {
               className={`panel-cover ${artworkUrl ? '' : 'placeholder'}`}
               draggable={false}
               alt={hasTrack ? 'Album' : ''}
+              decoding="async"
             />
           </div>
         )}
