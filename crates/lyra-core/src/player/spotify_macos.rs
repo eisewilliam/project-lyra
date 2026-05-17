@@ -8,14 +8,62 @@ use crate::player::PlayerAdapter;
 
 pub struct SpotifyMacOsAdapter {
     last: Mutex<Option<PlaybackSnapshot>>,
+    /// Cached heavy metadata keyed by Spotify track URI. The hot polling
+    /// path only fetches state + URI + position via AppleScript; the
+    /// title/artist/album/duration/artwork accessors involve extra Apple
+    /// Events to Spotify and only need to run on track change.
+    cached_meta: Mutex<Option<CachedMeta>>,
+}
+
+#[derive(Clone)]
+struct CachedMeta {
+    uri: String,
+    title: String,
+    artist: String,
+    album: String,
+    duration_ms: u64,
+    artwork_url: Option<String>,
 }
 
 impl SpotifyMacOsAdapter {
     pub fn new() -> Self {
-        Self { last: Mutex::new(None) }
+        Self {
+            last: Mutex::new(None),
+            cached_meta: Mutex::new(None),
+        }
     }
 
-    fn query() -> Option<RawSpotifyState> {
+    /// Lightweight poll: returns only the values that change between polls
+    /// (player state, URI, current position). When the URI matches the
+    /// cached one we skip the heavy metadata fetch.
+    fn query_lite() -> Option<RawSpotifyLite> {
+        let script = r#"
+if application "Spotify" is not running then return "not_running"
+tell application "Spotify"
+    set ps to player state as string
+    if ps is "stopped" then return "stopped"
+    set tid to id of current track
+    set pos to player position
+    return ps & "|" & tid & "|" & (pos as string)
+end tell
+"#;
+        let raw = run_osascript(script)?;
+        if raw == "not_running" || raw == "stopped" || raw.is_empty() {
+            return Some(RawSpotifyLite::Stopped);
+        }
+        let parts: Vec<&str> = raw.splitn(3, '|').collect();
+        if parts.len() < 3 {
+            return None;
+        }
+        Some(RawSpotifyLite::Track {
+            state: parts[0].to_string(),
+            uri: parts[1].to_string(),
+            position_ms: (parts[2].parse::<f64>().unwrap_or(0.0) * 1000.0) as u64,
+        })
+    }
+
+    /// Full metadata fetch — only invoked on track change.
+    fn query_meta() -> Option<CachedMeta> {
         let script = r#"
 if application "Spotify" is not running then return "not_running"
 tell application "Spotify"
@@ -26,62 +74,55 @@ tell application "Spotify"
     set ta to artist of current track
     set tal to album of current track
     set tdur to duration of current track
-    set pos to player position
     set tart to ""
     try
         set tart to artwork url of current track
     end try
-    return ps & "|" & tid & "|" & tn & "|" & ta & "|" & tal & "|" & (tdur as string) & "|" & (pos as string) & "|" & tart
+    return tid & "|" & tn & "|" & ta & "|" & tal & "|" & (tdur as string) & "|" & tart
 end tell
 "#;
-
-        let (tx, rx) = mpsc::channel();
-        std::thread::spawn(move || {
-            let out = Command::new("osascript").arg("-e").arg(script).output();
-            let _ = tx.send(out);
-        });
-
-        let out = match rx.recv_timeout(Duration::from_secs(3)) {
-            Ok(Ok(o)) => o,
-            _ => return None,
-        };
-        let raw = String::from_utf8_lossy(&out.stdout).trim().to_string();
-
+        let raw = run_osascript(script)?;
         if raw == "not_running" || raw == "stopped" || raw.is_empty() {
-            return Some(RawSpotifyState::Stopped);
-        }
-
-        let parts: Vec<&str> = raw.splitn(8, '|').collect();
-        if parts.len() < 7 {
             return None;
         }
-
-        let artwork_url = parts.get(7).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
-
-        Some(RawSpotifyState::Track {
-            state: parts[0].to_string(),
-            uri: parts[1].to_string(),
-            title: parts[2].to_string(),
-            artist: parts[3].to_string(),
-            album: parts[4].to_string(),
-            duration_ms: parts[5].parse::<f64>().unwrap_or(0.0) as u64,
-            position_ms: (parts[6].parse::<f64>().unwrap_or(0.0) * 1000.0) as u64,
+        let parts: Vec<&str> = raw.splitn(6, '|').collect();
+        if parts.len() < 5 {
+            return None;
+        }
+        let artwork_url = parts
+            .get(5)
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        Some(CachedMeta {
+            uri: parts[0].to_string(),
+            title: parts[1].to_string(),
+            artist: parts[2].to_string(),
+            album: parts[3].to_string(),
+            duration_ms: parts[4].parse::<f64>().unwrap_or(0.0) as u64,
             artwork_url,
         })
     }
 }
 
-enum RawSpotifyState {
+fn run_osascript(script: &'static str) -> Option<String> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let out = Command::new("osascript").arg("-e").arg(script).output();
+        let _ = tx.send(out);
+    });
+    let out = match rx.recv_timeout(Duration::from_secs(3)) {
+        Ok(Ok(o)) => o,
+        _ => return None,
+    };
+    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+enum RawSpotifyLite {
     Stopped,
     Track {
         state: String,
         uri: String,
-        title: String,
-        artist: String,
-        album: String,
-        duration_ms: u64,
         position_ms: u64,
-        artwork_url: Option<String>,
     },
 }
 
@@ -140,38 +181,65 @@ impl PlayerAdapter for SpotifyMacOsAdapter {
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
 
-        let raw = Self::query()?;
-        let mut last_guard = self.last.lock().ok()?;
+        let lite = Self::query_lite()?;
 
-        let new_snapshot = match raw {
-            RawSpotifyState::Stopped => PlaybackSnapshot {
-                track: None,
-                state: PlaybackState::Stopped,
-                position_ms: None,
-                observed_at_ms,
-            },
-            RawSpotifyState::Track { state, uri, title, artist, album, duration_ms, position_ms, artwork_url } => {
+        let new_snapshot = match lite {
+            RawSpotifyLite::Stopped => {
+                // Drop cached metadata: a future track change shouldn't be
+                // satisfied from a stale URI match.
+                if let Ok(mut c) = self.cached_meta.lock() {
+                    *c = None;
+                }
+                PlaybackSnapshot {
+                    track: None,
+                    state: PlaybackState::Stopped,
+                    position_ms: None,
+                    observed_at_ms,
+                }
+            }
+            RawSpotifyLite::Track { state, uri, position_ms } => {
                 let pb_state = if state == "playing" {
                     PlaybackState::Playing
                 } else {
                     PlaybackState::Paused
                 };
+
+                // Reuse cached metadata when URI matches — saves five Apple
+                // Event roundtrips to Spotify on every same-track poll.
+                let meta = {
+                    let cached = self.cached_meta.lock().ok().and_then(|g| g.clone());
+                    match cached {
+                        Some(m) if m.uri == uri => Some(m),
+                        _ => {
+                            let fresh = Self::query_meta();
+                            if let (Some(ref m), Ok(mut slot)) = (&fresh, self.cached_meta.lock()) {
+                                *slot = Some(m.clone());
+                            }
+                            fresh
+                        }
+                    }
+                };
+
+                let track = meta.map(|m| TrackRef {
+                    source: PlayerSource::SpotifyMacOs,
+                    uri: uri.clone(),
+                    title: m.title,
+                    artist: m.artist,
+                    album: if m.album.is_empty() { None } else { Some(m.album) },
+                    duration_ms: m.duration_ms,
+                    artwork_url: m.artwork_url,
+                });
+
                 PlaybackSnapshot {
-                    track: Some(TrackRef {
-                        source: PlayerSource::SpotifyMacOs,
-                        uri,
-                        title,
-                        artist,
-                        album: if album.is_empty() { None } else { Some(album) },
-                        duration_ms,
-                        artwork_url,
-                    }),
+                    track,
                     state: pb_state,
                     position_ms: Some(position_ms),
                     observed_at_ms,
                 }
             }
         };
+
+        let mut last_guard = self.last.lock().ok()?;
 
         let event = derive_event(&last_guard, &new_snapshot);
         *last_guard = Some(new_snapshot);

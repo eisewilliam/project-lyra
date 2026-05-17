@@ -116,6 +116,8 @@ function App() {
   const baselineRef = useRef<PositionBaseline>({ ms: 0, at: 0, targetMs: 0, targetAt: 0, blendDur: 1 })
   const lyricsRef = useRef<(HTMLDivElement | null)[]>([])
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([])
+  const progressFillRef = useRef<HTMLDivElement | null>(null)
+  const positionLabelRef = useRef<HTMLSpanElement | null>(null)
   const pageVisible = usePageVisible()
   const progressTrackRef = useRef<HTMLDivElement | null>(null)
   const lastUriRef = useRef('')
@@ -270,19 +272,34 @@ function App() {
     return () => cancelAnimationFrame(raf);
   }, [activeLine])
 
-  // Interpolate position between backend polls so the progress bar moves smoothly.
-  // Skipped when the page is hidden — nothing to render, browser would throttle
-  // the rAF callback anyway but we'd still incur the setState/reconcile cost.
+  // Interpolate position between backend polls so the progress bar moves
+  // smoothly. Directly mutates the progress-fill width and time label via
+  // refs — previously this called `setPositionMs` 60 Hz which forced React to
+  // reconcile the whole subtree (lyric list included) every frame. Now zero
+  // React work in the rAF loop.
   useEffect(() => {
     if (!isPlaying || !pageVisible) return;
     let raf = 0;
+    const durationMs = track?.duration_ms ?? 0;
     const tick = () => {
-      setPositionMs(interpolatePosition(baselineRef.current, performance.now(), true));
+      const pos = interpolatePosition(baselineRef.current, performance.now(), true);
+      const fill = progressFillRef.current;
+      const label = positionLabelRef.current;
+      if (durationMs > 0 && fill) {
+        const pct = Math.min(100, Math.max(0, (Math.min(pos, durationMs) / durationMs) * 100));
+        fill.style.width = `${pct}%`;
+      }
+      if (label) {
+        const totalSec = Math.floor(pos / 1000);
+        const m = Math.floor(totalSec / 60);
+        const s = totalSec % 60;
+        label.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [isPlaying, pageVisible])
+  }, [isPlaying, pageVisible, track?.duration_ms])
 
   // 60fps word-state updater. Mutates className/CSS var directly on span refs
   // so the React tree is NOT re-rendered every frame.
@@ -348,7 +365,7 @@ function App() {
 
       {/* Glowing Ambient Background (Color Bounce) */}
       <div className="ambient-bg" aria-hidden="true">
-        <img src={artworkSrc} alt="" />
+        <img src={artworkSrc} alt="" decoding="async" />
         <div className="ambient-dimmer"></div>
       </div>
 
@@ -362,6 +379,7 @@ function App() {
             alt={hasTrack ? 'Album cover' : ''}
             className={`album-cover ${hasArtwork ? '' : 'placeholder'}`}
             draggable={false}
+            decoding="async"
           />
         </div>
 
@@ -392,13 +410,13 @@ function App() {
           </div>
 
           <div className="progress-bar">
-            <span className="time-label">{formatMs(clampedPositionMs)}</span>
+            <span className="time-label" ref={positionLabelRef}>{formatMs(clampedPositionMs)}</span>
             <div
               className={`progress-track ${hasTrack ? '' : 'is-placeholder'}`}
               ref={progressTrackRef}
               onClick={seekFromClick}
             >
-              <div className="progress-fill" style={{ width: `${progressPct}%` }}></div>
+              <div className="progress-fill" ref={progressFillRef} style={{ width: `${progressPct}%` }}></div>
             </div>
             <span className="time-label">{formatMs(durationMs)}</span>
           </div>

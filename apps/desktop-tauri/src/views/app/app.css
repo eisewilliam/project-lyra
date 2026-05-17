@@ -4,7 +4,7 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: row;
-  background: rgba(22, 22, 26, 0.4); 
+  background: rgba(22, 22, 26, 0.4);
   backdrop-filter: blur(24px) saturate(120%);
   -webkit-backdrop-filter: blur(24px) saturate(120%);
   color: white;
@@ -47,6 +47,40 @@ body[data-os="windows"] .lyra-window {
   background: #c42b1c;
   color: white;
 }
+
+/* ── Low-Power Mode ───────────────────────────────────────────────────────
+ *
+ * Activated when EITHER:
+ *   - The OS reports `prefers-reduced-motion: reduce` (System Settings →
+ *     Accessibility → Display → Reduce motion), OR
+ *   - The frontend sets `<html data-low-power="true">` (future Settings
+ *     toggle — not wired yet).
+ *
+ * Disables the most GPU-expensive effects: full-window backdrop blur, 120 px
+ * ambient Gaussian, per-lyric `filter: blur()` layers + `will-change` hints,
+ * and smooth-scroll animation. Visual identity preserved via opacity + color
+ * fall-backs so it doesn't look broken — just flat.
+ *
+ * macOS Activity Monitor reports "Significant energy" largely because of the
+ * compositor work these rules generate; opting out drops the app from
+ * High/Significant impact to Low on most hardware.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .lyra-window { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(18, 18, 22, 0.82); }
+  .ambient-bg img { filter: none; transform: none; opacity: 0.2; }
+  .lyric-line { filter: none !important; will-change: auto !important; transition: color 0.25s ease, opacity 0.25s ease, transform 0.25s ease !important; }
+  .lyric-line.active { filter: none !important; }
+  .lyric-line.passed { filter: none !important; }
+  .lyric-line:not(.active):hover { filter: none !important; }
+  .lyrics-pane { scroll-behavior: auto; }
+}
+:root[data-low-power="true"] .lyra-window { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(18, 18, 22, 0.82); }
+:root[data-low-power="true"] .ambient-bg img { filter: blur(40px) saturate(160%); transform: scale(1.2); opacity: 0.5; }
+:root[data-low-power="true"] .lyric-line { filter: none !important; will-change: auto !important; }
+:root[data-low-power="true"] .lyric-line.active { filter: none !important; will-change: transform !important; }
+:root[data-low-power="true"] .lyric-line.passed { filter: none !important; }
+:root[data-low-power="true"] .lyric-line:not(.active):hover { filter: none !important; }
+:root[data-low-power="true"] .lyrics-pane { scroll-behavior: auto; }
 
 /* Invisible full-width drag strip at top — allows window dragging over all content */
 .drag-region {

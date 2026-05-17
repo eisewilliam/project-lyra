@@ -24,6 +24,18 @@ html, body {
   transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
+/* See `app.css` for the rationale. Same flag triggers, same fall-backs. */
+@media (prefers-reduced-motion: reduce) {
+  .floating-panel { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(18, 18, 22, 0.86); }
+  .island-bg-img { filter: none; transform: none; opacity: 0.2; }
+  .panel-lyric-next { filter: none; color: rgba(255, 255, 255, 0.32); }
+  .panel-art.is-spinning { animation: none; }
+}
+:root[data-low-power="true"] .floating-panel { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(18, 18, 22, 0.86); }
+:root[data-low-power="true"] .island-bg-img { filter: blur(20px) saturate(150%); transform: scale(1.2); opacity: 0.5; }
+:root[data-low-power="true"] .panel-lyric-next { filter: none; color: rgba(255, 255, 255, 0.32); }
+:root[data-low-power="true"] .panel-art.is-spinning { animation: none; }
+
 .floating-panel.docked {
   border-radius: 0 0 20px 20px;
   border-top: none;

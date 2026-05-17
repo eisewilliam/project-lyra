@@ -8,6 +8,7 @@ use anyhow::Result;
 /// `.nomatch` will be re-fetched once the sentinel file is older than this —
 /// covers the case where LRCLib gains lyrics for a track after a first miss.
 const NEGATIVE_TTL_SECS: u64 = 14 * 24 * 60 * 60;
+const NEGATIVE_CACHE_VERSION: &str = "v2";
 
 pub struct LyricCache {
     cache_dir: PathBuf,
@@ -60,13 +61,20 @@ impl LyricCache {
     /// Sentinel file marking a known-missing track so we skip LRCLIB retries.
     pub fn mark_negative(&self, track_key: &str) -> Result<()> {
         let path = self.cache_dir.join(format!("{}.nomatch", Self::stem(track_key)));
-        std::fs::write(path, "")?;
+        std::fs::write(path, NEGATIVE_CACHE_VERSION)?;
         Ok(())
     }
 
     pub fn is_negative(&self, track_key: &str) -> bool {
         let path = self.cache_dir.join(format!("{}.nomatch", Self::stem(track_key)));
         let Ok(meta) = std::fs::metadata(&path) else { return false };
+        match std::fs::read_to_string(&path) {
+            Ok(version) if version.trim() == NEGATIVE_CACHE_VERSION => {}
+            _ => {
+                let _ = std::fs::remove_file(&path);
+                return false;
+            }
+        }
         let Ok(modified) = meta.modified() else { return false };
         match modified.elapsed() {
             Ok(age) if age.as_secs() < NEGATIVE_TTL_SECS => true,
@@ -134,6 +142,17 @@ mod tests {
         assert!(cache.is_negative("spotify:track:xyz"));
         cache.clear_negative("spotify:track:xyz").unwrap();
         assert!(!cache.is_negative("spotify:track:xyz"));
+    }
+
+    #[test]
+    fn legacy_negative_marker_is_purged() {
+        let (cache, t) = tmp_cache();
+        let key = "spotify:track:legacy";
+        let path = t.as_path().join("lyrics_cache").join(format!("{}.nomatch", LyricCache::stem(key)));
+        std::fs::write(&path, "").unwrap();
+
+        assert!(!cache.is_negative(key));
+        assert!(!path.exists(), "legacy sentinel must be removed");
     }
 }
 

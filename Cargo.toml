@@ -14,7 +14,19 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 thiserror = "1"
 anyhow = "1"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "gzip"] }
 lru = "0.12"
 urlencoding = "2"
 base64 = "0.22"
+
+# Release-build tuning for the shipped desktop binary. LTO + a single
+# codegen unit produces faster code (per Rust Performance Book), `panic =
+# "abort"` removes unwind tables (~10% smaller binary, slightly faster),
+# and `strip = "symbols"` drops debug info that bloats the .app bundle.
+# Trade-off: slower release compile times.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
