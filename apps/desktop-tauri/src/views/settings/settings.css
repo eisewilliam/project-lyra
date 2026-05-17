@@ -556,3 +556,189 @@ body[data-os="macos"] .native-toggle:checked::after {
   transform: translate(-50%, -50%) scale(1);
 }
 
+/* ----------------================ Windows / Fluent Design Theme ================---------------- */
+
+.settings-win-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 200;
+  display: flex;
+  height: 32px;
+}
+
+.settings-win-btn {
+  width: 46px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, color 0.1s;
+  padding: 0;
+}
+
+.settings-win-btn:hover {
+  background: var(--item-active);
+  color: var(--text-primary);
+}
+
+.settings-win-btn.close:hover {
+  background: #c42b1c;
+  color: white;
+}
+
+body[data-os="windows"] {
+  --bg-sidebar: #1c1c1c;
+  --bg-pane: #242424;
+  --bg-card: #2c2c2c;
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.55);
+  --border-color: rgba(255, 255, 255, 0.07);
+  --border-row: rgba(255, 255, 255, 0.05);
+  --input-bg: rgba(255, 255, 255, 0.07);
+  --input-hover: rgba(255, 255, 255, 0.12);
+  --item-active: rgba(255, 255, 255, 0.07);
+  --item-active-bg: #0078D4;
+  --item-active-text: #ffffff;
+  --knob-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --accent: #0078D4;
+  --panel-radius: 8px;
+}
+
+@media (prefers-color-scheme: light) {
+  body[data-os="windows"] {
+    --bg-sidebar: #f3f3f3;
+    --bg-pane: #fafafa;
+    --bg-card: #ffffff;
+    --text-primary: #1a1a1a;
+    --text-secondary: rgba(0, 0, 0, 0.5);
+    --border-color: rgba(0, 0, 0, 0.07);
+    --border-row: rgba(0, 0, 0, 0.05);
+    --input-bg: rgba(0, 0, 0, 0.05);
+    --input-hover: rgba(0, 0, 0, 0.09);
+    --item-active: rgba(0, 0, 0, 0.05);
+    --item-active-bg: #0067C0;
+    --item-active-text: #ffffff;
+    --knob-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  }
+}
+
+body[data-os="windows"] .settings-shell {
+  font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+}
+
+body[data-os="windows"] .settings-sidebar {
+  width: 240px;
+  padding: 44px 8px 12px;
+  border-right: 1px solid var(--border-color);
+}
+
+body[data-os="windows"] .sidebar-traffic-spacer {
+  display: none;
+}
+
+body[data-os="windows"] .nav-section {
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 12px 12px 4px;
+}
+
+body[data-os="windows"] .nav-item {
+  padding: 9px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+body[data-os="windows"] .nav-item.active {
+  background: var(--item-active-bg);
+  box-shadow: none;
+}
+
+body[data-os="windows"] .nav-item.active .nav-icon {
+  filter: brightness(0) invert(1);
+}
+
+body[data-os="windows"] .pane-header {
+  padding: 0 24px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+body[data-os="windows"] .pane-header h1 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+body[data-os="windows"] .pane-body {
+  padding: 20px 28px 36px;
+  gap: 20px;
+}
+
+body[data-os="windows"] .group-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin: 0 0 0 4px;
+}
+
+body[data-os="windows"] .group-card {
+  border-radius: 8px;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+body[data-os="windows"] .row {
+  padding: 11px 16px;
+}
+
+body[data-os="windows"] .row-label {
+  font-size: 13px;
+}
+
+/* Windows 11 Toggle Switch */
+body[data-os="windows"] .native-toggle {
+  width: 40px;
+  height: 20px;
+  border-radius: 999px;
+  background: transparent;
+  border: 2px solid var(--text-secondary);
+  box-shadow: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+body[data-os="windows"] .native-toggle::after {
+  width: 12px;
+  height: 12px;
+  top: 2px;
+  left: 2px;
+  background: var(--text-secondary);
+  box-shadow: none;
+  border-radius: 50%;
+  transition: transform 0.15s ease, background 0.15s;
+}
+
+body[data-os="windows"] .native-toggle:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+body[data-os="windows"] .native-toggle:checked::after {
+  background: white;
+  transform: translateX(20px);
+}
+

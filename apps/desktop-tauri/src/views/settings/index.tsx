@@ -1,7 +1,24 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import './settings.css';
+
+const isWindows = navigator.userAgent.includes('Windows');
+
+function SettingsWinControls() {
+  const win = getCurrentWindow();
+  return (
+    <div className="settings-win-controls">
+      <button className="settings-win-btn" onClick={() => win.minimize()} aria-label="Minimize">
+        <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor"><rect width="10" height="1" /></svg>
+      </button>
+      <button className="settings-win-btn close" onClick={() => win.close()} aria-label="Close">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2"><line x1="0" y1="0" x2="10" y2="10" /><line x1="10" y1="0" x2="0" y2="10" /></svg>
+      </button>
+    </div>
+  );
+}
 
 type Surface = 'main' | 'island' | 'karaoke';
 type Section = 'general' | 'main' | 'island' | 'karaoke';
@@ -66,9 +83,7 @@ export default function Settings() {
   const debounceRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
-    const isMac = navigator.userAgent.toLowerCase().includes('mac');
-    const detectedOs = isMac ? 'macos' : 'windows';
-    document.body.dataset.os = detectedOs;
+    document.body.dataset.os = isWindows ? 'windows' : 'macos';
 
     let unlisten: (() => void) | undefined;
     (async () => {
@@ -213,6 +228,7 @@ export default function Settings() {
 
   return (
     <div className="settings-shell">
+      {isWindows && <SettingsWinControls />}
       <aside className="settings-sidebar">
         <div className="sidebar-traffic-spacer" data-tauri-drag-region="deep" />
         <nav>

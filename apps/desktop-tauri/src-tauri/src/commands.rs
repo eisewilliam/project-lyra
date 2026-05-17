@@ -21,7 +21,12 @@ pub fn toggle_surface(label: String, app: AppHandle) {
 }
 
 #[tauri::command]
-pub fn set_show_on_fullscreen(surface: String, value: bool, state: State<'_, AppState>, app: AppHandle) {
+pub fn set_show_on_fullscreen(
+    surface: String,
+    value: bool,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) {
     let new_state = state.ui.mutate(|s| match surface.as_str() {
         "main" => s.floating_show_on_fullscreen = value,
         "island" => s.island_show_on_fullscreen = value,
@@ -35,6 +40,9 @@ pub fn set_show_on_fullscreen(surface: String, value: bool, state: State<'_, App
 #[tauri::command]
 pub fn set_island_locked(locked: bool, state: State<'_, AppState>, app: AppHandle) {
     let new_state = state.ui.mutate(|s| s.island_locked = locked);
+    if let Some(island) = app.get_webview_window("island") {
+        let _ = island.set_ignore_cursor_events(locked);
+    }
     if let Some(refs) = app.try_state::<tray::TrayMenuRefs>() {
         refs.sync(&new_state);
     }
@@ -80,9 +88,15 @@ pub struct IslandPatch {
 #[tauri::command]
 pub fn update_island_settings(patch: IslandPatch, state: State<'_, AppState>, app: AppHandle) {
     let new_state = state.ui.mutate(|s| {
-        if let Some(v) = patch.show_cover { s.island_show_cover = v; }
-        if let Some(v) = patch.cover_circle { s.island_cover_circle = v; }
-        if let Some(v) = patch.cover_spin { s.island_cover_spin = v; }
+        if let Some(v) = patch.show_cover {
+            s.island_show_cover = v;
+        }
+        if let Some(v) = patch.cover_circle {
+            s.island_cover_circle = v;
+        }
+        if let Some(v) = patch.cover_spin {
+            s.island_cover_spin = v;
+        }
     });
     let _ = app.emit("ui-settings-changed", new_state);
 }
@@ -90,13 +104,27 @@ pub fn update_island_settings(patch: IslandPatch, state: State<'_, AppState>, ap
 #[tauri::command]
 pub fn update_karaoke_settings(patch: KaraokePatch, state: State<'_, AppState>, app: AppHandle) {
     let new_state = state.ui.mutate(|s| {
-        if let Some(v) = patch.position { s.karaoke_position = v; }
-        if let Some(v) = patch.alignment { s.karaoke_alignment = v; }
-        if let Some(v) = patch.width_pct { s.karaoke_width_pct = v; }
-        if let Some(v) = patch.offset_px { s.karaoke_offset_px = v; }
-        if let Some(v) = patch.lines { s.karaoke_lines = v; }
-        if let Some(v) = patch.bg_opacity { s.karaoke_bg_opacity = v; }
-        if let Some(v) = patch.bold { s.karaoke_bold = v; }
+        if let Some(v) = patch.position {
+            s.karaoke_position = v;
+        }
+        if let Some(v) = patch.alignment {
+            s.karaoke_alignment = v;
+        }
+        if let Some(v) = patch.width_pct {
+            s.karaoke_width_pct = v;
+        }
+        if let Some(v) = patch.offset_px {
+            s.karaoke_offset_px = v;
+        }
+        if let Some(v) = patch.lines {
+            s.karaoke_lines = v;
+        }
+        if let Some(v) = patch.bg_opacity {
+            s.karaoke_bg_opacity = v;
+        }
+        if let Some(v) = patch.bold {
+            s.karaoke_bold = v;
+        }
     });
     let _ = app.emit("ui-settings-changed", new_state);
 }
@@ -196,14 +224,17 @@ pub async fn refresh_lyrics(state: State<'_, AppState>) -> Result<(), String> {
     let (track, is_neg, already_cached) = {
         let rt = state.runtime.lock().map_err(|e| e.to_string())?;
         let track = rt.current_track();
-        let (neg, cached) = track.as_ref()
+        let (neg, cached) = track
+            .as_ref()
             .map(|t| (rt.is_negative(&t.uri), rt.get_cached(&t.uri).is_some()))
             .unwrap_or((false, false));
         (track, neg, cached)
     };
 
     let Some(track) = track else { return Ok(()) };
-    if is_neg || already_cached { return Ok(()); }
+    if is_neg || already_cached {
+        return Ok(());
+    }
 
     // 2. Claim the URI so concurrent callers skip the fetch.
     {
@@ -260,10 +291,16 @@ use lyra_core::domain::SettingsPatch;
 pub fn update_settings(patch: SettingsPatch, state: State<'_, AppState>) {
     let mut rt = state.runtime.lock().unwrap();
     let mut s = rt.settings().clone();
-    
-    if let Some(w) = patch.window { s.window = w; }
-    if let Some(a) = patch.appearance { s.appearance = a; }
-    if let Some(b) = patch.behavior { s.behavior = b; }
-    
+
+    if let Some(w) = patch.window {
+        s.window = w;
+    }
+    if let Some(a) = patch.appearance {
+        s.appearance = a;
+    }
+    if let Some(b) = patch.behavior {
+        s.behavior = b;
+    }
+
     rt.update_settings(s);
 }
