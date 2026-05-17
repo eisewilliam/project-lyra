@@ -58,6 +58,15 @@ pub struct UiState {
     pub karaoke_bg_opacity: f32,
     #[serde(default = "default_true")]
     pub karaoke_bold: bool,
+
+    /// Whether the app should launch automatically at login.
+    #[serde(default)]
+    pub autostart_enabled: bool,
+
+    /// The name of the monitor all surfaces should appear on.
+    /// `None` means use the primary (default) monitor.
+    #[serde(default)]
+    pub preferred_monitor: Option<String>,
 }
 
 fn default_true() -> bool { true }
@@ -96,6 +105,8 @@ impl Default for UiState {
             karaoke_lines: 2,
             karaoke_bg_opacity: 0.0,
             karaoke_bold: true,
+            autostart_enabled: false,
+            preferred_monitor: None,
         }
     }
 }

@@ -5,7 +5,7 @@ use lyra_core::{
     domain::{NotFoundReason, RenderSnapshot, SettingsSnapshot},
     lyrics::LyricSource,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 // ── UI State ──────────────────────────────────────────────────────────────────
@@ -303,4 +303,101 @@ pub fn update_settings(patch: SettingsPatch, state: State<'_, AppState>) {
     }
 
     rt.update_settings(s);
+}
+
+// ── System / OS integration ───────────────────────────────────────────────────
+
+/// Info about a connected monitor, serialized for the frontend.
+#[derive(Serialize, Clone)]
+pub struct MonitorInfo {
+    pub name: Option<String>,
+    pub width: u32,
+    pub height: u32,
+    pub x: i32,
+    pub y: i32,
+    pub scale_factor: f64,
+    pub is_primary: bool,
+}
+
+/// Return the list of all connected monitors with their geometry.
+#[tauri::command]
+pub fn get_available_monitors(app: AppHandle) -> Vec<MonitorInfo> {
+    // Use any existing window to query monitor information.
+    let Some(win) = app
+        .get_webview_window("main")
+        .or_else(|| app.get_webview_window("island"))
+        .or_else(|| app.get_webview_window("settings"))
+    else {
+        return vec![];
+    };
+
+    let Ok(all) = win.available_monitors() else {
+        return vec![];
+    };
+
+    let primary = win.primary_monitor().ok().flatten();
+    let primary_pos = primary.map(|m| (m.position().x, m.position().y));
+
+    all.into_iter()
+        .map(|m| {
+            let is_primary = primary_pos
+                .map(|(px, py)| m.position().x == px && m.position().y == py)
+                .unwrap_or(false);
+            MonitorInfo {
+                name: m.name().map(|s| s.to_string()),
+                width: m.size().width,
+                height: m.size().height,
+                x: m.position().x,
+                y: m.position().y,
+                scale_factor: m.scale_factor(),
+                is_primary,
+            }
+        })
+        .collect()
+}
+
+/// Persist the preferred monitor and immediately reposition all surfaces onto
+/// it. Resets the island's saved position so it re-centres on the new display.
+#[tauri::command]
+pub fn set_preferred_monitor(
+    name: Option<String>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) {
+    let new_state = state.ui.mutate(|s| {
+        // If the monitor is actually changing, clear the saved island position
+        // so apply_preferred_monitor_positioning will centre it on the new display.
+        if s.preferred_monitor != name {
+            s.island_pos = None;
+        }
+        s.preferred_monitor = name;
+    });
+    crate::apply_preferred_monitor_positioning(&app, &new_state);
+    let _ = app.emit("ui-settings-changed", new_state);
+}
+
+/// Query whether autostart at login is currently enabled (delegates to the OS).
+#[tauri::command]
+pub fn get_autostart_status(app: AppHandle) -> bool {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().unwrap_or(false)
+}
+
+/// Enable or disable app autostart at login and persist the preference.
+#[tauri::command]
+pub fn set_autostart(
+    enabled: bool,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    if enabled {
+        app.autolaunch().enable().map_err(|e| e.to_string())?;
+    } else {
+        app.autolaunch().disable().map_err(|e| e.to_string())?;
+    }
+    // Mirror into UiState so the frontend can read it from ui-settings-changed.
+    let new_state = state.ui.mutate(|s| s.autostart_enabled = enabled);
+    let _ = app.emit("ui-settings-changed", new_state);
+    Ok(())
 }

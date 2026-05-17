@@ -48,6 +48,18 @@ type UiState = {
   karaoke_lines: number;
   karaoke_bg_opacity: number;
   karaoke_bold: boolean;
+  autostart_enabled: boolean;
+  preferred_monitor: string | null;
+};
+
+type MonitorInfo = {
+  name: string | null;
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+  scale_factor: number;
+  is_primary: boolean;
 };
 
 type AppSettings = {
@@ -80,6 +92,8 @@ const ALL_ITEMS = NAV_GROUPS.flatMap((g) => g.items);
 export default function Settings() {
   const [state, setState] = useState<ConsolidatedState | null>(null);
   const [section, setSection] = useState<Section>('general');
+  const [autostartEnabled, setAutostartEnabled] = useState(false);
+  const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
   const debounceRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
@@ -87,11 +101,15 @@ export default function Settings() {
 
     let unlisten: (() => void) | undefined;
     (async () => {
-      const [ui, app] = await Promise.all([
+      const [ui, app, autostart, monitorList] = await Promise.all([
         invoke<UiState>('get_ui_state'),
         invoke<AppSettings>('get_settings'),
+        invoke<boolean>('get_autostart_status').catch(() => false),
+        invoke<MonitorInfo[]>('get_available_monitors').catch(() => [] as MonitorInfo[]),
       ]);
       setState({ ui, app });
+      setAutostartEnabled(autostart);
+      setMonitors(monitorList);
       unlisten = await listen<UiState>('ui-settings-changed', (e) => {
         setState((prev) => prev ? { ...prev, ui: { ...prev.ui, ...e.payload } } : null);
       });
@@ -222,6 +240,14 @@ export default function Settings() {
       if (dbKey) debounced(dbKey, 80, send);
       else send();
     },
+    setAutostart: (enabled: boolean) => {
+      setAutostartEnabled(enabled);
+      invoke('set_autostart', { enabled }).catch(() => setAutostartEnabled(!enabled));
+    },
+    setPreferredMonitor: (name: string | null) => {
+      patchUi({ preferred_monitor: name });
+      invoke('set_preferred_monitor', { name });
+    },
   };
 
   const active = ALL_ITEMS.find((n) => n.id === section);
@@ -258,7 +284,14 @@ export default function Settings() {
         </header>
         <div className="pane-body">
           {state ? (
-            <Body section={section} state={state} actions={actions} activeLabel={active?.label} />
+            <Body
+              section={section}
+              state={state}
+              actions={actions}
+              activeLabel={active?.label}
+              autostartEnabled={autostartEnabled}
+              monitors={monitors}
+            />
           ) : (
             <SettingsSkeleton />
           )}
@@ -279,6 +312,8 @@ type Actions = {
   updateAppSetting: (category: keyof AppSettings, key: string, value: unknown, dbKey?: string) => void;
   island: (key: keyof UiState, value: unknown) => void;
   karaoke: (key: keyof UiState, value: unknown, dbKey?: string) => void;
+  setAutostart: (enabled: boolean) => void;
+  setPreferredMonitor: (name: string | null) => void;
 };
 
 function Body({
@@ -286,13 +321,27 @@ function Body({
   state,
   actions,
   activeLabel,
+  autostartEnabled,
+  monitors,
 }: {
   section: Section;
   state: ConsolidatedState;
   actions: Actions;
   activeLabel: string | undefined;
+  autostartEnabled: boolean;
+  monitors: MonitorInfo[];
 }) {
   const { ui, app } = state;
+
+  /** Human-readable label for a monitor entry. */
+  function monitorLabel(m: MonitorInfo, idx: number): string {
+    const res = `${m.width}×${m.height}`;
+    // Windows returns device paths like "\\.\DISPLAY1" — strip the prefix for readability.
+    const rawName = m.name?.replace(/^\\\\\.\\/u, '') ?? null;
+    const base = rawName ? `${rawName} (${res})` : `Display ${idx + 1} (${res})`;
+    return m.is_primary ? `${base} — Primary` : base;
+  }
+
   if (section === 'general') {
     return (
       <>
@@ -321,6 +370,32 @@ function Body({
             <Toggle value={app.behavior.hide_when_paused} onChange={(v: boolean) => actions.updateAppSetting('behavior', 'hide_when_paused', v)} />
           </Row>
         </Group>
+
+        <Group title="Startup">
+          <Row label="Launch at login">
+            <Toggle value={autostartEnabled} onChange={(v: boolean) => actions.setAutostart(v)} />
+          </Row>
+        </Group>
+
+        {monitors.length > 1 && (
+          <Group title="Display">
+            <Row label="Show on screen">
+              <select
+                value={ui.preferred_monitor ?? ''}
+                onChange={(e) =>
+                  actions.setPreferredMonitor(e.target.value === '' ? null : e.target.value)
+                }
+              >
+                <option value="">Primary (default)</option>
+                {monitors.map((m, i) => (
+                  <option key={`${m.name ?? i}-${m.x}-${m.y}`} value={m.name ?? ''}>
+                    {monitorLabel(m, i)}
+                  </option>
+                ))}
+              </select>
+            </Row>
+          </Group>
+        )}
       </>
     );
   }

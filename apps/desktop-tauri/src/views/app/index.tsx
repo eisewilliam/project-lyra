@@ -286,14 +286,20 @@ function App() {
       const fill = progressFillRef.current;
       const label = positionLabelRef.current;
       if (durationMs > 0 && fill) {
-        const pct = Math.min(100, Math.max(0, (Math.min(pos, durationMs) / durationMs) * 100));
-        fill.style.width = `${pct}%`;
+        const pct = Math.min(100, Math.max(0, (Math.min(pos, durationMs) / durationMs) * 100)).toFixed(2);
+        const nextWidth = `${pct}%`;
+        if (fill.style.width !== nextWidth) {
+          fill.style.width = nextWidth;
+        }
       }
       if (label) {
         const totalSec = Math.floor(pos / 1000);
         const m = Math.floor(totalSec / 60);
         const s = totalSec % 60;
-        label.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+        const nextTime = `${m}:${s.toString().padStart(2, '0')}`;
+        if (label.textContent !== nextTime) {
+          label.textContent = nextTime;
+        }
       }
       raf = requestAnimationFrame(tick);
     };
@@ -328,7 +334,11 @@ function App() {
           progress = 0;
         }
         if (el.className !== cls) el.className = cls;
-        el.style.setProperty('--word-progress', progress.toFixed(3));
+        const progStr = progress.toFixed(3);
+        if (el.getAttribute('data-last-prog') !== progStr) {
+          el.setAttribute('data-last-prog', progStr);
+          el.style.setProperty('--word-progress', progStr);
+        }
       }
       if (isPlaying) raf = requestAnimationFrame(tick);
     };

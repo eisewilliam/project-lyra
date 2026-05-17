@@ -105,14 +105,31 @@ end tell
 }
 
 fn run_osascript(script: &'static str) -> Option<String> {
+    let child = match Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => return None,
+    };
+
+    let pid = child.id();
     let (tx, rx) = mpsc::channel();
+    
     std::thread::spawn(move || {
-        let out = Command::new("osascript").arg("-e").arg(script).output();
-        let _ = tx.send(out);
+        let _ = tx.send(child.wait_with_output());
     });
+
     let out = match rx.recv_timeout(Duration::from_secs(3)) {
         Ok(Ok(o)) => o,
-        _ => return None,
+        _ => {
+            // Timeout or error checking outputs. Kill the hung osascript process
+            // so we don't leak processes and threads, causing extreme lag.
+            let _ = Command::new("kill").arg("-9").arg(pid.to_string()).status();
+            return None;
+        }
     };
     Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }

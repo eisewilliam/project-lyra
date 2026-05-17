@@ -10,7 +10,7 @@ use runtime::LyraRuntime;
 use std::collections::HashSet;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
-use ui_state::UiStateStore;
+use ui_state::{UiState, UiStateStore};
 
 pub struct AppState {
     pub runtime: Mutex<LyraRuntime>,
@@ -26,6 +26,103 @@ fn app_support_dir() -> std::path::PathBuf {
     dirs_next::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("lyra")
+}
+
+/// Move all surfaces onto the user's preferred monitor (or the primary monitor
+/// when no preference is set). Called once at startup and again whenever the
+/// `preferred_monitor` setting changes.
+///
+/// Positioning rules:
+/// - **Island**: top-centred on the target monitor, unless the user has an
+///   explicit saved position (`island_pos` is `Some`), in which case we leave
+///   it untouched.
+/// - **Main window**: centred on the target monitor.
+/// - **Karaoke**: positioned at the configured screen-edge (top or bottom) of
+///   the target monitor, respecting `karaoke_offset_px`.
+pub(crate) fn apply_preferred_monitor_positioning(app: &tauri::AppHandle, ui: &UiState) {
+    // We need a window handle to query the system monitor list.
+    let Some(ref_win) = app
+        .get_webview_window("main")
+        .or_else(|| app.get_webview_window("island"))
+        .or_else(|| app.get_webview_window("settings"))
+    else {
+        return;
+    };
+
+    let Ok(all_monitors) = ref_win.available_monitors() else {
+        return;
+    };
+    if all_monitors.is_empty() {
+        return;
+    }
+
+    // Primary monitor position for fallback matching.
+    let primary_pos: Option<(i32, i32)> = ref_win
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| (m.position().x, m.position().y));
+
+    // Pick the target: preferred by name → primary → first available.
+    let target = ui
+        .preferred_monitor
+        .as_deref()
+        .and_then(|name| {
+            all_monitors
+                .iter()
+                .find(|m| m.name().map(|s| s.as_str()) == Some(name))
+        })
+        .or_else(|| {
+            primary_pos.and_then(|(px, py)| {
+                all_monitors
+                    .iter()
+                    .find(|m| m.position().x == px && m.position().y == py)
+            })
+        })
+        .or_else(|| all_monitors.first());
+
+    let Some(monitor) = target else { return };
+
+    let mon_x = monitor.position().x;
+    let mon_y = monitor.position().y;
+    let mon_w = monitor.size().width as i32;
+    let mon_h = monitor.size().height as i32;
+
+    // Island: top-centred on the target monitor only when the user has no
+    // explicit saved position.
+    if ui.island_pos.is_none() {
+        let island_w = ui.island_width.unwrap_or(400) as i32;
+        let ix = mon_x + (mon_w - island_w) / 2;
+        let iy = mon_y + 8;
+        let _ = macos::set_overlay_position(app, "island", ix, iy);
+    }
+
+    // Main window: centred on the target monitor.
+    if let Some(main_win) = app.get_webview_window("main") {
+        if let Ok(size) = main_win.outer_size() {
+            let wx = mon_x + (mon_w - size.width as i32) / 2;
+            let wy = mon_y + (mon_h - size.height as i32) / 2;
+            let _ = main_win.set_position(tauri::Position::Physical(
+                tauri::PhysicalPosition::new(wx, wy),
+            ));
+        }
+    }
+
+    // Karaoke: anchored to the top or bottom edge of the target monitor.
+    if let Some(karaoke_win) = app.get_webview_window("karaoke") {
+        if let Ok(size) = karaoke_win.outer_size() {
+            let offset = ui.karaoke_offset_px as i32;
+            let kh = size.height as i32;
+            // Fill the monitor's full width.
+            let kx = mon_x;
+            let ky = if ui.karaoke_position == "top" {
+                mon_y + offset
+            } else {
+                mon_y + mon_h - kh - offset
+            };
+            let _ = macos::set_overlay_position(app, "karaoke", kx, ky);
+        }
+    }
 }
 
 type PollSignature = (Option<String>, PlaybackState, u8, Option<usize>);
@@ -255,6 +352,14 @@ pub fn run() {
                 )?;
             }
 
+            // Register the autostart plugin for all builds (macOS LaunchAgent /
+            // Windows registry). This must be registered before any command that
+            // calls `app.autolaunch()`.
+            app.handle().plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                Some(vec![]),
+            ))?;
+
             let dir = app_support_dir();
             let ui = UiStateStore::load(&dir);
             let initial = ui.snapshot();
@@ -294,6 +399,25 @@ pub fn run() {
             // for the default-center case (when no position is saved).
             if let Some((x, y)) = initial.island_pos {
                 let _ = macos::set_overlay_position(app.handle(), "island", x, y);
+            }
+
+            // Position all surfaces on the preferred monitor (or primary as fallback).
+            // This handles the default island position when island_pos is None.
+            apply_preferred_monitor_positioning(app.handle(), &initial);
+
+            // Sync the OS-level autostart state with the persisted preference.
+            // If the user previously enabled autostart but the LaunchAgent was
+            // removed externally, this re-applies their intent.
+            {
+                use tauri_plugin_autostart::ManagerExt;
+                let plugin_enabled = app.handle().autolaunch().is_enabled().unwrap_or(false);
+                if initial.autostart_enabled != plugin_enabled {
+                    if initial.autostart_enabled {
+                        let _ = app.handle().autolaunch().enable();
+                    } else {
+                        let _ = app.handle().autolaunch().disable();
+                    }
+                }
             }
 
             // Karaoke is a display-only overlay — always click-through.
@@ -368,6 +492,10 @@ pub fn run() {
             commands::playback_next,
             commands::playback_previous,
             commands::playback_seek_ms,
+            commands::get_available_monitors,
+            commands::set_preferred_monitor,
+            commands::get_autostart_status,
+            commands::set_autostart,
         ])
         .run(tauri::generate_context!())
         .expect("error running Lyra");

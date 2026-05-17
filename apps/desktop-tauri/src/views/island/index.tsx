@@ -321,7 +321,11 @@ export default function Island() {
           progress = 0;
         }
         if (el.className !== cls) el.className = cls;
-        el.style.setProperty('--word-progress', progress.toFixed(3));
+        const progStr = progress.toFixed(3);
+        if (el.getAttribute('data-last-prog') !== progStr) {
+          el.setAttribute('data-last-prog', progStr);
+          el.style.setProperty('--word-progress', progStr);
+        }
       }
       if (isPlaying) raf = requestAnimationFrame(tick);
     };
