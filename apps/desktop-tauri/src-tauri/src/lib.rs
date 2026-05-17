@@ -173,6 +173,23 @@ pub fn run() {
                 let _ = macos::set_island_size(app.handle(), w, h);
             }
 
+            // Restore persisted island position immediately at startup so the window
+            // appears in the right place before the frontend finishes loading.
+            // The frontend will also run its own positioning logic and may override this
+            // for the default-center case (when no position is saved).
+            if let Some((x, y)) = initial.island_pos {
+                let _ = macos::set_overlay_position(app.handle(), "island", x, y);
+            }
+
+            // Karaoke is a display-only overlay — always click-through.
+            // Island is click-through when locked (persisted across restarts).
+            if let Some(karaoke) = app.get_webview_window("karaoke") {
+                let _ = karaoke.set_ignore_cursor_events(true);
+            }
+            if let Some(island) = app.get_webview_window("island") {
+                let _ = island.set_ignore_cursor_events(initial.island_locked);
+            }
+
             #[cfg(target_os = "macos")]
             {
                 // Start the backend adapter polling loop only on macOS.
@@ -189,12 +206,19 @@ pub fn run() {
 
             #[cfg(target_os = "windows")]
             {
+                // Remove native title bars so they blend with the app background.
+                if let Some(main_win) = app.get_webview_window("main") {
+                    let _ = main_win.set_decorations(false);
+                }
+                if let Some(settings_win) = app.get_webview_window("settings") {
+                    let _ = settings_win.set_decorations(false);
+                }
+
                 // Windows: poll Spotify via SMTC (System Media Transport Controls).
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
                     use lyra_core::player::PlayerAdapter;
-                    let adapter =
-                        lyra_core::player::spotify_windows::SpotifyWindowsAdapter::new();
+                    let adapter = lyra_core::player::spotify_windows::SpotifyWindowsAdapter::new();
                     poll_loop(handle, move || {
                         let _ = adapter.poll();
                         adapter.snapshot()

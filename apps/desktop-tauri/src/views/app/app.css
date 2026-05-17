@@ -11,6 +11,43 @@
   position: relative;
 }
 
+body[data-os="windows"] .lyra-window {
+  background: rgba(22, 22, 26, 0.85);
+}
+
+.win-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 101;
+  display: flex;
+  height: 32px;
+}
+
+.win-control-btn {
+  width: 46px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, color 0.1s;
+  padding: 0;
+}
+
+.win-control-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: white;
+}
+
+.win-control-btn.close:hover {
+  background: #c42b1c;
+  color: white;
+}
+
 /* Invisible full-width drag strip at top — allows window dragging over all content */
 .drag-region {
   position: absolute;

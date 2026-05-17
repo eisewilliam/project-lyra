@@ -1,15 +1,14 @@
 #![allow(unexpected_cfgs)]
 
 use tauri::AppHandle;
-
-#[cfg(target_os = "macos")]
 use tauri::Manager;
-#[cfg(target_os = "macos")]
-use tauri_nspanel::{ManagerExt, WebviewWindowExt};
+
 #[cfg(target_os = "macos")]
 use objc::runtime::Object;
 #[cfg(target_os = "macos")]
 use objc::{sel, sel_impl};
+#[cfg(target_os = "macos")]
+use tauri_nspanel::{ManagerExt, WebviewWindowExt};
 
 // NSWindowLevel constants (AppKit)
 #[cfg(target_os = "macos")]
@@ -119,12 +118,18 @@ fn unconstrain_from_screen(window: &tauri::WebviewWindow) {
 
     let window_clone = window.clone();
     let _ = window.run_on_main_thread(move || unsafe {
-        let Ok(ns_window) = window_clone.ns_window() else { return; };
+        let Ok(ns_window) = window_clone.ns_window() else {
+            return;
+        };
         let ns_window = ns_window as *mut Object;
-        if ns_window.is_null() { return; }
+        if ns_window.is_null() {
+            return;
+        }
 
         let cls: *mut objc::runtime::Class = object_getClass(ns_window);
-        if cls.is_null() { return; }
+        if cls.is_null() {
+            return;
+        }
 
         let sel: Sel = objc::sel!(constrainFrameRect:toScreen:);
         // Type encoding: returns NSRect, args (id self, SEL _cmd, NSRect, NSScreen*)
@@ -153,31 +158,41 @@ pub fn set_overlay_position(app: &AppHandle, label: &str, x: i32, y: i32) -> tau
 
     if let Some(window) = app.get_webview_window(label) {
         // 1. Fallback to Tauri's stable physical positioning to correctly target multiple monitors
-        let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)));
+        let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+            x, y,
+        )));
 
-        // 2. Unclamp from Apple's safe areas (which forces panels under the menubar) 
+        // 2. Unclamp from Apple's safe areas (which forces panels under the menubar)
         let window_clone = window.clone();
         let _ = window.run_on_main_thread(move || unsafe {
-            let Ok(ns_window) = window_clone.ns_window() else { return; };
+            let Ok(ns_window) = window_clone.ns_window() else {
+                return;
+            };
             let ns_window = ns_window as *mut Object;
-            if ns_window.is_null() { return; }
+            if ns_window.is_null() {
+                return;
+            }
 
-            let Ok(Some(monitor)) = window_clone.current_monitor() else { return; };
+            let Ok(Some(monitor)) = window_clone.current_monitor() else {
+                return;
+            };
             let sf = monitor.scale_factor();
             let monitor_y = monitor.position().y;
-            
+
             // Calculate precise top offset in Logical Points
             let top_offset_pixels = y - monitor_y;
             let top_offset_points = top_offset_pixels as f64 / sf;
 
             let screen: *mut Object = objc::msg_send![ns_window, screen];
-            if screen.is_null() { return; }
+            if screen.is_null() {
+                return;
+            }
 
             let screen_frame: CocoaRect = objc::msg_send![screen, frame];
             let screen_top = screen_frame.origin.y + screen_frame.size.height;
 
             let window_frame: CocoaRect = objc::msg_send![ns_window, frame];
-            
+
             // Override clamped Y and snap back flush to the exact requested coordinate
             let new_y = screen_top - top_offset_points - window_frame.size.height;
 
@@ -215,9 +230,13 @@ pub fn apply_overlay_visibility(
     panel.set_floating_panel(true);
     // Override the level that setFloatingPanel just reset to NSFloatingWindowLevel (3).
     // Direct msg_send guarantees no wrapper can intercept or clamp the value.
-    unsafe { let _: () = objc::msg_send![&*panel, setLevel: overlay_level(label)]; }
+    unsafe {
+        let _: () = objc::msg_send![&*panel, setLevel: overlay_level(label)];
+    }
     // Use msg_send directly to avoid the deprecated NSWindowCollectionBehavior type
-    unsafe { let _: () = objc::msg_send![&*panel, setCollectionBehavior: overlay_collection_behavior(show_on_fullscreen)]; }
+    unsafe {
+        let _: () = objc::msg_send![&*panel, setCollectionBehavior: overlay_collection_behavior(show_on_fullscreen)];
+    }
     panel.set_hides_on_deactivate(false);
     panel.set_works_when_modal(true);
     panel.set_has_shadow(false);
@@ -242,12 +261,12 @@ pub fn init_overlay_panels(_app: &AppHandle) -> tauri::Result<()> {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn set_overlay_position(
-    _app: &AppHandle,
-    _label: &str,
-    _x: i32,
-    _y: i32,
-) -> tauri::Result<()> {
+pub fn set_overlay_position(app: &AppHandle, label: &str, x: i32, y: i32) -> tauri::Result<()> {
+    if let Some(window) = app.get_webview_window(label) {
+        let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+            x, y,
+        )));
+    }
     Ok(())
 }
 
@@ -266,12 +285,19 @@ pub fn apply_overlay_visibility(
 #[cfg(target_os = "macos")]
 pub fn set_island_size(app: &AppHandle, width: u32, height: u32) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("island") {
-        window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(width, height)))?;
+        window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
+            width, height,
+        )))?;
     }
     Ok(())
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn set_island_size(_app: &AppHandle, _width: u32, _height: u32) -> tauri::Result<()> {
+pub fn set_island_size(app: &AppHandle, width: u32, height: u32) -> tauri::Result<()> {
+    if let Some(window) = app.get_webview_window("island") {
+        let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
+            width, height,
+        )));
+    }
     Ok(())
 }

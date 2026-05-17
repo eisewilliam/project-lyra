@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+
+const isWindows = navigator.userAgent.includes('Windows');
+document.body.dataset.os = isWindows ? 'windows' : 'macos';
 import {
   getNotFoundReason,
   isLyricsNotFound,
@@ -84,6 +87,23 @@ function interpolatePosition(b: PositionBaseline, now: number, playing: boolean)
 
 type LineRef = { start_ms: number; text: string };
 
+function WindowControls() {
+  const win = getCurrentWindow();
+  return (
+    <div className="win-controls">
+      <button className="win-control-btn" onClick={() => win.minimize()} aria-label="Minimize">
+        <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor"><rect width="10" height="1" /></svg>
+      </button>
+      <button className="win-control-btn" onClick={() => win.toggleMaximize()} aria-label="Maximize">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1"><rect x="0.5" y="0.5" width="9" height="9" /></svg>
+      </button>
+      <button className="win-control-btn close" onClick={() => win.close()} aria-label="Close">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2"><line x1="0" y1="0" x2="10" y2="10" /><line x1="10" y1="0" x2="0" y2="10" /></svg>
+      </button>
+    </div>
+  );
+}
+
 function App() {
   const [lyrics, setLyrics] = useState<LineRef[]>([])
   const [activeLine, setActiveLine] = useState<number | null>(null)
@@ -103,12 +123,6 @@ function App() {
   const lyricsLoadedUriRef = useRef('')
   const hideWhenPausedRef = useRef(false)
   const autoHiddenRef = useRef(false)
-
-  function startWindowDrag(event: React.MouseEvent<HTMLDivElement>) {
-    if (event.button !== 0) return
-    event.preventDefault()
-    void getCurrentWindow().startDragging()
-  }
 
   function seekToLine(index: number, eventTimeStamp: number) {
     const target = lyrics[index]?.start_ms;
@@ -329,7 +343,8 @@ function App() {
 
   return (
     <main className="lyra-window">
-      <div className="drag-region" onMouseDown={startWindowDrag} />
+      <div className="drag-region" data-tauri-drag-region />
+      {isWindows && <WindowControls />}
 
       {/* Glowing Ambient Background (Color Bounce) */}
       <div className="ambient-bg" aria-hidden="true">
