@@ -155,9 +155,8 @@ where
             return;
         }
         // SAFETY: `raw_ctx` was set via `dispatch_set_context` to the
-        // pointer of a `Box::leak`'d `State`. The null check above ensures
-        // the pointer is non-null before dereferencing it, and the Box is
-        // never freed — the polling driver runs for the process lifetime.
+        // pointer of a `Box::leak`'d `State`. The Box is never freed —
+        // the polling driver runs for the process lifetime.
         let state: &State = unsafe { &*(raw_ctx as *const State) };
 
         set_thread_qos_utility();
@@ -241,8 +240,6 @@ fn set_thread_qos_utility() {
     }
 }
 
-/// Non-macOS stub: other platforms do not support macOS QoS classes, so
-/// poller threads keep the platform-default scheduler settings.
 #[cfg(not(target_os = "macos"))]
 fn set_thread_qos_utility() {}
 
@@ -336,7 +333,8 @@ pub fn run() {
                 std::thread::spawn(move || {
                     set_thread_qos_utility();
                     use lyra_core::player::PlayerAdapter;
-                    let adapter = lyra_core::player::spotify_windows::SpotifyWindowsAdapter::new();
+                    let adapter =
+                        lyra_core::player::spotify_windows::SpotifyWindowsAdapter::new();
                     poll_loop_generic(handle, move || {
                         let _ = adapter.poll();
                         adapter.snapshot()
