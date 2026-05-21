@@ -19,3 +19,10 @@ html, body, #root {
 img {
   -webkit-user-drag: none;
 }
+
+:root[data-surface-visible="false"] *,
+:root[data-surface-visible="false"] *::before,
+:root[data-surface-visible="false"] *::after {
+  animation: none !important;
+  transition: none !important;
+}

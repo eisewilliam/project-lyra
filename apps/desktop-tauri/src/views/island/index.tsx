@@ -29,6 +29,7 @@ type UiState = {
   island_cover_circle: boolean;
   island_cover_spin: boolean;
 };
+type AppSettingsSnapshot = { behavior: { hide_when_paused: boolean } };
 
 type VisibleLine = { index: number; text: string; is_active: boolean };
 
@@ -49,7 +50,21 @@ type RenderSnapshot = {
 
 const TOP_DOCK_SNAP_PX = 80;
 const BLEND_MS = 500;
+const SURFACE_LABEL = 'island';
 const FALLBACK_ART = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
+let islandWindowReadyPromise: Promise<void> | null = null;
+
+function ensureIslandWindowReady(): Promise<void> {
+  if (!islandWindowReadyPromise) {
+    islandWindowReadyPromise = invoke('window_ready', { label: SURFACE_LABEL })
+      .then(() => undefined)
+      .catch((err) => {
+        islandWindowReadyPromise = null;
+        throw err;
+      });
+  }
+  return islandWindowReadyPromise;
+}
 
 type PositionBaseline = {
   ms: number;
@@ -73,6 +88,33 @@ function applyIslandFont(scale: number) {
   document.documentElement.style.setProperty('--font-scale', String(scale));
 }
 
+function applySurfaceVisible(visible: boolean) {
+  document.documentElement.dataset.surfaceVisible = String(visible);
+}
+
+applySurfaceVisible(false);
+
+function syncSurfaceVisible(
+  desiredRef: { current: boolean },
+  autoHiddenRef: { current: boolean },
+  setVisible: (visible: boolean) => void,
+  desired?: boolean,
+  autoHidden?: boolean,
+) {
+  if (desired !== undefined) desiredRef.current = desired;
+  if (autoHidden !== undefined) autoHiddenRef.current = autoHidden;
+  const visible = desiredRef.current && !autoHiddenRef.current;
+  setVisible(visible);
+  applySurfaceVisible(visible);
+  return visible;
+}
+
+function wordsKey(words: LyricWord[] | null | undefined) {
+  return (words ?? [])
+    .map((word) => `${word.start_ms}:${word.end_ms}:${word.text}`)
+    .join('|');
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
@@ -82,7 +124,7 @@ function snapToTopEdge(value: number, topEdge: number) {
 }
 
 async function setIslandPanelPosition(x: number, y: number) {
-  await invoke('set_overlay_position', { label: 'island', x, y });
+  await invoke('set_overlay_position', { label: SURFACE_LABEL, x, y });
 }
 
 export default function Island() {
@@ -104,28 +146,39 @@ export default function Island() {
   const [showCover, setShowCover] = useState(true);
   const [coverCircle, setCoverCircle] = useState(false);
   const [coverSpin, setCoverSpin] = useState(false);
+  const [surfaceVisible, setSurfaceVisible] = useState(false);
   const saveTimerRef = useRef<number | null>(null);
   const refreshedUriRef = useRef('');
   const lastUriRef = useRef('');
+  const activeWordsKeyRef = useRef('');
   const baselineRef = useRef<PositionBaseline>({ ms: 0, at: 0, targetMs: 0, targetAt: 0, blendDur: 1 });
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const pageVisible = usePageVisible();
-  const hideWhenPausedRef = useRef(false);
+  const desiredVisibleRef = useRef(true);
   const autoHiddenRef = useRef(false);
+  const [hideWhenPaused, setHideWhenPaused] = useState(false);
 
   // Init: read persisted state, position window, subscribe to lock + settings changes.
   useEffect(() => {
     let unlistenLock: (() => void) | undefined;
     let unlistenMove: (() => void) | undefined;
     let unlistenSettings: (() => void) | undefined;
+    let unlistenAppSettings: (() => void) | undefined;
 
     (async () => {
+      // Show (or keep hidden) immediately so WKWebView's evaluateJavaScript
+      // callback path is live before we make any further invoke() calls.
+      // A hidden WebView queues evaluateJavaScript until shown — if we wait
+      // until after other IPC calls, their responses are never delivered.
+      await ensureIslandWindowReady();
+
       const win = getCurrentWindow();
       const [state, appSettings] = await Promise.all([
         invoke<UiState>('get_ui_state'),
-        invoke<{ behavior: { hide_when_paused: boolean } }>('get_settings'),
+        invoke<AppSettingsSnapshot>('get_settings'),
       ]);
-      hideWhenPausedRef.current = appSettings.behavior.hide_when_paused;
+      setHideWhenPaused(appSettings.behavior.hide_when_paused);
+      syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, state.island_visible);
       setLocked(state.island_locked);
       setShowCover(state.island_show_cover ?? true);
       setCoverCircle(state.island_cover_circle ?? false);
@@ -162,6 +215,12 @@ export default function Island() {
       });
 
       unlistenSettings = await listen<UiState>('ui-settings-changed', (e) => {
+        syncSurfaceVisible(
+          desiredVisibleRef,
+          autoHiddenRef,
+          setSurfaceVisible,
+          e.payload.island_visible,
+        );
         setLocked(e.payload.island_locked);
         setShowCover(e.payload.island_show_cover ?? true);
         setCoverCircle(e.payload.island_cover_circle ?? false);
@@ -171,6 +230,13 @@ export default function Island() {
           getCurrentWindow().setSize(
             new PhysicalSize(e.payload.island_width, e.payload.island_height)
           ).catch(() => { });
+        }
+      });
+      unlistenAppSettings = await listen<AppSettingsSnapshot>('app-settings-changed', (e) => {
+        const enabled = e.payload.behavior.hide_when_paused;
+        setHideWhenPaused(enabled);
+        if (!enabled) {
+          syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, undefined, false);
         }
       });
 
@@ -195,12 +261,14 @@ export default function Island() {
           }, 250);
         }).catch(() => { });
       });
+
     })();
 
     return () => {
       unlistenLock?.();
       unlistenMove?.();
       unlistenSettings?.();
+      unlistenAppSettings?.();
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     };
   }, []);
@@ -209,14 +277,22 @@ export default function Island() {
   useEffect(() => {
     if (!snapshotReady) return;
     const win = getCurrentWindow();
-    if (hideWhenPausedRef.current && !isPlaying) {
-      autoHiddenRef.current = true;
+    if (hideWhenPaused && !isPlaying && desiredVisibleRef.current) {
+      syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, undefined, true);
       void win.hide();
-    } else if (autoHiddenRef.current && isPlaying) {
-      autoHiddenRef.current = false;
-      void win.show();
+    } else if (autoHiddenRef.current && (!hideWhenPaused || isPlaying)) {
+      const visible = syncSurfaceVisible(
+        desiredVisibleRef,
+        autoHiddenRef,
+        setSurfaceVisible,
+        undefined,
+        false,
+      );
+      if (visible) {
+        void win.show();
+      }
     }
-  }, [isPlaying, snapshotReady]);
+  }, [hideWhenPaused, isPlaying, snapshotReady]);
 
   // Subscribe to backend `playback-tick` events. See app view for rationale.
   useEffect(() => {
@@ -227,8 +303,19 @@ export default function Island() {
       if (cancelled) return;
       const track = snap.playback.track;
       const uri = track?.uri ?? '';
+      const uriChanged = uri !== lastUriRef.current;
       const activeIdx = snap.visible_lines.findIndex((line) => line.is_active);
       const hasActiveLine = activeIdx !== -1;
+
+      if (uriChanged) {
+        lastUriRef.current = uri;
+        setActiveLine(null);
+        setNextLine(null);
+        setHasActiveLyric(false);
+        activeWordsKeyRef.current = '';
+        setActiveLineWords([]);
+        setActiveLineProgress(0);
+      }
 
       setSnapshotReady(true);
       setHasTrack(Boolean(track));
@@ -239,7 +326,12 @@ export default function Island() {
       setArtworkUrl(track?.artwork_url ?? null);
       setTrackTitle(track?.title ?? '');
       setTrackArtist(track?.artist ?? '');
-      setActiveLineWords(snap.active_line_words ?? []);
+      const nextWords = snap.active_line_words ?? [];
+      const nextWordsKey = wordsKey(nextWords);
+      if (nextWordsKey !== activeWordsKeyRef.current) {
+        activeWordsKeyRef.current = nextWordsKey;
+        setActiveLineWords(nextWords);
+      }
       setActiveLineProgress(Math.max(0, Math.min(1, snap.line_progress ?? 0)));
 
       const newPos = snap.playback.position_ms ?? 0;
@@ -262,15 +354,6 @@ export default function Island() {
         invoke('refresh_lyrics').catch(() => { });
       }
 
-      if (uri !== lastUriRef.current) {
-        lastUriRef.current = uri;
-        setActiveLine(null);
-        setNextLine(null);
-        setHasActiveLyric(false);
-        setActiveLineWords([]);
-        setActiveLineProgress(0);
-      }
-
       setHasActiveLyric(hasActiveLine);
       if (hasActiveLine) {
         setActiveLine(snap.visible_lines[activeIdx].text);
@@ -286,6 +369,7 @@ export default function Island() {
     };
 
     (async () => {
+      await ensureIslandWindowReady();
       try {
         const initial = await invoke<RenderSnapshot>('get_render_snapshot');
         apply(initial);
@@ -300,7 +384,7 @@ export default function Island() {
   }, []);
 
   useEffect(() => {
-    if (activeLineWords.length === 0 || !pageVisible) return;
+    if (activeLineWords.length === 0 || !pageVisible || !surfaceVisible) return;
     let raf = 0;
     const tick = () => {
       const pos = interpolatePosition(baselineRef.current, performance.now(), isPlaying);
@@ -331,7 +415,7 @@ export default function Island() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [activeLineWords, isPlaying, pageVisible]);
+  }, [activeLineWords, isPlaying, pageVisible, surfaceVisible]);
 
   const artSrc = artworkUrl ?? FALLBACK_ART;
   const panelState = resolveLyricsSurfaceState({
@@ -515,4 +599,3 @@ function getCompactPlaceholderLabel(state: LyricsPlaceholderState) {
       return '';
   }
 }
-

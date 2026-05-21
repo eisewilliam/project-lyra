@@ -244,6 +244,13 @@ export default function Settings() {
       setAutostartEnabled(enabled);
       invoke('set_autostart', { enabled }).catch(() => setAutostartEnabled(!enabled));
     },
+    clearCache: async () => {
+      try {
+        await invoke('clear_lyrics_cache');
+      } catch (err) {
+        console.error('Failed to clear cache', err);
+      }
+    },
     setPreferredMonitor: (name: string | null) => {
       patchUi({ preferred_monitor: name });
       invoke('set_preferred_monitor', { name });
@@ -313,6 +320,7 @@ type Actions = {
   island: (key: keyof UiState, value: unknown) => void;
   karaoke: (key: keyof UiState, value: unknown, dbKey?: string) => void;
   setAutostart: (enabled: boolean) => void;
+  clearCache: () => Promise<void>;
   setPreferredMonitor: (name: string | null) => void;
 };
 
@@ -374,6 +382,16 @@ function Body({
         <Group title="Startup">
           <Row label="Launch at login">
             <Toggle value={autostartEnabled} onChange={(v: boolean) => actions.setAutostart(v)} />
+          </Row>
+        </Group>
+
+        <Group title="Storage">
+          <Row label="Lyrics cache">
+            <ActionFeedbackButton
+              label="Clear cache"
+              feedbackLabel="Cleared!"
+              onClick={() => actions.clearCache()}
+            />
           </Row>
         </Group>
 
@@ -793,6 +811,34 @@ function Segmented({
         </button>
       ))}
     </div>
+  );
+}
+
+function ActionFeedbackButton({
+  label,
+  feedbackLabel,
+  onClick,
+}: {
+  label: string;
+  feedbackLabel: string;
+  onClick: () => Promise<void>;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+
+  const handleClick = async () => {
+    if (loading || success) return;
+    setLoading(true);
+    await onClick();
+    setLoading(false);
+    setSuccess(true);
+    setTimeout(() => setSuccess(false), 2000);
+  };
+
+  return (
+    <button className="action-btn" type="button" onClick={handleClick} disabled={loading}>
+      {success ? feedbackLabel : label}
+    </button>
   );
 }
 

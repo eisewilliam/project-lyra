@@ -14,6 +14,7 @@ import { usePageVisible } from '../../utils/use-page-visible';
 import './karaoke.css';
 
 type UiState = {
+  karaoke_visible: boolean;
   karaoke_font_scale: number;
   karaoke_position: string;
   karaoke_alignment: string;
@@ -23,6 +24,7 @@ type UiState = {
   karaoke_bg_opacity: number;
   karaoke_bold: boolean;
 };
+type AppSettingsSnapshot = { behavior: { hide_when_paused: boolean } };
 
 type VisibleLine = { index: number; text: string; is_active: boolean };
 
@@ -57,6 +59,33 @@ function applyStyle(s: UiState) {
   root.setProperty('--karaoke-weight', s.karaoke_bold ? '800' : '500');
 }
 
+function applySurfaceVisible(visible: boolean) {
+  document.documentElement.dataset.surfaceVisible = String(visible);
+}
+
+applySurfaceVisible(false);
+
+function syncSurfaceVisible(
+  desiredRef: { current: boolean },
+  autoHiddenRef: { current: boolean },
+  setVisible: (visible: boolean) => void,
+  desired?: boolean,
+  autoHidden?: boolean,
+) {
+  if (desired !== undefined) desiredRef.current = desired;
+  if (autoHidden !== undefined) autoHiddenRef.current = autoHidden;
+  const visible = desiredRef.current && !autoHiddenRef.current;
+  setVisible(visible);
+  applySurfaceVisible(visible);
+  return visible;
+}
+
+function wordsKey(words: LyricWord[] | null | undefined) {
+  return (words ?? [])
+    .map((word) => `${word.start_ms}:${word.end_ms}:${word.text}`)
+    .join('|');
+}
+
 async function applyLayout(s: UiState) {
   try {
     const win = getCurrentWindow();
@@ -80,7 +109,21 @@ async function applyLayout(s: UiState) {
   }
 }
 
+const SURFACE_LABEL = 'karaoke';
 const BLEND_MS = 500;
+let karaokeWindowReadyPromise: Promise<void> | null = null;
+
+function ensureKaraokeWindowReady(): Promise<void> {
+  if (!karaokeWindowReadyPromise) {
+    karaokeWindowReadyPromise = invoke('window_ready', { label: SURFACE_LABEL })
+      .then(() => undefined)
+      .catch((err) => {
+        karaokeWindowReadyPromise = null;
+        throw err;
+      });
+  }
+  return karaokeWindowReadyPromise;
+}
 
 type PositionBaseline = {
   ms: number;
@@ -114,36 +157,60 @@ export default function Karaoke() {
   const [lines, setLines] = useState(2);
   const [activeLineWords, setActiveLineWords] = useState<LyricWord[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [surfaceVisible, setSurfaceVisible] = useState(false);
   const layoutTimerRef = useRef<number | null>(null);
   const refreshedUriRef = useRef('');
   const lastUriRef = useRef('');
+  const activeWordsKeyRef = useRef('');
   const baselineRef = useRef<PositionBaseline>({ ms: 0, at: 0, targetMs: 0, targetAt: 0, blendDur: 1 });
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const pageVisible = usePageVisible();
-  const hideWhenPausedRef = useRef(false);
+  const desiredVisibleRef = useRef(true);
   const autoHiddenRef = useRef(false);
+  const [hideWhenPaused, setHideWhenPaused] = useState(false);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let unlistenAppSettings: (() => void) | undefined;
     (async () => {
+      // Show (or keep hidden) first so WKWebView's evaluateJavaScript
+      // callback path is live before any further invoke() calls.
+      await ensureKaraokeWindowReady();
+
       const [state, appSettings] = await Promise.all([
         invoke<UiState>('get_ui_state'),
-        invoke<{ behavior: { hide_when_paused: boolean } }>('get_settings'),
+        invoke<AppSettingsSnapshot>('get_settings'),
       ]);
-      hideWhenPausedRef.current = appSettings.behavior.hide_when_paused;
+      setHideWhenPaused(appSettings.behavior.hide_when_paused);
+      syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, state.karaoke_visible);
       applyStyle(state);
       setLines(state.karaoke_lines);
       await applyLayout(state);
 
       unlisten = await listen<UiState>('ui-settings-changed', (e) => {
+        syncSurfaceVisible(
+          desiredVisibleRef,
+          autoHiddenRef,
+          setSurfaceVisible,
+          e.payload.karaoke_visible,
+        );
         applyStyle(e.payload);
         setLines(e.payload.karaoke_lines);
         if (layoutTimerRef.current) window.clearTimeout(layoutTimerRef.current);
         layoutTimerRef.current = window.setTimeout(() => applyLayout(e.payload), 50);
       });
+      unlistenAppSettings = await listen<AppSettingsSnapshot>('app-settings-changed', (e) => {
+        const enabled = e.payload.behavior.hide_when_paused;
+        setHideWhenPaused(enabled);
+        if (!enabled) {
+          syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, undefined, false);
+        }
+      });
+
     })();
     return () => {
       unlisten?.();
+      unlistenAppSettings?.();
       if (layoutTimerRef.current) window.clearTimeout(layoutTimerRef.current);
     };
   }, []);
@@ -152,14 +219,22 @@ export default function Karaoke() {
   useEffect(() => {
     if (!snapshotReady) return;
     const win = getCurrentWindow();
-    if (hideWhenPausedRef.current && !isPlaying) {
-      autoHiddenRef.current = true;
+    if (hideWhenPaused && !isPlaying && desiredVisibleRef.current) {
+      syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, undefined, true);
       void win.hide();
-    } else if (autoHiddenRef.current && isPlaying) {
-      autoHiddenRef.current = false;
-      void win.show();
+    } else if (autoHiddenRef.current && (!hideWhenPaused || isPlaying)) {
+      const visible = syncSurfaceVisible(
+        desiredVisibleRef,
+        autoHiddenRef,
+        setSurfaceVisible,
+        undefined,
+        false,
+      );
+      if (visible) {
+        void win.show();
+      }
     }
-  }, [isPlaying, snapshotReady]);
+  }, [hideWhenPaused, isPlaying, snapshotReady]);
 
   // Subscribe to backend `playback-tick` events. See app view for rationale.
   useEffect(() => {
@@ -170,8 +245,18 @@ export default function Karaoke() {
       if (cancelled) return;
       const track = snap.playback.track;
       const uri = track?.uri ?? '';
+      const uriChanged = uri !== lastUriRef.current;
       const activeIdx = snap.visible_lines.findIndex((line) => line.is_active);
       const hasActiveLine = activeIdx !== -1;
+
+      if (uriChanged) {
+        lastUriRef.current = uri;
+        setActiveLine(null);
+        setNextLine(null);
+        setActiveLineProgress(0);
+        activeWordsKeyRef.current = '';
+        setActiveLineWords([]);
+      }
 
       setSnapshotReady(true);
       setHasTrack(Boolean(track));
@@ -183,7 +268,12 @@ export default function Karaoke() {
       setActiveLineProgress(Math.max(0, Math.min(1, snap.line_progress ?? 0)));
       const playingNow = snap.playback.state === 'Playing';
       setIsPlaying(playingNow);
-      setActiveLineWords(snap.active_line_words ?? []);
+      const nextWords = snap.active_line_words ?? [];
+      const nextWordsKey = wordsKey(nextWords);
+      if (nextWordsKey !== activeWordsKeyRef.current) {
+        activeWordsKeyRef.current = nextWordsKey;
+        setActiveLineWords(nextWords);
+      }
 
       const newPos = snap.playback.position_ms ?? 0;
       const now = performance.now();
@@ -205,14 +295,6 @@ export default function Karaoke() {
         invoke('refresh_lyrics').catch(() => { });
       }
 
-      if (uri !== lastUriRef.current) {
-        lastUriRef.current = uri;
-        setActiveLine(null);
-        setNextLine(null);
-        setActiveLineProgress(0);
-        setActiveLineWords([]);
-      }
-
       if (hasActiveLine) {
         setActiveLine(snap.visible_lines[activeIdx].text);
         setNextLine(
@@ -227,6 +309,7 @@ export default function Karaoke() {
     };
 
     (async () => {
+      await ensureKaraokeWindowReady();
       try {
         const initial = await invoke<RenderSnapshot>('get_render_snapshot');
         apply(initial);
@@ -241,7 +324,7 @@ export default function Karaoke() {
   }, []);
 
   useEffect(() => {
-    if (activeLineWords.length === 0 || !pageVisible) return;
+    if (activeLineWords.length === 0 || !pageVisible || !surfaceVisible) return;
     let raf = 0;
     const tick = () => {
       const pos = interpolatePosition(baselineRef.current, performance.now(), isPlaying);
@@ -272,7 +355,7 @@ export default function Karaoke() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [activeLineWords, isPlaying, pageVisible]);
+  }, [activeLineWords, isPlaying, pageVisible, surfaceVisible]);
 
   const karaokeState = resolveLyricsSurfaceState({
     booted: snapshotReady,
@@ -432,4 +515,3 @@ function getCompactPlaceholderLabel(state: LyricsPlaceholderState) {
       return '';
   }
 }
-

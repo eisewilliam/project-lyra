@@ -18,7 +18,8 @@ import { LyricsPlaceholderIcon } from '../../utils/lyrics-placeholder-icon'
 import { usePageVisible } from '../../utils/use-page-visible'
 import './app.css'
 
-type UiState = { floating_font_scale: number };
+type UiState = { floating_visible: boolean; floating_font_scale: number };
+type AppSettingsSnapshot = { behavior: { hide_when_paused: boolean } };
 
 type TrackRef = {
   uri: string;
@@ -53,6 +54,42 @@ function applyFloatingFont(scale: number) {
   document.documentElement.style.setProperty('--font-scale', String(scale));
 }
 
+function applySurfaceVisible(visible: boolean) {
+  document.documentElement.dataset.surfaceVisible = String(visible);
+}
+
+applySurfaceVisible(false);
+
+function syncSurfaceVisible(
+  desiredRef: { current: boolean },
+  autoHiddenRef: { current: boolean },
+  setVisible: (visible: boolean) => void,
+  desired?: boolean,
+  autoHidden?: boolean,
+) {
+  if (desired !== undefined) desiredRef.current = desired;
+  if (autoHidden !== undefined) autoHiddenRef.current = autoHidden;
+  const visible = desiredRef.current && !autoHiddenRef.current;
+  setVisible(visible);
+  applySurfaceVisible(visible);
+  return visible;
+}
+
+function sameTrack(a: TrackRef | null, b: TrackRef | null) {
+  return a?.uri === b?.uri
+    && a?.title === b?.title
+    && a?.artist === b?.artist
+    && a?.album === b?.album
+    && a?.duration_ms === b?.duration_ms
+    && a?.artwork_url === b?.artwork_url;
+}
+
+function wordsKey(words: LyricWord[] | null | undefined) {
+  return (words ?? [])
+    .map((word) => `${word.start_ms}:${word.end_ms}:${word.text}`)
+    .join('|');
+}
+
 function formatMs(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
   const m = Math.floor(totalSec / 60);
@@ -60,8 +97,22 @@ function formatMs(ms: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+const SURFACE_LABEL = 'main';
 const FALLBACK_ART = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
 const BLEND_MS = 500;
+let mainWindowReadyPromise: Promise<void> | null = null;
+
+function ensureMainWindowReady(): Promise<void> {
+  if (!mainWindowReadyPromise) {
+    mainWindowReadyPromise = invoke('window_ready', { label: SURFACE_LABEL })
+      .then(() => undefined)
+      .catch((err) => {
+        mainWindowReadyPromise = null;
+        throw err;
+      });
+  }
+  return mainWindowReadyPromise;
+}
 
 type PositionBaseline = {
   ms: number;
@@ -113,6 +164,7 @@ function App() {
   const [snapshotReady, setSnapshotReady] = useState(false)
   const [positionMs, setPositionMs] = useState(0)
   const [activeLineWords, setActiveLineWords] = useState<LyricWord[]>([])
+  const [surfaceVisible, setSurfaceVisible] = useState(false)
   const baselineRef = useRef<PositionBaseline>({ ms: 0, at: 0, targetMs: 0, targetAt: 0, blendDur: 1 })
   const lyricsRef = useRef<(HTMLDivElement | null)[]>([])
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([])
@@ -123,8 +175,10 @@ function App() {
   const lastUriRef = useRef('')
   const refreshedUriRef = useRef('')
   const lyricsLoadedUriRef = useRef('')
-  const hideWhenPausedRef = useRef(false)
+  const activeWordsKeyRef = useRef('')
+  const desiredVisibleRef = useRef(true)
   const autoHiddenRef = useRef(false)
+  const [hideWhenPaused, setHideWhenPaused] = useState(false)
 
   function seekToLine(index: number, eventTimeStamp: number) {
     const target = lyrics[index]?.start_ms;
@@ -161,11 +215,21 @@ function App() {
     const apply = (snap: RenderSnapshot) => {
       if (cancelled) return;
       const uri = snap.playback.track?.uri ?? '';
+      const uriChanged = uri !== lastUriRef.current;
+
+      if (uriChanged) {
+        lastUriRef.current = uri;
+        setLyrics([]);
+        setActiveLine(null);
+        activeWordsKeyRef.current = '';
+        setActiveLineWords([]);
+        lyricsLoadedUriRef.current = '';
+      }
 
       setSnapshotReady(true);
       const playingNow = snap.playback.state === 'Playing';
       setIsPlaying(playingNow);
-      setTrack(snap.playback.track);
+      setTrack((prev) => sameTrack(prev, snap.playback.track) ? prev : snap.playback.track);
       setLyricsStatus(snap.lyrics_status);
 
       // Position sync:
@@ -192,14 +256,11 @@ function App() {
       }
 
       setActiveLine(snap.active_line_index ?? null);
-      setActiveLineWords(snap.active_line_words ?? []);
-
-      if (uri !== lastUriRef.current) {
-        lastUriRef.current = uri;
-        setLyrics([]);
-        setActiveLine(null);
-        setActiveLineWords([]);
-        lyricsLoadedUriRef.current = '';
+      const nextWords = snap.active_line_words ?? [];
+      const nextWordsKey = wordsKey(nextWords);
+      if (nextWordsKey !== activeWordsKeyRef.current) {
+        activeWordsKeyRef.current = nextWordsKey;
+        setActiveLineWords(nextWords);
       }
 
       if (uri && snap.lyrics_status === 'Loading' && refreshedUriRef.current !== uri) {
@@ -216,6 +277,7 @@ function App() {
     };
 
     (async () => {
+      await ensureMainWindowReady();
       try {
         const initial = await invoke<RenderSnapshot>('get_render_snapshot');
         apply(initial);
@@ -232,32 +294,62 @@ function App() {
   // Subscribe to UI settings (font scale).
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let unlistenAppSettings: (() => void) | undefined;
     (async () => {
+      // Show (or keep hidden) first so WKWebView's evaluateJavaScript
+      // callback path is live before any further invoke() calls.
+      await ensureMainWindowReady();
+
       const [s, appSettings] = await Promise.all([
         invoke<UiState>('get_ui_state'),
-        invoke<{ behavior: { hide_when_paused: boolean } }>('get_settings'),
+        invoke<AppSettingsSnapshot>('get_settings'),
       ]);
-      hideWhenPausedRef.current = appSettings.behavior.hide_when_paused;
+      setHideWhenPaused(appSettings.behavior.hide_when_paused);
+      syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, s.floating_visible);
       applyFloatingFont(s.floating_font_scale);
       unlisten = await listen<UiState>('ui-settings-changed', (e) => {
+        syncSurfaceVisible(
+          desiredVisibleRef,
+          autoHiddenRef,
+          setSurfaceVisible,
+          e.payload.floating_visible,
+        );
         applyFloatingFont(e.payload.floating_font_scale);
       });
+      unlistenAppSettings = await listen<AppSettingsSnapshot>('app-settings-changed', (e) => {
+        const enabled = e.payload.behavior.hide_when_paused;
+        setHideWhenPaused(enabled);
+        if (!enabled) {
+          syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, undefined, false);
+        }
+      });
     })();
-    return () => unlisten?.();
+    return () => {
+      unlisten?.();
+      unlistenAppSettings?.();
+    };
   }, []);
 
   // Auto-hide/show the window when playback state changes, if hide_when_paused is enabled.
   useEffect(() => {
     if (!snapshotReady) return;
     const win = getCurrentWindow();
-    if (hideWhenPausedRef.current && !isPlaying) {
-      autoHiddenRef.current = true;
+    if (hideWhenPaused && !isPlaying && desiredVisibleRef.current) {
+      syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, undefined, true);
       void win.hide();
-    } else if (autoHiddenRef.current && isPlaying) {
-      autoHiddenRef.current = false;
-      void win.show();
+    } else if (autoHiddenRef.current && (!hideWhenPaused || isPlaying)) {
+      const visible = syncSurfaceVisible(
+        desiredVisibleRef,
+        autoHiddenRef,
+        setSurfaceVisible,
+        undefined,
+        false,
+      );
+      if (visible) {
+        void win.show();
+      }
     }
-  }, [isPlaying, snapshotReady]);
+  }, [hideWhenPaused, isPlaying, snapshotReady]);
 
   // Smooth-scroll the active lyric to vertical center using a single rAF after
   // layout settles. scrollIntoView with smooth behavior provides hardware-accel
@@ -278,7 +370,7 @@ function App() {
   // reconcile the whole subtree (lyric list included) every frame. Now zero
   // React work in the rAF loop.
   useEffect(() => {
-    if (!isPlaying || !pageVisible) return;
+    if (!isPlaying || !pageVisible || !surfaceVisible) return;
     let raf = 0;
     const durationMs = track?.duration_ms ?? 0;
     const tick = () => {
@@ -305,7 +397,7 @@ function App() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [isPlaying, pageVisible, track?.duration_ms])
+  }, [isPlaying, pageVisible, surfaceVisible, track?.duration_ms])
 
   // 60fps word-state updater. Mutates className/CSS var directly on span refs
   // so the React tree is NOT re-rendered every frame.
@@ -313,7 +405,7 @@ function App() {
   // When paused or hidden: position is frozen, so run the loop body once to
   // lock visual state and exit. Avoids a 60Hz no-op while no user can see it.
   useEffect(() => {
-    if (activeLineWords.length === 0 || !pageVisible) return;
+    if (activeLineWords.length === 0 || !pageVisible || !surfaceVisible) return;
     let raf = 0;
     const tick = () => {
       const pos = interpolatePosition(baselineRef.current, performance.now(), isPlaying);
@@ -344,7 +436,7 @@ function App() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [activeLineWords, isPlaying, pageVisible])
+  }, [activeLineWords, isPlaying, pageVisible, surfaceVisible])
 
   const artworkSrc = track?.artwork_url ?? FALLBACK_ART;
   const hasTrack = Boolean(track);
