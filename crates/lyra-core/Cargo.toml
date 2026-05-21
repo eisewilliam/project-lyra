@@ -24,3 +24,8 @@ windows = { version = "0.58", features = [
     "Win32_System_Com",
     "Storage_Streams",
 ] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc = "0.2.7"
+[lints.rust]
+unexpected_cfgs = { level = "allow" }

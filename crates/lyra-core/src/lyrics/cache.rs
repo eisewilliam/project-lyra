@@ -95,6 +95,15 @@ impl LyricCache {
         Ok(())
     }
 
+    /// Clear all cached lyrics and negative sentinels, except overrides.
+    pub fn clear(&self) -> Result<()> {
+        if self.cache_dir.exists() {
+            std::fs::remove_dir_all(&self.cache_dir)?;
+            std::fs::create_dir_all(&self.cache_dir)?;
+        }
+        Ok(())
+    }
+
     fn filename(track_key: &str) -> String {
         format!("{}.lrc", Self::stem(track_key))
     }

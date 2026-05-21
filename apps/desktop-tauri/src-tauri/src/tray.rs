@@ -7,7 +7,6 @@ use crate::ui_state::UiState;
 use crate::AppState;
 
 pub struct TrayMenuRefs {
-    pub show_floating: CheckMenuItem<Wry>,
     pub show_island: CheckMenuItem<Wry>,
     pub show_karaoke: CheckMenuItem<Wry>,
     pub lock_island: CheckMenuItem<Wry>,
@@ -15,7 +14,6 @@ pub struct TrayMenuRefs {
 
 impl TrayMenuRefs {
     pub fn sync(&self, state: &UiState) {
-        let _ = self.show_floating.set_checked(state.floating_visible);
         let _ = self.show_island.set_checked(state.island_visible);
         let _ = self.show_karaoke.set_checked(state.karaoke_visible);
         let _ = self.lock_island.set_checked(state.island_locked);
@@ -23,9 +21,8 @@ impl TrayMenuRefs {
 }
 
 pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
-    let show_floating = CheckMenuItemBuilder::new("Show Lyra")
-        .id("toggle_floating")
-        .checked(initial.floating_visible)
+    let show_lyra = MenuItemBuilder::new("Show Lyra")
+        .id("show_lyra")
         .build(app)?;
     let show_island = CheckMenuItemBuilder::new("Show Dynamic Island")
         .id("toggle_island")
@@ -51,7 +48,7 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
 
     let menu = MenuBuilder::new(app)
         .items(&[
-            &show_floating,
+            &show_lyra,
             &show_island,
             &show_karaoke,
             &PredefinedMenuItem::separator(app)?,
@@ -64,7 +61,6 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
         .build()?;
 
     app.manage(TrayMenuRefs {
-        show_floating,
         show_island,
         show_karaoke,
         lock_island,
@@ -74,7 +70,7 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
         .menu(&menu)
         .icon(app.default_window_icon().unwrap().clone())
         .on_menu_event(move |app, event| match event.id().as_ref() {
-            "toggle_floating" => toggle_surface(app, "main"),
+            "show_lyra" => open_lyra(app),
             "toggle_island" => toggle_surface(app, "island"),
             "toggle_karaoke" => toggle_surface(app, "karaoke"),
             "toggle_island_lock" => toggle_island_lock(app),
@@ -85,6 +81,20 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
         .build(app)?;
 
     Ok(())
+}
+
+pub fn open_lyra(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let new_state = state.ui.mutate(|s| s.floating_visible = true);
+    apply_window_visibility(app, "main", &new_state);
+    if let Some(refs) = app.try_state::<TrayMenuRefs>() {
+        refs.sync(&new_state);
+    }
+    let _ = app.emit("ui-settings-changed", new_state);
+    // Focus only when user explicitly opens Lyra — not during autostart.
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.set_focus();
+    }
 }
 
 pub fn toggle_surface(app: &AppHandle, label: &str) {
@@ -120,6 +130,14 @@ pub fn apply_window_visibility(app: &AppHandle, label: &str, state: &UiState) {
         _ => return,
     };
 
+    if let Some(app_state) = app.try_state::<AppState>() {
+        app_state.surface_visibility.set_visible(label, visible);
+    }
+
+    if label == "main" {
+        sync_dock_visibility(app, state);
+    }
+
     if macos::apply_overlay_visibility(app, label, visible, on_fullscreen) {
         return;
     }
@@ -129,7 +147,7 @@ pub fn apply_window_visibility(app: &AppHandle, label: &str, state: &UiState) {
         if visible {
             let _ = window.show();
             if label == "main" {
-                let _ = window.set_focus();
+                let _ = window.unminimize();
             }
         } else {
             let _ = window.hide();
@@ -137,9 +155,51 @@ pub fn apply_window_visibility(app: &AppHandle, label: &str, state: &UiState) {
     }
 }
 
+pub(crate) fn dock_visible_for_state(state: &UiState) -> bool {
+    state.floating_visible
+}
+
+pub(crate) fn sync_dock_visibility(app: &AppHandle, state: &UiState) {
+    set_dock_visible(app, dock_visible_for_state(state));
+}
+
+#[cfg(target_os = "macos")]
+fn set_dock_visible(app: &AppHandle, visible: bool) {
+    let _ = app.set_dock_visibility(visible);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_dock_visible(_app: &AppHandle, _visible: bool) {}
+
 pub fn open_settings(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("settings") {
         let _ = window.show();
+        let _ = window.unminimize();
         let _ = window.set_focus();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ui_state::UiState;
+
+    #[test]
+    fn dock_is_regular_when_main_surface_is_visible() {
+        let mut state = UiState::default();
+        state.floating_visible = true;
+        state.island_visible = false;
+        state.karaoke_visible = false;
+
+        assert!(super::dock_visible_for_state(&state));
+    }
+
+    #[test]
+    fn dock_is_accessory_when_only_menu_bar_and_overlays_remain() {
+        let mut state = UiState::default();
+        state.floating_visible = false;
+        state.island_visible = true;
+        state.karaoke_visible = true;
+
+        assert!(!super::dock_visible_for_state(&state));
     }
 }

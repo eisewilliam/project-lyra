@@ -77,7 +77,9 @@ impl LyraRuntime {
     pub fn store_lyrics(&mut self, doc: LyricDocument) {
         self.transient_errors.remove(&doc.track_key);
         let _ = self.cache.put(&doc.track_key.clone(), &doc.raw_lrc.clone());
-        self.current_doc = Some(doc);
+        if self.last_track_key.as_deref() == Some(&doc.track_key) {
+            self.current_doc = Some(doc);
+        }
         self.last_tick_result = None;
     }
 

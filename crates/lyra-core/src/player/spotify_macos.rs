@@ -1,6 +1,6 @@
 use std::process::Command;
-use std::sync::{mpsc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::domain::{PlaybackSnapshot, PlaybackState, PlayerSource, TrackRef};
 use crate::events::PlayerEvent;
@@ -104,34 +104,60 @@ end tell
     }
 }
 
+use objc::{class, msg_send, sel, sel_impl};
+use objc::runtime::Object;
+
 fn run_osascript(script: &'static str) -> Option<String> {
-    let child = match Command::new("osascript")
-        .arg("-e")
-        .arg(script)
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-    {
-        Ok(c) => c,
-        Err(_) => return None,
-    };
+    unsafe {
+        let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
 
-    let pid = child.id();
-    let (tx, rx) = mpsc::channel();
-    
-    std::thread::spawn(move || {
-        let _ = tx.send(child.wait_with_output());
-    });
+        let script_bytes = script.as_bytes();
+        let str_alloc: *mut Object = msg_send![class!(NSString), alloc];
+        let script_str: *mut Object = msg_send![
+            str_alloc,
+            initWithBytes: script_bytes.as_ptr()
+            length: script_bytes.len()
+            encoding: 4
+        ];
 
-    let out = match rx.recv_timeout(Duration::from_secs(3)) {
-        Ok(Ok(o)) => o,
-        _ => {
-            // Timeout or error checking outputs. Kill the hung osascript process
-            // so we don't leak processes and threads, causing extreme lag.
-            let _ = Command::new("kill").arg("-9").arg(pid.to_string()).status();
+        let script_alloc: *mut Object = msg_send![class!(NSAppleScript), alloc];
+        let script_obj: *mut Object = msg_send![script_alloc, initWithSource: script_str];
+
+        if script_obj.is_null() {
+            let _: () = msg_send![script_str, release];
+            let _: () = msg_send![pool, drain];
             return None;
         }
-    };
-    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+
+        let mut err_ptr: *mut Object = std::ptr::null_mut();
+        let desc: *mut Object = msg_send![script_obj, executeAndReturnError: &mut err_ptr];
+
+        let _: () = msg_send![script_str, release];
+        let _: () = msg_send![script_obj, release];
+
+        if desc.is_null() {
+            let _: () = msg_send![pool, drain];
+            return None;
+        }
+
+        let val: *mut Object = msg_send![desc, stringValue];
+        if val.is_null() {
+            let _: () = msg_send![pool, drain];
+            return None;
+        }
+
+        let utf8: *const std::ffi::c_char = msg_send![val, UTF8String];
+        if utf8.is_null() {
+            let _: () = msg_send![pool, drain];
+            return None;
+        }
+
+        let c_str = std::ffi::CStr::from_ptr(utf8);
+        let res = c_str.to_string_lossy().trim().to_string();
+        
+        let _: () = msg_send![pool, drain];
+        Some(res)
+    }
 }
 
 enum RawSpotifyLite {

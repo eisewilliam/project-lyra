@@ -26,7 +26,7 @@
         "hiddenTitle": true,
         "visible": false,
         "acceptFirstMouse": true,
-        "backgroundThrottling": "suspend"
+        "backgroundThrottling": "throttle"
       },
       {
         "label": "island",

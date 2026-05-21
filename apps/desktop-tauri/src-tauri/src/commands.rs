@@ -219,6 +219,12 @@ pub fn playback_seek_ms(position_ms: u64) {
 }
 
 #[tauri::command]
+pub fn clear_lyrics_cache(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let rt = state.runtime.lock().unwrap();
+    rt.cache.clear().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn refresh_lyrics(state: State<'_, AppState>) -> Result<(), String> {
     // 1. Grab track + cache state without holding the lock across await.
     let (track, is_neg, already_cached) = {
@@ -288,7 +294,7 @@ pub async fn force_refresh_lyrics(state: State<'_, AppState>) -> Result<(), Stri
 use lyra_core::domain::SettingsPatch;
 
 #[tauri::command]
-pub fn update_settings(patch: SettingsPatch, state: State<'_, AppState>) {
+pub fn update_settings(patch: SettingsPatch, state: State<'_, AppState>, app: AppHandle) {
     let mut rt = state.runtime.lock().unwrap();
     let mut s = rt.settings().clone();
 
@@ -302,7 +308,8 @@ pub fn update_settings(patch: SettingsPatch, state: State<'_, AppState>) {
         s.behavior = b;
     }
 
-    rt.update_settings(s);
+    rt.update_settings(s.clone());
+    let _ = app.emit("app-settings-changed", s);
 }
 
 // ── System / OS integration ───────────────────────────────────────────────────
@@ -374,6 +381,40 @@ pub fn set_preferred_monitor(
     });
     crate::apply_preferred_monitor_positioning(&app, &new_state);
     let _ = app.emit("ui-settings-changed", new_state);
+}
+
+/// Called by each surface's frontend as its very first action.
+///
+/// Shows (or hides) the window according to persisted UiState so the native
+/// frame is visible before any further IPC calls. WKWebView queues
+/// `evaluateJavaScript` on hidden windows, which means invoke() responses
+/// and event deliveries never arrive until the window is shown — causing a
+/// deadlock when the frontend waits for data before calling show.
+///
+/// After applying visibility, immediately pushes the current render snapshot
+/// as a `playback-tick` event so the frontend gets its first state without
+/// having to wait for the next poll cycle or heartbeat.
+#[tauri::command]
+pub fn window_ready(label: String, state: State<'_, AppState>, app: AppHandle) {
+    let ui = state.ui.snapshot();
+    let configured_visible = match label.as_str() {
+        "main" => ui.floating_visible,
+        "island" => ui.island_visible,
+        "karaoke" => ui.karaoke_visible,
+        _ => false,
+    };
+    tray::apply_window_visibility(&app, &label, &ui);
+
+    // Push the current snapshot immediately so the frontend doesn't spend
+    // up to 10 s in the booting/loading state waiting for the first
+    // poll-driven `playback-tick` emission.
+    if configured_visible {
+        if let Ok(render) = state.runtime.lock().map(|mut rt| rt.tick()) {
+            if let Some(win) = app.get_webview_window(&label) {
+                let _ = win.emit("playback-tick", render);
+            }
+        }
+    }
 }
 
 /// Query whether autostart at login is currently enabled (delegates to the OS).
