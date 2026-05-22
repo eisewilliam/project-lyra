@@ -1,73 +1,58 @@
-# React + TypeScript + Vite
+# Lyra Desktop Tauri App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This directory contains Lyra's Tauri 2 desktop host and React/Vite UI. It owns desktop windows, UI surfaces, settings controls, and the Tauri bridge to the shared Rust core.
 
-Currently, two official plugins are available:
+## Surfaces
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+All windows are served from one SPA. [`src/main.tsx`](src/main.tsx) selects the view from the window path.
 
-## React Compiler
+| Window label | Path | Role |
+|---|---|---|
+| `main` | `/` | Full Lyra window |
+| `island` | `/island` | Floating island overlay |
+| `karaoke` | `/karaoke` | Karaoke overlay |
+| `settings` | `/settings` | Settings window |
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Commands
 
-## Expanding the ESLint configuration
+Run frontend and Tauri commands from this directory:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run tauri dev
+npm run tauri build
+npm run lint
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The Vite-only commands remain available for frontend work:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
+npm run build
+npm run preview
 ```
+
+Run Rust workspace checks from the repository root:
+
+```bash
+cargo test -p lyra-core
+cargo check --manifest-path apps/desktop-tauri/src-tauri/Cargo.toml
+```
+
+## Boundaries
+
+UI surfaces render state from the backend and forward user intent through Tauri commands and events. Shared playback logic, lyric lookup, parsing, sync calculations, cache behavior, and core settings belong in `crates/lyra-core`.
+
+The Tauri Rust layer in `src-tauri/` is the bridge around that core. It manages desktop concerns such as windows, tray actions, platform overlay behavior, UI state, and command/event wiring.
+
+## Key Paths
+
+| Path | Role |
+|---|---|
+| `src/views/app/` | Full Lyra window |
+| `src/views/island/` | Floating island overlay |
+| `src/views/karaoke/` | Karaoke overlay |
+| `src/views/settings/` | Settings UI |
+| `src-tauri/src/commands.rs` | Tauri commands exposed to the UI |
+| `src-tauri/src/lib.rs` | App startup, runtime wiring, and playback polling |
+| `src-tauri/src/ui_state.rs` | UI-facing persisted window and overlay state |
