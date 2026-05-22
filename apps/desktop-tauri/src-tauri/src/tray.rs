@@ -69,6 +69,7 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
     let _tray = TrayIconBuilder::new()
         .menu(&menu)
         .icon(app.default_window_icon().unwrap().clone())
+        .icon_as_template(true)
         .on_menu_event(move |app, event| match event.id().as_ref() {
             "show_lyra" => open_lyra(app),
             "toggle_island" => toggle_surface(app, "island"),
