@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "gen:licenses": "cargo about generate ../../about.hbs > src-tauri/licenses.html"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",
