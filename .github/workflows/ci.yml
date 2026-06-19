@@ -1,0 +1,86 @@
+name: ci
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
+
+concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: true
+
+env:
+    APP_DIR: apps/desktop-tauri
+    CARGO_TERM_COLOR: always
+
+jobs:
+    rust:
+        name: Rust (test, fmt, clippy)
+        runs-on: macos-latest
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v4
+
+            - name: Install Rust stable
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: rustfmt, clippy
+
+            - name: Restore Rust cache
+              uses: swatinem/rust-cache@v2
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: lts/*
+                  cache: npm
+                  cache-dependency-path: apps/desktop-tauri/package-lock.json
+
+            # The Tauri bridge embeds the frontend via `generate_context!`, so
+            # `frontendDist` (../dist) must exist before the bridge will compile.
+            - name: Build frontend (provides dist/ for the bridge)
+              working-directory: ${{ env.APP_DIR }}
+              run: |
+                  npm ci
+                  npm run build
+
+            - name: Check formatting
+              run: cargo fmt --all -- --check
+
+            - name: Run tests (workspace + bridge)
+              run: |
+                  cargo test -p lyra-core
+                  cargo test --manifest-path ${{ env.APP_DIR }}/src-tauri/Cargo.toml
+
+            - name: Clippy (lyra-core)
+              run: cargo clippy -p lyra-core --all-targets -- -D warnings
+
+            - name: Clippy (Tauri bridge)
+              run: cargo clippy --manifest-path ${{ env.APP_DIR }}/src-tauri/Cargo.toml --all-targets -- -D warnings
+
+    frontend:
+        name: Frontend (lint, build)
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v4
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: lts/*
+                  cache: npm
+                  cache-dependency-path: apps/desktop-tauri/package-lock.json
+
+            - name: Install frontend dependencies
+              working-directory: ${{ env.APP_DIR }}
+              run: npm ci
+
+            - name: Lint
+              working-directory: ${{ env.APP_DIR }}
+              run: npm run lint
+
+            - name: Type-check and build
+              working-directory: ${{ env.APP_DIR }}
+              run: npm run build
