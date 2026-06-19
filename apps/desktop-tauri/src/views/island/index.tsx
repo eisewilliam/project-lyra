@@ -12,6 +12,18 @@ import {
 } from '../../utils/lyrics-state';
 import { LyricsPlaceholderIcon } from '../../utils/lyrics-placeholder-icon';
 import { usePageVisible } from '../../utils/use-page-visible';
+import { applyAppearance, type AppSettings } from '../../utils/app-settings';
+import {
+  BLEND_MS,
+  interpolatePosition,
+  makeWindowReady,
+  syncSurfaceVisible,
+  applySurfaceVisible,
+  wordsKey,
+  runWordColouring,
+  type LyricWord,
+  type PositionBaseline,
+} from '../../utils/playback-sync';
 import './island.css';
 
 type UiState = {
@@ -29,11 +41,8 @@ type UiState = {
   island_cover_circle: boolean;
   island_cover_spin: boolean;
 };
-type AppSettingsSnapshot = { behavior: { hide_when_paused: boolean } };
 
 type VisibleLine = { index: number; text: string; is_active: boolean };
-
-type LyricWord = { start_ms: number; end_ms: number; text: string };
 
 type RenderSnapshot = {
   playback: {
@@ -49,71 +58,15 @@ type RenderSnapshot = {
 };
 
 const TOP_DOCK_SNAP_PX = 80;
-const BLEND_MS = 500;
 const SURFACE_LABEL = 'island';
 const FALLBACK_ART = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
-let islandWindowReadyPromise: Promise<void> | null = null;
-
-function ensureIslandWindowReady(): Promise<void> {
-  if (!islandWindowReadyPromise) {
-    islandWindowReadyPromise = invoke('window_ready', { label: SURFACE_LABEL })
-      .then(() => undefined)
-      .catch((err) => {
-        islandWindowReadyPromise = null;
-        throw err;
-      });
-  }
-  return islandWindowReadyPromise;
-}
-
-type PositionBaseline = {
-  ms: number;
-  at: number;
-  targetMs: number;
-  targetAt: number;
-  blendDur: number;
-};
-
-function interpolatePosition(b: PositionBaseline, now: number, playing: boolean): number {
-  if (!playing) return b.ms;
-  const currentTraj = b.ms + (now - b.at);
-  const targetTraj = b.targetMs + (now - b.targetAt);
-  const elapsed = now - b.at;
-  if (elapsed >= b.blendDur) return targetTraj;
-  const t = elapsed / Math.max(1, b.blendDur);
-  return currentTraj * (1 - t) + targetTraj * t;
-}
+const ensureIslandWindowReady = makeWindowReady(SURFACE_LABEL);
 
 function applyIslandFont(scale: number) {
   document.documentElement.style.setProperty('--font-scale', String(scale));
 }
 
-function applySurfaceVisible(visible: boolean) {
-  document.documentElement.dataset.surfaceVisible = String(visible);
-}
-
 applySurfaceVisible(false);
-
-function syncSurfaceVisible(
-  desiredRef: { current: boolean },
-  autoHiddenRef: { current: boolean },
-  setVisible: (visible: boolean) => void,
-  desired?: boolean,
-  autoHidden?: boolean,
-) {
-  if (desired !== undefined) desiredRef.current = desired;
-  if (autoHidden !== undefined) autoHiddenRef.current = autoHidden;
-  const visible = desiredRef.current && !autoHiddenRef.current;
-  setVisible(visible);
-  applySurfaceVisible(visible);
-  return visible;
-}
-
-function wordsKey(words: LyricWord[] | null | undefined) {
-  return (words ?? [])
-    .map((word) => `${word.start_ms}:${word.end_ms}:${word.text}`)
-    .join('|');
-}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -157,6 +110,7 @@ export default function Island() {
   const desiredVisibleRef = useRef(true);
   const autoHiddenRef = useRef(false);
   const [hideWhenPaused, setHideWhenPaused] = useState(false);
+  const [hideWhenIdle, setHideWhenIdle] = useState(false);
 
   // Init: read persisted state, position window, subscribe to lock + settings changes.
   useEffect(() => {
@@ -175,9 +129,11 @@ export default function Island() {
       const win = getCurrentWindow();
       const [state, appSettings] = await Promise.all([
         invoke<UiState>('get_ui_state'),
-        invoke<AppSettingsSnapshot>('get_settings'),
+        invoke<AppSettings>('get_settings'),
       ]);
       setHideWhenPaused(appSettings.behavior.hide_when_paused);
+      setHideWhenIdle(appSettings.window.hide_when_idle);
+      applyAppearance(appSettings.appearance);
       syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, state.island_visible);
       setLocked(state.island_locked);
       setShowCover(state.island_show_cover ?? true);
@@ -232,10 +188,13 @@ export default function Island() {
           ).catch(() => { });
         }
       });
-      unlistenAppSettings = await listen<AppSettingsSnapshot>('app-settings-changed', (e) => {
+      unlistenAppSettings = await listen<AppSettings>('app-settings-changed', (e) => {
         const enabled = e.payload.behavior.hide_when_paused;
+        const idleEnabled = e.payload.window.hide_when_idle;
         setHideWhenPaused(enabled);
-        if (!enabled) {
+        setHideWhenIdle(idleEnabled);
+        applyAppearance(e.payload.appearance);
+        if (!enabled && !idleEnabled) {
           syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, undefined, false);
         }
       });
@@ -273,14 +232,17 @@ export default function Island() {
     };
   }, []);
 
-  // Auto-hide/show the window when playback state changes, if hide_when_paused is enabled.
+  // Auto-hide/show the window: hide while paused (hide_when_paused) or while
+  // there's no track at all (hide_when_idle).
   useEffect(() => {
     if (!snapshotReady) return;
     const win = getCurrentWindow();
-    if (hideWhenPaused && !isPlaying && desiredVisibleRef.current) {
+    const idle = !hasTrack;
+    const shouldAutoHide = (hideWhenPaused && !isPlaying) || (hideWhenIdle && idle);
+    if (shouldAutoHide && desiredVisibleRef.current) {
       syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, undefined, true);
       void win.hide();
-    } else if (autoHiddenRef.current && (!hideWhenPaused || isPlaying)) {
+    } else if (autoHiddenRef.current && !shouldAutoHide) {
       const visible = syncSurfaceVisible(
         desiredVisibleRef,
         autoHiddenRef,
@@ -292,7 +254,7 @@ export default function Island() {
         void win.show();
       }
     }
-  }, [hideWhenPaused, isPlaying, snapshotReady]);
+  }, [hideWhenPaused, hideWhenIdle, isPlaying, hasTrack, snapshotReady]);
 
   // Subscribe to backend `playback-tick` events. See app view for rationale.
   useEffect(() => {
@@ -315,6 +277,7 @@ export default function Island() {
         activeWordsKeyRef.current = '';
         setActiveLineWords([]);
         setActiveLineProgress(0);
+        wordRefs.current = [];
       }
 
       setSnapshotReady(true);
@@ -385,36 +348,7 @@ export default function Island() {
 
   useEffect(() => {
     if (activeLineWords.length === 0 || !pageVisible || !surfaceVisible) return;
-    let raf = 0;
-    const tick = () => {
-      const pos = interpolatePosition(baselineRef.current, performance.now(), isPlaying);
-      for (let i = 0; i < activeLineWords.length; i++) {
-        const w = activeLineWords[i];
-        const el = wordRefs.current[i];
-        if (!el) continue;
-        let cls: string;
-        let progress: number;
-        if (pos >= w.end_ms) {
-          cls = 'lyric-word passed';
-          progress = 1;
-        } else if (pos >= w.start_ms) {
-          cls = 'lyric-word singing';
-          progress = Math.max(0, Math.min(1, (pos - w.start_ms) / Math.max(1, w.end_ms - w.start_ms)));
-        } else {
-          cls = 'lyric-word upcoming';
-          progress = 0;
-        }
-        if (el.className !== cls) el.className = cls;
-        const progStr = progress.toFixed(3);
-        if (el.getAttribute('data-last-prog') !== progStr) {
-          el.setAttribute('data-last-prog', progStr);
-          el.style.setProperty('--word-progress', progStr);
-        }
-      }
-      if (isPlaying) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return runWordColouring(activeLineWords, wordRefs, baselineRef, isPlaying);
   }, [activeLineWords, isPlaying, pageVisible, surfaceVisible]);
 
   const artSrc = artworkUrl ?? FALLBACK_ART;
@@ -432,6 +366,11 @@ export default function Island() {
     !isLyricsError(lyricsStatus) &&
     !isLyricsNotFound(lyricsStatus);
   const barsActive = (panelState === 'ready' || showTrackIntro) && isPlaying;
+  // Identity of the current active line — used as a React key so the line
+  // element remounts (and replays its enter animation) on every line change.
+  const activeContentKey = activeLineWords.length > 0
+    ? activeLineWords.map((word) => `${word.start_ms}:${word.text}`).join('|')
+    : activeLine || '';
 
   return (
     <div
@@ -464,10 +403,9 @@ export default function Island() {
           {panelState === 'ready' ? (
             <>
               <GlidingLine
+                key={activeContentKey}
                 className={`panel-lyric-active ${hasActiveLyric ? '' : 'is-preroll'}`}
-                contentKey={activeLineWords.length > 0
-                  ? activeLineWords.map((word) => `${word.start_ms}:${word.text}`).join('|')
-                  : activeLine || ''}
+                contentKey={activeContentKey}
                 syncProgress={activeLineProgress}
               >
                 {activeLineWords.length > 0 ? (
@@ -482,7 +420,7 @@ export default function Island() {
                   activeLine || (nextLine !== null ? '♪' : '')
                 )}
               </GlidingLine>
-              <div className="panel-lyric-next">
+              <div className="panel-lyric-next" key={nextLine || 'none'}>
                 {nextLine === '' ? '♪' : (nextLine || '')}
               </div>
             </>

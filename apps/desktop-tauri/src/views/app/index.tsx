@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -16,10 +16,20 @@ import {
 } from '../../utils/lyrics-state'
 import { LyricsPlaceholderIcon } from '../../utils/lyrics-placeholder-icon'
 import { usePageVisible } from '../../utils/use-page-visible'
+import { applyAppearance, type AppSettings } from '../../utils/app-settings'
+import {
+  BLEND_MS,
+  interpolatePosition,
+  makeWindowReady,
+  syncSurfaceVisible,
+  wordsKey,
+  applySurfaceVisible,
+  type LyricWord,
+  type PositionBaseline,
+} from '../../utils/playback-sync'
 import './app.css'
 
 type UiState = { floating_visible: boolean; floating_font_scale: number };
-type AppSettingsSnapshot = { behavior: { hide_when_paused: boolean } };
 
 type TrackRef = {
   uri: string;
@@ -28,12 +38,6 @@ type TrackRef = {
   album: string | null;
   duration_ms: number;
   artwork_url: string | null;
-};
-
-type LyricWord = {
-  start_ms: number;
-  end_ms: number;
-  text: string;
 };
 
 type RenderSnapshot = {
@@ -54,26 +58,7 @@ function applyFloatingFont(scale: number) {
   document.documentElement.style.setProperty('--font-scale', String(scale));
 }
 
-function applySurfaceVisible(visible: boolean) {
-  document.documentElement.dataset.surfaceVisible = String(visible);
-}
-
 applySurfaceVisible(false);
-
-function syncSurfaceVisible(
-  desiredRef: { current: boolean },
-  autoHiddenRef: { current: boolean },
-  setVisible: (visible: boolean) => void,
-  desired?: boolean,
-  autoHidden?: boolean,
-) {
-  if (desired !== undefined) desiredRef.current = desired;
-  if (autoHidden !== undefined) autoHiddenRef.current = autoHidden;
-  const visible = desiredRef.current && !autoHiddenRef.current;
-  setVisible(visible);
-  applySurfaceVisible(visible);
-  return visible;
-}
 
 function sameTrack(a: TrackRef | null, b: TrackRef | null) {
   return a?.uri === b?.uri
@@ -82,12 +67,6 @@ function sameTrack(a: TrackRef | null, b: TrackRef | null) {
     && a?.album === b?.album
     && a?.duration_ms === b?.duration_ms
     && a?.artwork_url === b?.artwork_url;
-}
-
-function wordsKey(words: LyricWord[] | null | undefined) {
-  return (words ?? [])
-    .map((word) => `${word.start_ms}:${word.end_ms}:${word.text}`)
-    .join('|');
 }
 
 function formatMs(ms: number): string {
@@ -99,44 +78,61 @@ function formatMs(ms: number): string {
 
 const SURFACE_LABEL = 'main';
 const FALLBACK_ART = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
-const BLEND_MS = 500;
-let mainWindowReadyPromise: Promise<void> | null = null;
-
-function ensureMainWindowReady(): Promise<void> {
-  if (!mainWindowReadyPromise) {
-    mainWindowReadyPromise = invoke('window_ready', { label: SURFACE_LABEL })
-      .then(() => undefined)
-      .catch((err) => {
-        mainWindowReadyPromise = null;
-        throw err;
-      });
-  }
-  return mainWindowReadyPromise;
-}
-
-type PositionBaseline = {
-  ms: number;
-  at: number;
-  targetMs: number;
-  targetAt: number;
-  blendDur: number;
-};
-
-// Interpolate playback position with continuous blending between the previous
-// trajectory and a new target. Avoids discrete per-poll jumps that would
-// otherwise show up as visible jitter in the karaoke wipe. When paused,
-// freezes at the baseline value (which was snapped to the paused position).
-function interpolatePosition(b: PositionBaseline, now: number, playing: boolean): number {
-  if (!playing) return b.ms;
-  const currentTraj = b.ms + (now - b.at);
-  const targetTraj = b.targetMs + (now - b.targetAt);
-  const elapsed = now - b.at;
-  if (elapsed >= b.blendDur) return targetTraj;
-  const t = elapsed / Math.max(1, b.blendDur);
-  return currentTraj * (1 - t) + targetTraj * t;
-}
+const ensureMainWindowReady = makeWindowReady(SURFACE_LABEL);
 
 type LineRef = { start_ms: number; text: string };
+type LineState = 'active' | 'passed' | 'upcoming';
+
+interface LyricLineProps {
+  index: number;
+  text: string;
+  state: LineState;
+  words: LyricWord[] | null;
+  isLastEmpty: boolean;
+  onSeek: (index: number, ts: number) => void;
+  lyricsRef: MutableRefObject<(HTMLDivElement | null)[]>;
+  wordRefs: MutableRefObject<(HTMLSpanElement | null)[]>;
+}
+
+// React.memo so non-active lines don't reconcile on every active-line change.
+// Only the previous-active and new-active lines re-render per transition.
+const LyricLine = memo(function LyricLine({
+  index,
+  text,
+  state,
+  words,
+  isLastEmpty,
+  onSeek,
+  lyricsRef,
+  wordRefs,
+}: LyricLineProps) {
+  const className =
+    state === 'active' ? 'lyric-line active'
+    : state === 'passed' ? 'lyric-line passed'
+    : 'lyric-line';
+  return (
+    <div
+      ref={(el) => { lyricsRef.current[index] = el; }}
+      className={className}
+      onClick={(event) => onSeek(index, event.timeStamp)}
+      role="button"
+      tabIndex={0}
+      title="Click to seek here"
+    >
+      {words ? (
+        words.map((w, wi) => (
+          <span
+            key={wi}
+            ref={(el) => { wordRefs.current[wi] = el; }}
+            className="lyric-word upcoming"
+          >{w.text}</span>
+        ))
+      ) : (
+        text || (isLastEmpty ? '' : '♪')
+      )}
+    </div>
+  );
+});
 
 function WindowControls() {
   const win = getCurrentWindow();
@@ -167,6 +163,9 @@ function App() {
   const [surfaceVisible, setSurfaceVisible] = useState(false)
   const baselineRef = useRef<PositionBaseline>({ ms: 0, at: 0, targetMs: 0, targetAt: 0, blendDur: 1 })
   const lyricsRef = useRef<(HTMLDivElement | null)[]>([])
+  const lyricsPaneRef = useRef<HTMLElement | null>(null)
+  const lyricsContainerRef = useRef<HTMLDivElement | null>(null)
+  const reelUriRef = useRef('')
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([])
   const progressFillRef = useRef<HTMLDivElement | null>(null)
   const positionLabelRef = useRef<HTMLSpanElement | null>(null)
@@ -179,9 +178,19 @@ function App() {
   const desiredVisibleRef = useRef(true)
   const autoHiddenRef = useRef(false)
   const [hideWhenPaused, setHideWhenPaused] = useState(false)
+  const [hideWhenIdle, setHideWhenIdle] = useState(false)
+  const [karaokeMode, setKaraokeMode] = useState(false)
+  const [lyricOffsetMs, setLyricOffsetMs] = useState(0)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const offsetUriRef = useRef('')
 
-  function seekToLine(index: number, eventTimeStamp: number) {
-    const target = lyrics[index]?.start_ms;
+  // Stable so memoized LyricLine children don't re-render on every parent tick.
+  const lyricsRefForCb = useRef<LineRef[]>(lyrics);
+  useEffect(() => {
+    lyricsRefForCb.current = lyrics;
+  }, [lyrics]);
+  const seekToLine = useCallback((index: number, eventTimeStamp: number) => {
+    const target = lyricsRefForCb.current[index]?.start_ms;
     if (target === undefined) return;
     const now = eventTimeStamp;
     // Optimistic UI: snap position + active line immediately so click feels
@@ -191,7 +200,7 @@ function App() {
     setActiveLine(index);
     setActiveLineWords([]);
     invoke('playback_seek_ms', { positionMs: target }).catch(() => { });
-  }
+  }, []);
 
   function seekFromClick(event: React.MouseEvent<HTMLDivElement>) {
     if (!progressTrackRef.current || !track || track.duration_ms === 0) return
@@ -224,6 +233,19 @@ function App() {
         activeWordsKeyRef.current = '';
         setActiveLineWords([]);
         lyricsLoadedUriRef.current = '';
+        lyricsRef.current = [];
+        wordRefs.current = [];
+        // Pull the persisted lyric offset for the new track so the quick menu
+        // shows the stored value (the backend already applies it to sync).
+        if (uri && offsetUriRef.current !== uri) {
+          offsetUriRef.current = uri;
+          invoke<number>('get_lyric_offset')
+            .then((ms) => setLyricOffsetMs(ms))
+            .catch(() => setLyricOffsetMs(0));
+        } else if (!uri) {
+          offsetUriRef.current = '';
+          setLyricOffsetMs(0);
+        }
       }
 
       setSnapshotReady(true);
@@ -302,9 +324,12 @@ function App() {
 
       const [s, appSettings] = await Promise.all([
         invoke<UiState>('get_ui_state'),
-        invoke<AppSettingsSnapshot>('get_settings'),
+        invoke<AppSettings>('get_settings'),
       ]);
       setHideWhenPaused(appSettings.behavior.hide_when_paused);
+      setHideWhenIdle(appSettings.window.hide_when_idle);
+      setKaraokeMode(appSettings.behavior.karaoke_mode);
+      applyAppearance(appSettings.appearance);
       syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, s.floating_visible);
       applyFloatingFont(s.floating_font_scale);
       unlisten = await listen<UiState>('ui-settings-changed', (e) => {
@@ -316,9 +341,12 @@ function App() {
         );
         applyFloatingFont(e.payload.floating_font_scale);
       });
-      unlistenAppSettings = await listen<AppSettingsSnapshot>('app-settings-changed', (e) => {
+      unlistenAppSettings = await listen<AppSettings>('app-settings-changed', (e) => {
         const enabled = e.payload.behavior.hide_when_paused;
         setHideWhenPaused(enabled);
+        setHideWhenIdle(e.payload.window.hide_when_idle);
+        setKaraokeMode(e.payload.behavior.karaoke_mode);
+        applyAppearance(e.payload.appearance);
         if (!enabled) {
           syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, undefined, false);
         }
@@ -330,14 +358,18 @@ function App() {
     };
   }, []);
 
-  // Auto-hide/show the window when playback state changes, if hide_when_paused is enabled.
+  // Auto-hide/show the window when playback state changes:
+  //  - hide_when_paused → hide while not playing
+  //  - hide_when_idle   → hide when there's no track at all (Spotify idle)
   useEffect(() => {
     if (!snapshotReady) return;
     const win = getCurrentWindow();
-    if (hideWhenPaused && !isPlaying && desiredVisibleRef.current) {
+    const idle = !track;
+    const shouldAutoHide = (hideWhenPaused && !isPlaying) || (hideWhenIdle && idle);
+    if (shouldAutoHide && desiredVisibleRef.current) {
       syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, undefined, true);
       void win.hide();
-    } else if (autoHiddenRef.current && (!hideWhenPaused || isPlaying)) {
+    } else if (autoHiddenRef.current && !shouldAutoHide) {
       const visible = syncSurfaceVisible(
         desiredVisibleRef,
         autoHiddenRef,
@@ -349,66 +381,105 @@ function App() {
         void win.show();
       }
     }
-  }, [hideWhenPaused, isPlaying, snapshotReady]);
+  }, [hideWhenPaused, hideWhenIdle, isPlaying, track, snapshotReady]);
 
   // Smooth-scroll the active lyric to vertical center using a single rAF after
   // layout settles. scrollIntoView with smooth behavior provides hardware-accel
   // scrolling without re-running on every poll.
+  // Reel: centre the active line by translating the whole lyrics column with a
+  // long eased CSS transition, instead of native smooth-scroll (which lands as
+  // an abrupt jump). On a song change we snap (no transition) so we don't slide
+  // across from the previous track's offset. Reduced-motion → snap, no glide.
   useEffect(() => {
-    if (activeLine === null) return;
+    const pane = lyricsPaneRef.current;
+    const container = lyricsContainerRef.current;
+    if (!pane || !container) return;
+
+    const uri = track?.uri ?? '';
+    const songChanged = uri !== reelUriRef.current;
+    reelUriRef.current = uri;
+
+    // Karaoke mode centres via CSS (only active+next shown) — no reel offset.
+    if (karaokeMode || activeLine === null) {
+      container.style.transform = 'translateY(0)';
+      return;
+    }
+
     const el = lyricsRef.current[activeLine];
     if (!el) return;
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const raf = requestAnimationFrame(() => {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Layout values (offsetTop/clientHeight) are independent of the current
+      // transform, so this absolute target never drifts.
+      const target = pane.clientHeight / 2
+        - container.offsetTop
+        - el.offsetTop
+        - el.offsetHeight / 2;
+      const noGlide = reduceMotion || songChanged;
+      container.style.transition = noGlide ? 'none' : '';
+      container.style.transform = `translateY(${target}px)`;
+      if (noGlide) {
+        // Restore the glide for subsequent in-song line changes.
+        void container.offsetHeight;
+        container.style.transition = '';
+      }
     });
     return () => cancelAnimationFrame(raf);
-  }, [activeLine])
+  }, [activeLine, karaokeMode, track?.uri, lyrics.length])
 
-  // Interpolate position between backend polls so the progress bar moves
-  // smoothly. Directly mutates the progress-fill width and time label via
-  // refs — previously this called `setPositionMs` 60 Hz which forced React to
-  // reconcile the whole subtree (lyric list included) every frame. Now zero
-  // React work in the rAF loop.
-  useEffect(() => {
-    if (!isPlaying || !pageVisible || !surfaceVisible) return;
-    let raf = 0;
-    const durationMs = track?.duration_ms ?? 0;
-    const tick = () => {
-      const pos = interpolatePosition(baselineRef.current, performance.now(), true);
-      const fill = progressFillRef.current;
-      const label = positionLabelRef.current;
-      if (durationMs > 0 && fill) {
-        const pct = Math.min(100, Math.max(0, (Math.min(pos, durationMs) / durationMs) * 100)).toFixed(2);
-        const nextWidth = `${pct}%`;
-        if (fill.style.width !== nextWidth) {
-          fill.style.width = nextWidth;
-        }
-      }
-      if (label) {
-        const totalSec = Math.floor(pos / 1000);
-        const m = Math.floor(totalSec / 60);
-        const s = totalSec % 60;
-        const nextTime = `${m}:${s.toString().padStart(2, '0')}`;
-        if (label.textContent !== nextTime) {
-          label.textContent = nextTime;
-        }
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [isPlaying, pageVisible, surfaceVisible, track?.duration_ms])
-
-  // 60fps word-state updater. Mutates className/CSS var directly on span refs
-  // so the React tree is NOT re-rendered every frame.
+  // Combined per-frame loop: progress bar + word karaoke colouring share one
+  // rAF instead of two. Cuts callback count in half and lets both consumers
+  // reuse a single `interpolatePosition()` result per frame.
+  //
+  // DOM-write gates use JS-side caches (lastWordCls / lastWordProgQ) — the
+  // previous version called `el.className` / `el.getAttribute(...)` every
+  // frame, both of which trigger style-system reads inside WebKit. Avoiding
+  // them keeps the loop free of forced style-recalc.
   //
   // When paused or hidden: position is frozen, so run the loop body once to
-  // lock visual state and exit. Avoids a 60Hz no-op while no user can see it.
+  // lock visual state and exit. No 60 Hz no-op while no user can see it.
   useEffect(() => {
-    if (activeLineWords.length === 0 || !pageVisible || !surfaceVisible) return;
+    if (!pageVisible || !surfaceVisible) return;
+    if (!isPlaying && activeLineWords.length === 0) {
+      // Nothing to animate (no words, paused, hidden) — also bail on the
+      // progress-bar loop since nothing moves while paused.
+      return;
+    }
     let raf = 0;
+    const durationMs = track?.duration_ms ?? 0;
+    let lastProgWidth = '';
+    let lastTimeLabel = '';
+    const lastWordCls: string[] = new Array(activeLineWords.length).fill('');
+    const lastWordProgQ: number[] = new Array(activeLineWords.length).fill(-1);
     const tick = () => {
       const pos = interpolatePosition(baselineRef.current, performance.now(), isPlaying);
+
+      // Progress bar + time label (only while playing — otherwise frozen).
+      if (isPlaying) {
+        const fill = progressFillRef.current;
+        const label = positionLabelRef.current;
+        if (durationMs > 0 && fill) {
+          const pct = Math.min(100, Math.max(0, (Math.min(pos, durationMs) / durationMs) * 100)).toFixed(2);
+          const nextWidth = `${pct}%`;
+          if (nextWidth !== lastProgWidth) {
+            lastProgWidth = nextWidth;
+            fill.style.width = nextWidth;
+          }
+        }
+        if (label) {
+          const totalSec = Math.floor(pos / 1000);
+          const m = Math.floor(totalSec / 60);
+          const s = totalSec % 60;
+          const nextTime = `${m}:${s.toString().padStart(2, '0')}`;
+          if (nextTime !== lastTimeLabel) {
+            lastTimeLabel = nextTime;
+            label.textContent = nextTime;
+          }
+        }
+      }
+
+      // Word colouring — runs once when paused to lock the final state.
       for (let i = 0; i < activeLineWords.length; i++) {
         const w = activeLineWords[i];
         const el = wordRefs.current[i];
@@ -425,18 +496,24 @@ function App() {
           cls = 'lyric-word upcoming';
           progress = 0;
         }
-        if (el.className !== cls) el.className = cls;
-        const progStr = progress.toFixed(3);
-        if (el.getAttribute('data-last-prog') !== progStr) {
-          el.setAttribute('data-last-prog', progStr);
-          el.style.setProperty('--word-progress', progStr);
+        if (cls !== lastWordCls[i]) {
+          lastWordCls[i] = cls;
+          el.className = cls;
+        }
+        // Quantize to 0.001 buckets — same 3-decimal precision as before, but
+        // the comparison stays in JS (Int) instead of round-tripping a string
+        // attribute through the DOM. No visual difference.
+        const progQ = (progress * 1000) | 0;
+        if (progQ !== lastWordProgQ[i]) {
+          lastWordProgQ[i] = progQ;
+          el.style.setProperty('--word-progress', (progQ / 1000).toString());
         }
       }
       if (isPlaying) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [activeLineWords, isPlaying, pageVisible, surfaceVisible])
+  }, [activeLineWords, isPlaying, pageVisible, surfaceVisible, track?.duration_ms])
 
   const artworkSrc = track?.artwork_url ?? FALLBACK_ART;
   const hasTrack = Boolean(track);
@@ -459,6 +536,21 @@ function App() {
     refreshedUriRef.current = '';
     invoke('force_refresh_lyrics').catch(() => { });
   }
+
+  // Per-track lyric timing offset (the quick-menu "Delay lyrics" control).
+  // Positive = lyrics later, negative = earlier. The backend persists per URI
+  // and re-broadcasts a snapshot, so the visible sync updates immediately.
+  function nudgeOffset(deltaMs: number) {
+    invoke<number>('nudge_lyric_offset', { deltaMs })
+      .then((ms) => setLyricOffsetMs(ms))
+      .catch(() => { });
+  }
+  function resetOffset() {
+    invoke<number>('set_lyric_offset', { offsetMs: 0 })
+      .then((ms) => setLyricOffsetMs(ms))
+      .catch(() => { });
+  }
+  const offsetLabel = `${lyricOffsetMs > 0 ? '+' : ''}${lyricOffsetMs} ms`;
 
   return (
     <main className="lyra-window">
@@ -502,12 +594,54 @@ function App() {
               )}
             </div>
             <div className="track-actions">
-              <button className="track-action-btn" aria-label="Like" disabled={!hasTrack}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
-              </button>
-              <button className="track-action-btn" aria-label="Options" disabled={!hasTrack}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /><circle cx="5" cy="12" r="2" /></svg>
-              </button>
+              <div className="track-menu">
+                <button
+                  className={`track-action-btn ${menuOpen ? 'active' : ''}`}
+                  aria-label="Options"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  disabled={!hasTrack}
+                  onClick={() => setMenuOpen((o) => !o)}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /><circle cx="5" cy="12" r="2" /></svg>
+                </button>
+                {menuOpen && (
+                  <>
+                    <div className="track-menu-backdrop" onClick={() => setMenuOpen(false)} />
+                    <div className="track-menu-popover" role="menu">
+                      <div className="track-menu-section">
+                        <span className="track-menu-title">Delay lyrics</span>
+                        <div className="offset-control">
+                          <button
+                            type="button"
+                            className="offset-btn"
+                            aria-label="Lyrics earlier"
+                            onClick={() => nudgeOffset(-100)}
+                          >−</button>
+                          <span className="offset-value">{offsetLabel}</span>
+                          <button
+                            type="button"
+                            className="offset-btn"
+                            aria-label="Lyrics later"
+                            onClick={() => nudgeOffset(100)}
+                          >+</button>
+                        </div>
+                        <button
+                          type="button"
+                          className="track-menu-reset"
+                          onClick={resetOffset}
+                          disabled={lyricOffsetMs === 0}
+                        >Reset to 0</button>
+                      </div>
+                      <button
+                        type="button"
+                        className="track-menu-item"
+                        onClick={() => { retryLyrics(); setMenuOpen(false); }}
+                      >Refresh lyrics</button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
@@ -557,42 +691,35 @@ function App() {
       </section>
 
       {/* Right Column: Lyrics Pane */}
-      <section className={`lyrics-pane ${lyricsViewState !== 'ready' ? 'is-placeholder' : ''}`}>
+      <section
+        className={`lyrics-pane ${lyricsViewState !== 'ready' ? 'is-placeholder' : ''}`}
+        ref={lyricsPaneRef}
+      >
         {lyricsViewState === 'ready' ? (
-          <div className="lyrics-container">
+          <div
+            className={`lyrics-container ${karaokeMode ? 'is-karaoke' : ''}`}
+            ref={lyricsContainerRef}
+          >
             {lyrics.map((line, index) => {
-              let className = 'lyric-line'
-              if (index === activeLine) className += ' active'
-              else if (activeLine !== null && index < activeLine) className += ' passed'
-
+              const lineState: LineState =
+                index === activeLine ? 'active'
+                : (activeLine !== null && index < activeLine) ? 'passed'
+                : 'upcoming';
               const isActive = index === activeLine;
-              const showWords = isActive && activeLineWords.length > 0;
-
+              const words = isActive && activeLineWords.length > 0 ? activeLineWords : null;
               return (
-                <div
+                <LyricLine
                   key={index}
-                  ref={(el) => {
-                    lyricsRef.current[index] = el
-                  }}
-                  className={className}
-                  onClick={(event) => seekToLine(index, event.timeStamp)}
-                  role="button"
-                  tabIndex={0}
-                  title="Click to seek here"
-                >
-                  {showWords ? (
-                    activeLineWords.map((w, wi) => (
-                      <span
-                        key={wi}
-                        ref={(el) => { wordRefs.current[wi] = el; }}
-                        className="lyric-word upcoming"
-                      >{w.text}</span>
-                    ))
-                  ) : (
-                    line.text || (index === lyrics.length - 1 ? '' : '♪')
-                  )}
-                </div>
-              )
+                  index={index}
+                  text={line.text}
+                  state={lineState}
+                  words={words}
+                  isLastEmpty={index === lyrics.length - 1}
+                  onSeek={seekToLine}
+                  lyricsRef={lyricsRef}
+                  wordRefs={wordRefs}
+                />
+              );
             })}
           </div>
         ) : (

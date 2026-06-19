@@ -1,11 +1,11 @@
 :root {
-  --bg-sidebar: #e8e8ed;
-  --bg-pane: #ffffff;
-  --bg-card: #ffffff;
+  --bg-sidebar: rgba(0, 0, 0, 0.035);
+  --bg-pane: transparent;
+  --bg-card: rgba(255, 255, 255, 0.035);
   --text-primary: #1c1c1e;
   --text-secondary: #6c6c70;
-  --border-color: rgba(0, 0, 0, 0.1);
-  --border-row: rgba(0, 0, 0, 0.08);
+  --border-color: rgba(0, 0, 0, 0.08);
+  --border-row: rgba(0, 0, 0, 0.06);
   --input-bg: rgba(0, 0, 0, 0.06);
   --input-hover: rgba(0, 0, 0, 0.1);
   --item-active: rgba(0, 0, 0, 0.06);
@@ -13,20 +13,20 @@
   --item-active-text: #ffffff;
   --knob-shadow: 0 2px 6px rgba(0, 0, 0, 0.18), 0 1px 2px rgba(0, 0, 0, 0.12);
   --accent: #0A84FF;
-  --panel-radius: 10px;
+  --panel-radius: 12px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg-sidebar: #2c2c2e;
-    --bg-pane: #1D1D1F;
-    --bg-card: #3a3a3c;
+    --bg-sidebar: rgba(0, 0, 0, 0.28);
+    --bg-pane: transparent;
+    --bg-card: rgba(255, 255, 255, 0.045);
     --text-primary: #ffffff;
     --text-secondary: #98989d;
-    --border-color: rgba(255, 255, 255, 0.1);
-    --border-row: rgba(255, 255, 255, 0.07);
-    --input-bg: rgba(255, 255, 255, 0.1);
-    --input-hover: rgba(255, 255, 255, 0.16);
+    --border-color: rgba(255, 255, 255, 0.07);
+    --border-row: rgba(255, 255, 255, 0.05);
+    --input-bg: rgba(255, 255, 255, 0.09);
+    --input-hover: rgba(255, 255, 255, 0.14);
     --item-active: rgba(255, 255, 255, 0.1);
     --item-active-bg: #0A84FF;
     --knob-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -41,15 +41,22 @@ body {
   position: fixed;
   inset: 0;
   display: flex;
-  background: var(--bg-pane);
+  background: rgba(245, 245, 247, 0.90);
+  backdrop-filter: blur(30px) saturate(140%);
+  -webkit-backdrop-filter: blur(30px) saturate(140%);
   color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   font-size: 13px;
   overflow: hidden;
   user-select: none;
   cursor: default;
-  /* No backdrop-filter on the shell — transparent bg needs opaque shell */
+}
+
+@media (prefers-color-scheme: dark) {
+  .settings-shell {
+    background: rgba(28, 28, 30, 0.88);
+  }
 }
 
 .settings-sidebar {
@@ -61,6 +68,7 @@ body {
   flex-direction: column;
   padding: 10px;
   box-sizing: border-box;
+  z-index: 1;
 }
 
 .sidebar-traffic-spacer {
@@ -140,7 +148,8 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: transparent;
+  background: var(--bg-pane);
+  z-index: 1;
 }
 
 .pane-header {
@@ -189,14 +198,21 @@ body {
 }
 
 .group-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--panel-radius);
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  /* Mild glass tint on the card surface only */
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+@media (prefers-color-scheme: light) {
+  .group-card {
+    background: rgba(0, 0, 0, 0.025);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.05);
+  }
 }
 
 .row {
@@ -284,16 +300,14 @@ input[type="range"]::-webkit-slider-thumb:active {
 }
 
 .snap-slider-labels {
-  display: flex;
-  justify-content: space-between;
-  padding: 0 8px;
+  position: relative;
+  height: 14px;
+  margin: 4px 8px 0 8px;
 }
 
 .snap-label {
   font-size: 11px;
   color: var(--text-secondary);
-  text-align: center;
-  flex: 1;
   line-height: 1;
   transition: color 0.15s;
   white-space: nowrap;
@@ -304,31 +318,8 @@ input[type="range"]::-webkit-slider-thumb:active {
   font-weight: 500;
 }
 
-.segmented {
-  display: flex;
-  background: var(--input-bg);
-  border-radius: 7px;
-  padding: 2px;
-  gap: 1px;
-}
-.segmented-option {
-  padding: 5px 12px;
-  border-radius: 5px;
-  border: none;
-  background: transparent;
-  color: var(--text-primary);
-  font-size: 12.5px;
-  font-weight: 500;
-  cursor: default;
-  transition: background 0.15s;
-}
-.segmented-option:hover:not(.active) {
-  background: var(--item-active);
-}
-.segmented-option.active {
-  background: var(--bg-card);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0,0,0,0.08);
-}
+
+
 
 .action-btn {
   padding: 6px 14px;
@@ -402,24 +393,24 @@ input[type="range"]::-webkit-slider-thumb:active {
 /* ----------------================ macOS / Raycast Theme ================---------------- */
 
 body[data-os="macos"] {
-  --bg-sidebar: #1e1e1e;
-  --bg-pane: #252522;
-  --bg-card: transparent;
+  --bg-sidebar: rgba(0, 0, 0, 0.14);
+  --bg-pane: transparent;
+  --bg-card: rgba(255, 255, 255, 0.045);
   --text-primary: #ededed;
   --text-secondary: #909090;
   --border-color: rgba(255, 255, 255, 0.06);
   --input-bg: rgba(255, 255, 255, 0.06);
   --input-hover: rgba(255, 255, 255, 0.1);
   --item-active: rgba(255, 255, 255, 0.05);
-  --item-active-bg: rgba(255, 255, 255, 0.1);
+  --item-active-bg: rgba(255, 255, 255, 0.08);
   --item-active-text: #ffffff;
   --knob-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 @media (prefers-color-scheme: light) {
   body[data-os="macos"] {
-    --bg-sidebar: #ffffff;
-    --bg-pane: #ffffff;
+    --bg-sidebar: rgba(0, 0, 0, 0.035);
+    --bg-pane: transparent;
     --text-primary: #000000;
     --text-secondary: #797979;
     --border-color: rgba(0, 0, 0, 0.06);
@@ -462,39 +453,209 @@ body[data-os="macos"] .pane-body::before {
   -webkit-app-region: drag;
 }
 
-/* Form Groups: Mac has borders between groups, transparent cards */
+/* Form Groups: Mac has Ventura-style rounded translucent cards */
 body[data-os="macos"] .group {
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 24px;
+  padding-bottom: 8px;
 }
 body[data-os="macos"] .group:last-child {
   border-bottom: none;
 }
 body[data-os="macos"] .group-title {
-  display: none;
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 16px 0 6px 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 body[data-os="macos"] .group-card {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  border-radius: 0;
+  gap: 0;
+  padding: 0 16px;
+}
+@media (prefers-color-scheme: light) {
+  body[data-os="macos"] .group-card {
+    background: rgba(0, 0, 0, 0.025);
+    border: 1px solid rgba(0, 0, 0, 0.04);
+  }
 }
 
 /* MacOS Segmented Controls Override */
-body[data-os="macos"] .segmented-option.active {
-  background: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(255, 255, 255, 0.04);
+body[data-os="macos"] .segmented {
+  background: rgba(120, 120, 128, 0.24);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 0;
 }
 @media (prefers-color-scheme: light) {
-  body[data-os="macos"] .segmented-option.active {
-    background: #ffffff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 0 0 0.5px rgba(0,0,0,0.06);
+  body[data-os="macos"] .segmented {
+    background: rgba(120, 120, 128, 0.12);
   }
+}
+body[data-os="macos"] .segmented-indicator {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  box-shadow: 0 0.5px 1.5px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+}
+@media (prefers-color-scheme: light) {
+  body[data-os="macos"] .segmented-indicator {
+    background: #ffffff;
+    box-shadow: 0 0.5px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  }
+}
+body[data-os="macos"] .segmented-option {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 14px;
+  letter-spacing: -0.01em;
+}
+body[data-os="macos"] .segmented-option.active {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* MacOS Native Slider Override */
+body[data-os="macos"] input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 2px;
+}
+@media (prefers-color-scheme: light) {
+  body[data-os="macos"] input[type="range"]::-webkit-slider-runnable-track {
+    background: rgba(0, 0, 0, 0.18);
+  }
+}
+body[data-os="macos"] input[type="range"]::-webkit-slider-thumb {
+  height: 16px;
+  width: 16px;
+  background: #ffffff;
+  border: 0.5px solid rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  margin-top: -6px;
+  border-radius: 50%;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+body[data-os="macos"] input[type="range"]::-webkit-slider-thumb:active {
+  transform: none;
+}
+
+/* MacOS Native Buttons Override */
+body[data-os="macos"] .action-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  font-size: 12px;
+  padding: 4px 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+body[data-os="macos"] .action-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+body[data-os="macos"] .action-btn:active {
+  background: rgba(255, 255, 255, 0.08);
+  transform: none;
+}
+@media (prefers-color-scheme: light) {
+  body[data-os="macos"] .action-btn {
+    background: rgba(0, 0, 0, 0.06);
+    border: 0.5px solid rgba(0, 0, 0, 0.12);
+  }
+  body[data-os="macos"] .action-btn:hover {
+    background: rgba(0, 0, 0, 0.09);
+  }
+  body[data-os="macos"] .action-btn:active {
+    background: rgba(0, 0, 0, 0.04);
+  }
+}
+
+/* MacOS Native Toggles Override */
+body[data-os="macos"] .native-toggle {
+  width: 28px;
+  height: 16px;
+  background: rgba(120, 120, 128, 0.32);
+  border-radius: 999px;
+  box-shadow: none;
+  border: none;
+  transition: background 0.15s ease-out;
+}
+body[data-os="macos"] .native-toggle::after {
+  width: 14px;
+  height: 14px;
+  top: 1px;
+  left: 1px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+body[data-os="macos"] .native-toggle:checked {
+  background: #30d158;
+}
+@media (prefers-color-scheme: light) {
+  body[data-os="macos"] .native-toggle {
+    background: rgba(120, 120, 128, 0.2);
+  }
+  body[data-os="macos"] .native-toggle:checked {
+    background: #34c759;
+  }
+}
+body[data-os="macos"] .native-toggle:checked::after {
+  transform: translateX(12px);
+}
+
+/* MacOS Custom Select overrides */
+body[data-os="macos"] .custom-select-trigger {
+  background: rgba(255, 255, 255, 0.08);
+  border: 0.5px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  font-size: 12px;
+  padding: 4px 10px;
+  height: 24px;
+  box-sizing: border-box;
+}
+body[data-os="macos"] .custom-select-trigger:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+body[data-os="macos"] .custom-select-trigger.open .custom-select-arrow {
+  transform: none;
+}
+@media (prefers-color-scheme: light) {
+  body[data-os="macos"] .custom-select-trigger {
+    background: rgba(0, 0, 0, 0.04);
+    border: 0.5px solid rgba(0, 0, 0, 0.08);
+  }
+  body[data-os="macos"] .custom-select-trigger:hover {
+    background: rgba(0, 0, 0, 0.07);
+  }
+}
+body[data-os="macos"] .custom-select-option {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+body[data-os="macos"] .custom-select-option.active {
+  background-color: transparent;
+  color: var(--text-primary);
+}
+body[data-os="macos"] .custom-select-option:hover {
+  background-color: var(--accent, #0A84FF);
+  color: #ffffff;
+}
+body[data-os="macos"] .custom-select-option.active:hover {
+  background-color: var(--accent, #0A84FF);
+  color: #ffffff;
 }
 
 /* Row Grid Alignment */
@@ -502,58 +663,27 @@ body[data-os="macos"] .row {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 20px;
-  padding: 8px 0;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-row);
+}
+body[data-os="macos"] .row:last-child {
   border-bottom: none;
 }
 body[data-os="macos"] .row-label {
-  text-align: right;
+  text-align: left;
   color: var(--text-primary);
   font-weight: 500;
-  flex: 0 0 160px;
+  flex: 1;
   max-width: none;
+  font-size: 13px;
 }
 body[data-os="macos"] .row-control {
-  flex: 1;
-  justify-content: flex-start;
-}
-
-/* Toggle Checkbox substitution for MacOS */
-body[data-os="macos"] .native-toggle {
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  background: transparent;
-  border: 0.5px solid var(--text-secondary);
-  box-shadow: none;
-}
-body[data-os="macos"] .native-toggle::after {
-  content: '';
-  width: 10px;
-  height: 8px;
-  background: transparent;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 8' fill='none'%3E%3Cpath d='M1 3.5L4 6.5L9 1' stroke='rgba(255,255,255,0.9)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
-  box-shadow: none;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%) scale(0.5);
-  opacity: 0;
-  transition: all 0.15s;
-}
-@media (prefers-color-scheme: light) {
-  body[data-os="macos"] .native-toggle::after {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 8' fill='none'%3E%3Cpath d='M1 3.5L4 6.5L9 1' stroke='rgba(0,0,0,0.8)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  }
-}
-body[data-os="macos"] .native-toggle:checked {
-  background: transparent;
-  border-color: var(--text-primary);
-}
-body[data-os="macos"] .native-toggle:checked::after {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 /* ----------------================ Windows / Fluent Design Theme ================---------------- */
@@ -592,8 +722,8 @@ body[data-os="macos"] .native-toggle:checked::after {
 }
 
 body[data-os="windows"] {
-  --bg-sidebar: #1c1c1c;
-  --bg-pane: #242424;
+  --bg-sidebar: #202020;
+  --bg-pane: #272727;
   --bg-card: #2c2c2c;
   --text-primary: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.55);
@@ -629,12 +759,21 @@ body[data-os="windows"] {
 
 body[data-os="windows"] .settings-shell {
   font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+  background: var(--bg-pane);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+@media (prefers-color-scheme: light) {
+  body[data-os="windows"] .settings-shell {
+    background: var(--bg-pane);
+  }
 }
 
 body[data-os="windows"] .settings-sidebar {
   width: 240px;
   padding: 44px 8px 12px;
   border-right: 1px solid var(--border-color);
+  background: var(--bg-sidebar);
 }
 
 body[data-os="windows"] .sidebar-traffic-spacer {
@@ -683,6 +822,7 @@ body[data-os="windows"] .pane-header h1 {
 body[data-os="windows"] .pane-body {
   padding: 20px 28px 36px;
   gap: 20px;
+  background: var(--bg-pane);
 }
 
 body[data-os="windows"] .group-title {
@@ -699,6 +839,7 @@ body[data-os="windows"] .group-card {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  background: var(--bg-card);
 }
 
 body[data-os="windows"] .row {
@@ -740,5 +881,292 @@ body[data-os="windows"] .native-toggle:checked {
 body[data-os="windows"] .native-toggle:checked::after {
   background: white;
   transform: translateX(20px);
+}
+
+/* Windows 11 Slider Override */
+body[data-os="windows"] input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.24);
+  border-radius: 2px;
+}
+@media (prefers-color-scheme: light) {
+  body[data-os="windows"] input[type="range"]::-webkit-slider-runnable-track {
+    background: rgba(0, 0, 0, 0.24);
+  }
+}
+body[data-os="windows"] input[type="range"]::-webkit-slider-thumb {
+  height: 18px;
+  width: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 4px solid var(--bg-card);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  margin-top: -7px;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+body[data-os="windows"] input[type="range"]::-webkit-slider-thumb:hover {
+  background: #ffffff;
+  border-color: var(--accent);
+}
+
+/* Windows 11 Native Buttons Override */
+body[data-os="windows"] .action-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom-color: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  font-size: 13px;
+  padding: 5px 16px;
+}
+body[data-os="windows"] .action-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+body[data-os="windows"] .action-btn:active {
+  background: rgba(255, 255, 255, 0.03);
+  transform: scale(0.98);
+}
+@media (prefers-color-scheme: light) {
+  body[data-os="windows"] .action-btn {
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-bottom-color: rgba(0, 0, 0, 0.3);
+  }
+  body[data-os="windows"] .action-btn:hover {
+    background: #f9f9f9;
+  }
+}
+
+/* Windows 11 Segmented controls override */
+body[data-os="windows"] .segmented {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 2px;
+}
+@media (prefers-color-scheme: light) {
+  body[data-os="windows"] .segmented {
+    background: rgba(0, 0, 0, 0.03);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+  }
+}
+body[data-os="windows"] .segmented-indicator {
+  background: rgba(255, 255, 255, 0.10);
+  border-radius: 3px;
+  box-shadow: none;
+}
+@media (prefers-color-scheme: light) {
+  body[data-os="windows"] .segmented-indicator {
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+}
+body[data-os="windows"] .segmented-option {
+  font-size: 12px;
+  font-weight: 400;
+  border-radius: 3px;
+}
+body[data-os="windows"] .segmented-option.active {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Windows 11 Dropdown Select Override */
+body[data-os="windows"] .custom-select-trigger {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom-color: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  font-size: 13px;
+  padding: 5px 12px;
+  height: 32px;
+}
+body[data-os="windows"] .custom-select-trigger:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Disable ambient artwork background in Windows */
+body[data-os="windows"] .settings-ambient-bg {
+  display: none;
+}
+
+/* ── Settings Ambient Background ────────────────────────────────────────── */
+.settings-ambient-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.settings-ambient-bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(150px) saturate(130%);
+  transform: scale(1.4);
+  opacity: 0.18;
+}
+.settings-ambient-dimmer {
+  position: absolute;
+  inset: 0;
+  opacity: 1;
+  background: radial-gradient(circle at center, rgba(10,10,12,0.1) 0%, rgba(10,10,12,0.55) 100%),
+              linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.5));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-shell { backdrop-filter: none; -webkit-backdrop-filter: none; background: #252522; }
+  body[data-os="windows"] .settings-shell { background: #242424; }
+  .settings-ambient-bg img { filter: none; opacity: 0.1; }
+  .segmented-indicator { transition: none !important; }
+  .custom-select-dropdown { animation: none !important; }
+}
+
+/* ── Sliding Segmented Control ───────────────────────────────────────────── */
+.segmented {
+  position: relative;
+  display: inline-flex;
+  background: var(--input-bg);
+  border-radius: 8px;
+  padding: 2px;
+  isolation: isolate;
+  gap: 0;
+}
+.segmented-indicator {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  background: var(--bg-card);
+  border-radius: 6px;
+  box-shadow: 0 0.5px 1.5px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0,0,0,0.06);
+  transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), width 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+  z-index: 0;
+  pointer-events: none;
+}
+.segmented-option {
+  position: relative;
+  flex: 1;
+  z-index: 1;
+  cursor: pointer;
+  padding: 4px 14px;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  border-radius: 6px;
+  transition: color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.segmented-option:hover:not(.active) {
+  background: transparent;
+}
+.segmented-option.active {
+  background: transparent;
+  box-shadow: none;
+}
+
+/* ── Custom Popover Dropdown Select ──────────────────────────────────────── */
+.custom-select-container {
+  position: relative;
+  width: 180px;
+}
+.custom-select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
+  padding: 6px 12px;
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+  text-align: left;
+}
+.custom-select-trigger:hover {
+  background-color: var(--input-hover);
+}
+.custom-select-trigger.open {
+  border-color: var(--accent);
+}
+.custom-select-arrow {
+  flex-shrink: 0;
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  color: var(--text-secondary);
+}
+.custom-select-trigger.open .custom-select-arrow {
+  transform: rotate(180deg);
+}
+.custom-select-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+}
+.custom-select-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 100%;
+  min-width: 180px;
+  background: rgba(30, 30, 34, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 4px;
+  margin: 0;
+  list-style: none;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  z-index: 100;
+  animation: select-dropdown-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-color-scheme: light) {
+  .custom-select-dropdown {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  }
+}
+.custom-select-checkmark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  flex-shrink: 0;
+  color: inherit;
+}
+.custom-select-option {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+.custom-select-option:hover {
+  background-color: var(--input-bg);
+}
+.custom-select-option.active {
+  background-color: var(--accent);
+  color: #ffffff;
+}
+@keyframes select-dropdown-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
