@@ -1,20 +1,30 @@
 use crate::domain::{
-    LyricDocument, LyricWord, LyricsStatus, NotFoundReason, PlaybackState, PlaybackSnapshot,
+    LyricDocument, LyricWord, LyricsStatus, NotFoundReason, PlaybackSnapshot, PlaybackState,
     RenderSnapshot, VisibleLine,
 };
 
 /// Compute a `RenderSnapshot` from current playback + resolved lyrics.
+///
+/// `offset_ms` is a per-track manual timing correction. A **positive** value
+/// *delays* the lyrics (they switch later relative to the audio); negative
+/// advances them. Internally we select lines against an offset-corrected
+/// "effective" position, then shift emitted word timings back onto the real
+/// playback clock so the frontend — which compares against the unmodified
+/// playback position — stays aligned.
 pub fn compute_render(
     playback: PlaybackSnapshot,
     doc: Option<&LyricDocument>,
     status: LyricsStatus,
     context_above: usize,
     context_below: usize,
+    offset_ms: i64,
 ) -> RenderSnapshot {
     if playback.state == PlaybackState::Stopped || playback.track.is_none() {
         return RenderSnapshot {
             playback,
-            lyrics_status: LyricsStatus::NotFound { reason: NotFoundReason::Miss },
+            lyrics_status: LyricsStatus::NotFound {
+                reason: NotFoundReason::Miss,
+            },
             active_line_index: None,
             line_progress: None,
             visible_lines: vec![],
@@ -33,7 +43,11 @@ pub fn compute_render(
         };
     };
 
-    let pos = playback.position_ms.unwrap_or(0);
+    let raw_pos = playback.position_ms.unwrap_or(0);
+    // Offset-corrected position used for *line selection*: a positive offset
+    // delays lyrics, so a line at lyric-time T becomes active at playback-time
+    // T + offset — i.e. compare against (pos - offset).
+    let pos = (raw_pos as i64 - offset_ms).max(0) as u64;
     let active_idx = find_active_line(&doc.lines, pos);
 
     let line_progress = active_idx.and_then(|i| {
@@ -56,8 +70,8 @@ pub fn compute_render(
         if raw_end <= line.start_ms || line.text.trim().is_empty() {
             return None;
         }
-        match &line.words {
-            Some(words) if !words.is_empty() => Some(words.clone()),
+        let words = match &line.words {
+            Some(words) if !words.is_empty() => words.clone(),
             _ => {
                 // Smart cap for interpolation: when the gap to the next line is
                 // much longer than the line's text "should" take to sing, cap
@@ -65,9 +79,13 @@ pub fn compute_render(
                 // Heuristic: 8 chars/sec typical singing pace; allow 2x slack
                 // (≈4 chars/sec) for slow ballads before clamping.
                 let smart_end = smart_interp_end(&line.text, line.start_ms, raw_end);
-                Some(interpolate_words(&line.text, line.start_ms, smart_end))
+                interpolate_words(&line.text, line.start_ms, smart_end)
             }
-        }
+        };
+        // Shift word timings from the lyric clock onto the real playback clock
+        // so the frontend (which animates against the unmodified position)
+        // colours words in sync with the offset-corrected active line.
+        Some(shift_words(words, offset_ms))
     });
 
     let visible_lines = build_visible(doc, active_idx, context_above, context_below);
@@ -131,6 +149,23 @@ fn interpolate_words(text: &str, start_ms: u64, end_ms: u64) -> Vec<LyricWord> {
     result
 }
 
+/// Shift every word's start/end by `offset_ms` (saturating at 0) to translate
+/// lyric-clock timings onto the playback clock.
+fn shift_words(words: Vec<LyricWord>, offset_ms: i64) -> Vec<LyricWord> {
+    if offset_ms == 0 {
+        return words;
+    }
+    let shift = |t: u64| (t as i64 + offset_ms).max(0) as u64;
+    words
+        .into_iter()
+        .map(|w| LyricWord {
+            start_ms: shift(w.start_ms),
+            end_ms: shift(w.end_ms),
+            text: w.text,
+        })
+        .collect()
+}
+
 fn find_active_line(lines: &[crate::domain::LyricLine], pos_ms: u64) -> Option<usize> {
     if lines.is_empty() {
         return None;
@@ -183,7 +218,12 @@ mod tests {
     fn make_doc(timestamps: &[(u64, &str)]) -> LyricDocument {
         let mut lines: Vec<LyricLine> = timestamps
             .iter()
-            .map(|(ms, text)| LyricLine { start_ms: *ms, end_ms: None, text: text.to_string(), words: None })
+            .map(|(ms, text)| LyricLine {
+                start_ms: *ms,
+                end_ms: None,
+                text: text.to_string(),
+                words: None,
+            })
             .collect();
 
         let len = lines.len();
@@ -247,5 +287,41 @@ mod tests {
         assert_eq!(words.len(), 1);
         assert_eq!(words[0].start_ms, 100);
         assert_eq!(words[0].end_ms, 500);
+    }
+
+    fn render_at(pos_ms: u64, offset_ms: i64) -> RenderSnapshot {
+        let doc = make_doc(&[(0, "Intro"), (3000, "Verse"), (6000, "Chorus")]);
+        let playback = PlaybackSnapshot {
+            track: Some(crate::domain::TrackRef {
+                source: crate::domain::PlayerSource::SpotifyMacOs,
+                uri: "spotify:track:t".into(),
+                title: "t".into(),
+                artist: "a".into(),
+                album: None,
+                duration_ms: 9000,
+                artwork_url: None,
+            }),
+            state: PlaybackState::Playing,
+            position_ms: Some(pos_ms),
+            observed_at_ms: 0,
+        };
+        compute_render(playback, Some(&doc), LyricsStatus::Ready, 1, 1, offset_ms)
+    }
+
+    #[test]
+    fn positive_offset_delays_active_line() {
+        // At 3100ms with no offset the "Verse" line (start 3000) is active.
+        assert_eq!(render_at(3100, 0).active_line_index, Some(1));
+        // A +500ms delay means lyrics lag: at 3100ms we should still be on
+        // "Intro" (effective position 2600 < 3000).
+        assert_eq!(render_at(3100, 500).active_line_index, Some(0));
+    }
+
+    #[test]
+    fn negative_offset_advances_active_line() {
+        // At 2900ms with no offset "Intro" is active.
+        assert_eq!(render_at(2900, 0).active_line_index, Some(0));
+        // A -200ms offset advances lyrics: effective 3100 ≥ 3000 → "Verse".
+        assert_eq!(render_at(2900, -200).active_line_index, Some(1));
     }
 }

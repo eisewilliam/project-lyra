@@ -144,7 +144,10 @@ fn unconstrain_from_screen(window: &tauri::WebviewWindow) {
         let _ = class_replaceMethod(
             cls,
             sel,
-            std::mem::transmute::<_, objc::runtime::Imp>(imp),
+            std::mem::transmute::<
+                extern "C" fn(*mut Object, Sel, CocoaRect, *mut Object) -> CocoaRect,
+                objc::runtime::Imp,
+            >(imp),
             types.as_ptr(),
         );
     });

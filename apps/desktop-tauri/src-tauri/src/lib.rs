@@ -9,7 +9,7 @@ use lyra_core::lyrics::lrclib::LrclibClient;
 use runtime::LyraRuntime;
 use std::collections::HashSet;
 use std::sync::Mutex;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, EventTarget, Manager};
 use ui_state::{UiState, UiStateStore};
 
 pub struct AppState {
@@ -64,35 +64,13 @@ impl RuntimeSurfaceVisibility {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::RuntimeSurfaceVisibility;
-
-    #[test]
-    fn runtime_surfaces_start_hidden_until_marked_visible() {
-        let visibility = RuntimeSurfaceVisibility::new_all_hidden();
-
-        assert!(!visibility.is_visible("main", true));
-        visibility.set_visible("main", true);
-        assert!(visibility.is_visible("main", true));
-        visibility.set_visible("main", false);
-        assert!(!visibility.is_visible("main", true));
-    }
-
-    #[test]
-    fn persisted_hidden_surface_stays_hidden_even_if_runtime_visible() {
-        let visibility = RuntimeSurfaceVisibility::new_all_hidden();
-
-        visibility.set_visible("island", true);
-
-        assert!(!visibility.is_visible("island", false));
-    }
-}
-
 fn app_support_dir() -> std::path::PathBuf {
+    // Must match `runtime::app_support_dir` exactly. On case-sensitive volumes
+    // a casing mismatch ("lyra" vs "Lyra") splits UiState from the config +
+    // lyrics cache into two directories — keep both spelled "Lyra".
     dirs_next::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("lyra")
+        .join("Lyra")
 }
 
 /// Move all surfaces onto the user's preferred monitor (or the primary monitor
@@ -169,9 +147,9 @@ pub(crate) fn apply_preferred_monitor_positioning(app: &tauri::AppHandle, ui: &U
         if let Ok(size) = main_win.outer_size() {
             let wx = mon_x + (mon_w - size.width as i32) / 2;
             let wy = mon_y + (mon_h - size.height as i32) / 2;
-            let _ = main_win.set_position(tauri::Position::Physical(
-                tauri::PhysicalPosition::new(wx, wy),
-            ));
+            let _ = main_win.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+                wx, wy,
+            )));
         }
     }
 
@@ -189,6 +167,21 @@ pub(crate) fn apply_preferred_monitor_positioning(app: &tauri::AppHandle, ui: &U
             };
             let _ = macos::set_overlay_position(app, "karaoke", kx, ky);
         }
+    }
+}
+
+/// Apply OS-level window flags from `WindowSettings` to the regular `main`
+/// window. Called from the `update_settings` command and once at startup so
+/// the persisted preferences take effect. Island/karaoke are NSPanels with
+/// their own native level/click-through handling and are intentionally
+/// unaffected here.
+pub(crate) fn apply_main_window_settings(
+    app: &tauri::AppHandle,
+    window: &lyra_core::domain::WindowSettings,
+) {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.set_ignore_cursor_events(window.click_through);
+        let _ = main.set_always_on_top(window.always_on_top);
     }
 }
 
@@ -215,6 +208,25 @@ impl PollContext {
 /// Shared by the macOS dispatch_source-driven loop and the Windows
 /// std::thread::sleep-driven loop so the emit/coalesce logic stays
 /// identical across platforms.
+/// True if at least one of the three lyric surfaces is currently visible.
+/// Used as a fast pre-check to skip the player-poll roundtrip entirely when
+/// nothing on screen would consume the result.
+fn any_surface_visible(handle: &tauri::AppHandle) -> bool {
+    let Some(app_state) = handle.try_state::<AppState>() else {
+        return true; // fail open — better to poll than to stall
+    };
+    let (floating_cfg, island_cfg, karaoke_cfg) = app_state.ui.visibility_triple();
+    app_state
+        .surface_visibility
+        .is_visible("island", island_cfg)
+        || app_state
+            .surface_visibility
+            .is_visible("main", floating_cfg)
+        || app_state
+            .surface_visibility
+            .is_visible("karaoke", karaoke_cfg)
+}
+
 fn process_tick(
     handle: &tauri::AppHandle,
     ctx: &PollContext,
@@ -226,27 +238,32 @@ fn process_tick(
         return 500;
     };
 
-    let ui = app_state.ui.snapshot();
+    // visibility_triple is a cheap lock-and-read of 3 bools; the previous
+    // snapshot() cloned all 25 UiState fields per tick (4×/sec while playing).
+    let (floating_cfg, island_cfg, karaoke_cfg) = app_state.ui.visibility_triple();
     let island_vis = app_state
         .surface_visibility
-        .is_visible("island", ui.island_visible);
+        .is_visible("island", island_cfg);
     let floating_vis = app_state
         .surface_visibility
-        .is_visible("main", ui.floating_visible);
+        .is_visible("main", floating_cfg);
     let karaoke_vis = app_state
         .surface_visibility
-        .is_visible("karaoke", ui.karaoke_visible);
+        .is_visible("karaoke", karaoke_cfg);
     let any_visible = island_vis || floating_vis || karaoke_vis;
 
-    let render_opt = {
+    let (render_opt, base_interval_ms) = {
         let mut rt = match app_state.runtime.lock() {
             Ok(g) => g,
-            Err(_) => return 500,
+            Err(poisoned) => poisoned.into_inner(),
         };
         if let Some(snap) = snapshot {
             rt.set_playback_snapshot(snap);
         }
-        Some(rt.tick())
+        // User-configured base cadence. Clamped so a misconfigured value can't
+        // peg the CPU (too low) or make track changes feel laggy (too high).
+        let base = rt.settings().behavior.poll_interval_ms.clamp(100, 2000);
+        (Some(rt.tick()), base)
     };
 
     let mut lyrics_ready = false;
@@ -273,7 +290,11 @@ fn process_tick(
         let changed =
             ctx.last_signature.lock().ok().and_then(|g| g.clone()) != Some(signature.clone());
         let heartbeat = {
-            let last = *ctx.last_emit_ms.lock().unwrap();
+            let last = ctx
+                .last_emit_ms
+                .lock()
+                .map(|g| *g)
+                .unwrap_or_else(|e| *e.into_inner());
             now_ms.saturating_sub(last) > 10_000
         };
         let should_emit = any_visible
@@ -283,35 +304,45 @@ fn process_tick(
             };
 
         if should_emit {
-            // Emit only to visible windows — hidden webviews still process
-            // broadcast events even when not shown, wasting React renders.
-            for (label, vis) in [
-                ("main", floating_vis),
-                ("island", island_vis),
-                ("karaoke", karaoke_vis),
-            ] {
-                if vis {
-                    if let Some(win) = handle.get_webview_window(label) {
-                        let _ = win.emit("playback-tick", render.clone());
-                    }
-                }
+            // Serialize the payload once via emit_filter and route only to
+            // visible windows. The previous per-window loop cloned + JSON-
+            // serialized the snapshot once per target.
+            let send_main = floating_vis;
+            let send_island = island_vis;
+            let send_karaoke = karaoke_vis;
+            let _ = handle.emit_filter("playback-tick", &render, |target| match target {
+                EventTarget::WebviewWindow { label } => match label.as_str() {
+                    "main" => send_main,
+                    "island" => send_island,
+                    "karaoke" => send_karaoke,
+                    _ => false,
+                },
+                _ => false,
+            });
+            if let Ok(mut g) = ctx.last_emit_ms.lock() {
+                *g = now_ms;
             }
-            *ctx.last_emit_ms.lock().unwrap() = now_ms;
-            *ctx.last_signature.lock().unwrap() = Some(signature);
+            if let Ok(mut g) = ctx.last_signature.lock() {
+                *g = Some(signature);
+            }
         } else if changed {
-            *ctx.last_signature.lock().unwrap() = Some(signature);
+            if let Ok(mut g) = ctx.last_signature.lock() {
+                *g = Some(signature);
+            }
         }
     }
 
-    // When lyrics are ready we need tight position resolution for line sync.
-    // Without ready lyrics there's nothing to animate, so back off to 1 s
-    // while playing — still fast enough to catch track changes.
+    // Cadence is anchored to the user-configured `poll_interval_ms`
+    // (`base_interval_ms`, already clamped). When lyrics are ready we poll at
+    // that base for tight line sync; other states back off relative to it
+    // since nothing on screen is animating, but never poll *faster* than the
+    // user asked for.
     match (any_visible, current_state, lyrics_ready) {
         (false, _, _) => 10_000,
-        (true, Some(PlaybackState::Playing), true) => 250,
-        (true, Some(PlaybackState::Playing), false) => 1_000,
-        (true, Some(PlaybackState::Paused), _) => 1_500,
-        (true, Some(PlaybackState::Stopped), _) | (true, None, _) => 2_500,
+        (true, Some(PlaybackState::Playing), true) => base_interval_ms,
+        (true, Some(PlaybackState::Playing), false) => base_interval_ms.max(1_000),
+        (true, Some(PlaybackState::Paused), _) => base_interval_ms.max(1_500),
+        (true, Some(PlaybackState::Stopped), _) | (true, None, _) => base_interval_ms.max(2_500),
     }
 }
 
@@ -337,7 +368,9 @@ where
 
     struct State {
         handle: tauri::AppHandle,
-        poll_fn: std::sync::Mutex<Box<dyn FnMut() -> Option<lyra_core::domain::PlaybackSnapshot> + Send>>,
+        poll_fn: std::sync::Mutex<
+            Box<dyn FnMut() -> Option<lyra_core::domain::PlaybackSnapshot> + Send>,
+        >,
         ctx: PollContext,
         timer: std::sync::Mutex<Option<dispatch2::DispatchRetained<DispatchSource>>>,
     }
@@ -353,7 +386,14 @@ where
 
         set_thread_qos_utility();
 
-        let snapshot = (state.poll_fn.lock().unwrap())();
+        // Skip the player poll entirely when no surface is visible — the
+        // resulting snapshot would just be coalesced away inside process_tick
+        // anyway. Saves a per-10s AppleScript fire while everything is hidden.
+        let snapshot = if any_surface_visible(&state.handle) {
+            (state.poll_fn.lock().unwrap())()
+        } else {
+            None
+        };
         let next_ms = process_tick(&state.handle, &state.ctx, snapshot);
 
         // Re-arm the one-shot timer for the next fire. Leeway = 25% of
@@ -401,7 +441,11 @@ where
 {
     let ctx = PollContext::new();
     loop {
-        let snapshot = poll_fn();
+        let snapshot = if any_surface_visible(&handle) {
+            poll_fn()
+        } else {
+            None
+        };
         let next_ms = process_tick(&handle, &ctx, snapshot);
         std::thread::sleep(std::time::Duration::from_millis(next_ms));
     }
@@ -526,6 +570,17 @@ pub fn run() {
                 let _ = island.set_ignore_cursor_events(initial.island_locked);
             }
 
+            // Apply persisted main-window flags (click-through / always-on-top).
+            {
+                let window_settings = app
+                    .state::<AppState>()
+                    .runtime
+                    .lock()
+                    .map(|rt| rt.settings().window.clone())
+                    .unwrap_or_default();
+                apply_main_window_settings(app.handle(), &window_settings);
+            }
+
             #[cfg(target_os = "macos")]
             {
                 // GCD-driven poll loop with leeway timer. Runs on its own
@@ -554,8 +609,7 @@ pub fn run() {
                 std::thread::spawn(move || {
                     set_thread_qos_utility();
                     use lyra_core::player::PlayerAdapter;
-                    let adapter =
-                        lyra_core::player::spotify_windows::SpotifyWindowsAdapter::new();
+                    let adapter = lyra_core::player::spotify_windows::SpotifyWindowsAdapter::new();
                     poll_loop_generic(handle, move || {
                         let _ = adapter.poll();
                         adapter.snapshot()
@@ -581,7 +635,9 @@ pub fn run() {
             commands::get_all_lyrics,
             commands::get_all_lines,
             commands::get_settings,
-            commands::set_click_through,
+            commands::get_lyric_offset,
+            commands::set_lyric_offset,
+            commands::nudge_lyric_offset,
             commands::update_settings,
             commands::refresh_lyrics,
             commands::force_refresh_lyrics,
@@ -596,8 +652,8 @@ pub fn run() {
             commands::set_autostart,
             commands::window_ready,
         ])
-        .on_window_event(|window, event| match event {
-            tauri::WindowEvent::CloseRequested { api, .. } => {
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let label = window.label();
                 if label == "main" || label == "island" || label == "karaoke" {
                     api.prevent_close();
@@ -622,7 +678,6 @@ pub fn run() {
                     let _ = window.hide();
                 }
             }
-            _ => {}
         })
         .build(tauri::generate_context!())
         .expect("error building Lyra")
@@ -632,4 +687,29 @@ pub fn run() {
                 crate::tray::open_lyra(app);
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RuntimeSurfaceVisibility;
+
+    #[test]
+    fn runtime_surfaces_start_hidden_until_marked_visible() {
+        let visibility = RuntimeSurfaceVisibility::new_all_hidden();
+
+        assert!(!visibility.is_visible("main", true));
+        visibility.set_visible("main", true);
+        assert!(visibility.is_visible("main", true));
+        visibility.set_visible("main", false);
+        assert!(!visibility.is_visible("main", true));
+    }
+
+    #[test]
+    fn persisted_hidden_surface_stays_hidden_even_if_runtime_visible() {
+        let visibility = RuntimeSurfaceVisibility::new_all_hidden();
+
+        visibility.set_visible("island", true);
+
+        assert!(!visibility.is_visible("island", false));
+    }
 }

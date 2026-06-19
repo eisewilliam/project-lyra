@@ -34,7 +34,8 @@ impl LyricCache {
         let override_path = self.override_dir.join(Self::filename(track_key));
         if override_path.exists() {
             if let Ok(raw) = std::fs::read_to_string(&override_path) {
-                if let Ok(doc) = parser::parse_lrc(track_key, &raw, LyricSourceKind::ManualOverride) {
+                if let Ok(doc) = parser::parse_lrc(track_key, &raw, LyricSourceKind::ManualOverride)
+                {
                     return Some(doc);
                 }
             }
@@ -60,14 +61,20 @@ impl LyricCache {
 
     /// Sentinel file marking a known-missing track so we skip LRCLIB retries.
     pub fn mark_negative(&self, track_key: &str) -> Result<()> {
-        let path = self.cache_dir.join(format!("{}.nomatch", Self::stem(track_key)));
+        let path = self
+            .cache_dir
+            .join(format!("{}.nomatch", Self::stem(track_key)));
         std::fs::write(path, NEGATIVE_CACHE_VERSION)?;
         Ok(())
     }
 
     pub fn is_negative(&self, track_key: &str) -> bool {
-        let path = self.cache_dir.join(format!("{}.nomatch", Self::stem(track_key)));
-        let Ok(meta) = std::fs::metadata(&path) else { return false };
+        let path = self
+            .cache_dir
+            .join(format!("{}.nomatch", Self::stem(track_key)));
+        let Ok(meta) = std::fs::metadata(&path) else {
+            return false;
+        };
         match std::fs::read_to_string(&path) {
             Ok(version) if version.trim() == NEGATIVE_CACHE_VERSION => {}
             _ => {
@@ -75,7 +82,9 @@ impl LyricCache {
                 return false;
             }
         }
-        let Ok(modified) = meta.modified() else { return false };
+        let Ok(modified) = meta.modified() else {
+            return false;
+        };
         match modified.elapsed() {
             Ok(age) if age.as_secs() < NEGATIVE_TTL_SECS => true,
             _ => {
@@ -88,7 +97,9 @@ impl LyricCache {
     /// Remove the negative sentinel for a track so the next refresh attempt
     /// re-queries the upstream provider. Used by the manual-retry flow.
     pub fn clear_negative(&self, track_key: &str) -> Result<()> {
-        let path = self.cache_dir.join(format!("{}.nomatch", Self::stem(track_key)));
+        let path = self
+            .cache_dir
+            .join(format!("{}.nomatch", Self::stem(track_key)));
         if path.exists() {
             std::fs::remove_file(path)?;
         }
@@ -137,9 +148,17 @@ mod tests {
         let (cache, t) = tmp_cache();
         let key = "spotify:track:expired";
         cache.mark_negative(key).unwrap();
-        let path = t.as_path().join("lyrics_cache").join(format!("{}.nomatch", LyricCache::stem(key)));
+        let path = t
+            .as_path()
+            .join("lyrics_cache")
+            .join(format!("{}.nomatch", LyricCache::stem(key)));
         let aged = SystemTime::now() - Duration::from_secs(NEGATIVE_TTL_SECS + 60);
-        std::fs::File::options().write(true).open(&path).unwrap().set_modified(aged).unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(aged)
+            .unwrap();
         assert!(!cache.is_negative(key));
         assert!(!path.exists(), "expired sentinel must be removed");
     }
@@ -157,7 +176,10 @@ mod tests {
     fn legacy_negative_marker_is_purged() {
         let (cache, t) = tmp_cache();
         let key = "spotify:track:legacy";
-        let path = t.as_path().join("lyrics_cache").join(format!("{}.nomatch", LyricCache::stem(key)));
+        let path = t
+            .as_path()
+            .join("lyrics_cache")
+            .join(format!("{}.nomatch", LyricCache::stem(key)));
         std::fs::write(&path, "").unwrap();
 
         assert!(!cache.is_negative(key));
@@ -182,10 +204,14 @@ mod tempdir_like {
             std::fs::create_dir_all(&path).unwrap();
             Self(path)
         }
-        pub fn as_path(&self) -> &Path { &self.0 }
+        pub fn as_path(&self) -> &Path {
+            &self.0
+        }
     }
 
     impl Drop for TempPath {
-        fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); }
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
     }
 }

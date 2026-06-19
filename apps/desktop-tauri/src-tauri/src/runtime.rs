@@ -5,17 +5,29 @@ use lyra_core::{
         RenderSnapshot, SettingsSnapshot, TrackRef,
     },
     lyrics::cache::LyricCache,
+    lyrics::offsets::OffsetStore,
     sync::compute_render,
 };
+use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+/// IPC-only projection of a `LyricLine`. The frontend's `get_all_lines`
+/// callers read only the start timestamp + text — sending the full
+/// `LyricLine` (with words) wastes serialization and clone cost.
+#[derive(Clone, Debug, Serialize)]
+pub struct LyricLineSlim {
+    pub start_ms: u64,
+    pub text: String,
+}
 
 /// Mutable, lock-protected runtime state. Does NOT hold the HTTP client
 /// so commands can release this lock before awaiting network calls.
 pub struct LyraRuntime {
     pub last_playback_snapshot: Option<PlaybackSnapshot>,
     pub cache: LyricCache,
+    offsets: OffsetStore,
     config: ConfigStore,
     settings: SettingsSnapshot,
     current_doc: Option<LyricDocument>,
@@ -35,10 +47,12 @@ impl LyraRuntime {
         let settings = config.load();
         let cache = LyricCache::new(&app_dir);
         let _ = cache.ensure_dirs();
+        let offsets = OffsetStore::new(&app_dir);
 
         Self {
             last_playback_snapshot: None,
             cache,
+            offsets,
             config,
             settings,
             current_doc: None,
@@ -59,7 +73,27 @@ impl LyraRuntime {
     }
 
     pub fn current_track(&self) -> Option<TrackRef> {
-        self.last_playback_snapshot.as_ref().and_then(|s| s.track.clone())
+        self.last_playback_snapshot
+            .as_ref()
+            .and_then(|s| s.track.clone())
+    }
+
+    /// Manual lyric timing offset (ms) for the currently playing track.
+    /// Positive delays the lyrics, negative advances them.
+    pub fn current_offset(&self) -> i64 {
+        self.last_track_key
+            .as_deref()
+            .map(|k| self.offsets.get(k))
+            .unwrap_or(0)
+    }
+
+    /// Persist a new offset for the current track and invalidate the cached
+    /// tick so the next render reflects it immediately.
+    pub fn set_current_offset(&mut self, offset_ms: i64) {
+        if let Some(key) = self.last_track_key.clone() {
+            self.offsets.set(&key, offset_ms);
+            self.last_tick_result = None;
+        }
     }
 
     pub fn set_playback_snapshot(&mut self, snap: PlaybackSnapshot) {
@@ -125,12 +159,21 @@ impl LyraRuntime {
             .unwrap_or_default()
     }
 
-    /// Return every line with its start timestamp — used by the frontend to
-    /// implement click-to-seek on the lyrics list.
-    pub fn all_lines(&self) -> Vec<lyra_core::domain::LyricLine> {
+    /// Return every line as a slim `(start_ms, text)` tuple — used by the
+    /// frontend to implement click-to-seek on the lyrics list. Avoids cloning
+    /// the per-line `Option<Vec<LyricWord>>` payload which the UI never reads.
+    pub fn all_lines_slim(&self) -> Vec<LyricLineSlim> {
         self.current_doc
             .as_ref()
-            .map(|d| d.lines.clone())
+            .map(|d| {
+                d.lines
+                    .iter()
+                    .map(|l| LyricLineSlim {
+                        start_ms: l.start_ms,
+                        text: l.text.clone(),
+                    })
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -149,12 +192,15 @@ impl LyraRuntime {
         }
         self.last_tick_ms = now_ms;
 
-        let snapshot = self.last_playback_snapshot.clone().unwrap_or(PlaybackSnapshot {
-            track: None,
-            state: PlaybackState::Stopped,
-            position_ms: None,
-            observed_at_ms: 0,
-        });
+        let snapshot = self
+            .last_playback_snapshot
+            .clone()
+            .unwrap_or(PlaybackSnapshot {
+                track: None,
+                state: PlaybackState::Stopped,
+                position_ms: None,
+                observed_at_ms: 0,
+            });
 
         let track_key = snapshot.track.as_ref().map(|t| t.uri.clone());
 
@@ -170,11 +216,15 @@ impl LyraRuntime {
         let below = self.settings.appearance.context_lines_below as usize;
 
         let status = match (&track_key, &self.current_doc) {
-            (None, _) => LyricsStatus::NotFound { reason: NotFoundReason::Miss },
+            (None, _) => LyricsStatus::NotFound {
+                reason: NotFoundReason::Miss,
+            },
             (Some(_), Some(_)) => LyricsStatus::Ready,
             (Some(key), None) => {
                 if self.cache.is_negative(key) {
-                    LyricsStatus::NotFound { reason: NotFoundReason::Miss }
+                    LyricsStatus::NotFound {
+                        reason: NotFoundReason::Miss,
+                    }
                 } else if let Some(reason) = self.transient_errors.get(key).copied() {
                     LyricsStatus::NotFound { reason }
                 } else {
@@ -183,7 +233,19 @@ impl LyraRuntime {
             }
         };
 
-        let result = compute_render(snapshot, self.current_doc.as_ref(), status, above, below);
+        let offset_ms = track_key
+            .as_deref()
+            .map(|k| self.offsets.get(k))
+            .unwrap_or(0);
+
+        let result = compute_render(
+            snapshot,
+            self.current_doc.as_ref(),
+            status,
+            above,
+            below,
+            offset_ms,
+        );
         self.last_tick_result = Some(result.clone());
         result
     }

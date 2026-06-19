@@ -97,11 +97,13 @@ The frontend only calls `refresh_lyrics` once per URI (guarded by `refreshedUriR
 
 | Store | Managed by | Path |
 |---|---|---|
-| `UiState` | `UiStateStore` in `ui_state.rs` | `~/Library/Application Support/lyra/` |
+| `UiState` | `UiStateStore` in `ui_state.rs` | `~/Library/Application Support/Lyra/` |
 | Lyrics cache | `LyricCache` in `lyra-core` | `~/Library/Application Support/Lyra/lyrics_cache/` |
 | Settings (lyra-core) | `ConfigStore` in `lyra-core` | `~/Library/Application Support/Lyra/config.json` |
+| Lyric offsets (per track) | `OffsetStore` in `lyra-core` | `~/Library/Application Support/Lyra/lyric_offsets.json` |
 
-Note the case difference (`lyra` vs `Lyra`) between the two — known issue, not yet unified.
+Both `app_support_dir()` helpers (`lib.rs` and `runtime.rs`) spell the directory
+`Lyra` — keep them identical so case-sensitive volumes don't split the stores.
 
 Cache filenames are percent-encoded track URIs:
 - Fetched: `lyrics_cache/spotify%3Atrack%3Aabc123.lrc`

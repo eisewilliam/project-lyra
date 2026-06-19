@@ -9,7 +9,9 @@ pub struct ConfigStore {
 
 impl ConfigStore {
     pub fn new(app_support_dir: &Path) -> Self {
-        Self { path: app_support_dir.join("config.json") }
+        Self {
+            path: app_support_dir.join("config.json"),
+        }
     }
 
     pub fn load(&self) -> SettingsSnapshot {

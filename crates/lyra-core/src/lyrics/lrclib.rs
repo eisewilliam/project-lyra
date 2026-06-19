@@ -8,7 +8,7 @@ const BASE_URL: &str = "https://lrclib.net/api";
 const USER_AGENT: &str = concat!(
     "Lyra/",
     env!("CARGO_PKG_VERSION"),
-    " (https://github.com/lyra-app/lyra)",
+    " (https://github.com/EiseWilliam/project-lyra)",
 );
 
 /// Hard duration tolerance for search-tier scoring (seconds). lrclib's own
@@ -191,8 +191,8 @@ impl LyricSource for LrclibClient {
 
         // Tier 4: search fallback with variant- and duration-aware scoring.
         // The base-name search broadens recall; scoring re-tightens precision.
-        let search_title = strip_feature_annotations(&track.title)
-            .unwrap_or_else(|| track.title.clone());
+        let search_title =
+            strip_feature_annotations(&track.title).unwrap_or_else(|| track.title.clone());
         let records = self
             .search_records(&search_title, &track.artist)
             .await
@@ -232,7 +232,11 @@ fn pick_best_record(
 
     let mut scored: Vec<(i32, LrclibRecord)> = records
         .into_iter()
-        .filter(|r| r.synced_lyrics.as_deref().is_some_and(|s| !s.trim().is_empty()))
+        .filter(|r| {
+            r.synced_lyrics
+                .as_deref()
+                .is_some_and(|s| !s.trim().is_empty())
+        })
         .filter_map(|r| {
             let score = score_candidate(
                 &r,
@@ -247,7 +251,7 @@ fn pick_best_record(
         })
         .collect();
 
-    scored.sort_by(|a, b| b.0.cmp(&a.0));
+    scored.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
     scored
         .into_iter()
         .next()
@@ -371,11 +375,9 @@ fn normalize_for_compare(s: &str) -> String {
         if c.is_alphanumeric() {
             out.push(c);
             prev_space = false;
-        } else if c.is_whitespace() {
-            if !prev_space {
-                out.push(' ');
-                prev_space = true;
-            }
+        } else if c.is_whitespace() && !prev_space {
+            out.push(' ');
+            prev_space = true;
         }
         // punctuation dropped
     }
@@ -388,9 +390,22 @@ fn normalize_for_compare(s: &str) -> String {
 fn base_title(normalized: &str) -> String {
     let lower = normalized;
     let cut_markers = [
-        " remix", " live", " acoustic", " sped up", " slowed", " reverb",
-        " demo", " radio edit", " extended", " remaster", " remastered",
-        " piano", " orchestral", " karaoke", " instrumental", " cover",
+        " remix",
+        " live",
+        " acoustic",
+        " sped up",
+        " slowed",
+        " reverb",
+        " demo",
+        " radio edit",
+        " extended",
+        " remaster",
+        " remastered",
+        " piano",
+        " orchestral",
+        " karaoke",
+        " instrumental",
+        " cover",
         " version",
     ];
     let mut shortest = lower.to_string();
@@ -568,11 +583,9 @@ fn group_matches_variant(group: &str, needle: &str) -> bool {
     let Some(idx) = g.find(needle) else {
         return false;
     };
-    let before_ok = idx == 0
-        || !g.as_bytes()[idx - 1].is_ascii_alphanumeric();
+    let before_ok = idx == 0 || !g.as_bytes()[idx - 1].is_ascii_alphanumeric();
     let after_idx = idx + needle.len();
-    let after_ok = after_idx == g.len()
-        || !g.as_bytes()[after_idx].is_ascii_alphanumeric();
+    let after_ok = after_idx == g.len() || !g.as_bytes()[after_idx].is_ascii_alphanumeric();
     before_ok && after_ok
 }
 
