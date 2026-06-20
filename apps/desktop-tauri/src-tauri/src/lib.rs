@@ -563,6 +563,23 @@ pub fn run() {
                 });
             }
 
+            #[cfg(target_os = "linux")]
+            {
+                // Linux: poll Spotify through MPRIS on the user's D-Bus
+                // session bus. MPRIS is distro-independent and is exposed by
+                // the official Spotify desktop client.
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    set_thread_qos_utility();
+                    use lyra_core::player::PlayerAdapter;
+                    let adapter = lyra_core::player::spotify_linux::SpotifyLinuxAdapter::new();
+                    poll_loop_generic(handle, move || {
+                        let _ = adapter.poll();
+                        adapter.snapshot()
+                    });
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
