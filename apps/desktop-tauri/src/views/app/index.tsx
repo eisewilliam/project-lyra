@@ -3,8 +3,6 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
-const isWindows = navigator.userAgent.includes('Windows');
-document.body.dataset.os = isWindows ? 'windows' : 'macos';
 import {
   getNotFoundReason,
   isLyricsNotFound,
@@ -15,8 +13,11 @@ import {
   type NotFoundReason,
 } from '../../utils/lyrics-state'
 import { LyricsPlaceholderIcon } from '../../utils/lyrics-placeholder-icon'
+import { applyHostOsDataset } from '../../utils/os'
 import { usePageVisible } from '../../utils/use-page-visible'
 import './app.css'
+
+applyHostOsDataset();
 
 type UiState = { floating_visible: boolean; floating_font_scale: number };
 type AppSettingsSnapshot = { behavior: { hide_when_paused: boolean } };

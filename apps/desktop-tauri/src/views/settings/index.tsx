@@ -2,9 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { applyHostOsDataset } from '../../utils/os';
 import './settings.css';
-
-const isWindows = navigator.userAgent.includes('Windows');
 
 function SettingsWinControls() {
   const win = getCurrentWindow();
@@ -97,7 +96,7 @@ export default function Settings() {
   const debounceRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
-    document.body.dataset.os = isWindows ? 'windows' : 'macos';
+    applyHostOsDataset();
 
     let unlisten: (() => void) | undefined;
     (async () => {
