@@ -1,4 +1,6 @@
 pub mod spotify_macos;
+#[cfg(target_os = "linux")]
+pub mod spotify_linux;
 #[cfg(target_os = "windows")]
 pub mod spotify_windows;
 
