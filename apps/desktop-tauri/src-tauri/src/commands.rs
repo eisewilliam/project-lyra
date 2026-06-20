@@ -190,6 +190,8 @@ pub fn set_click_through(enabled: bool, state: State<'_, AppState>) {
 pub fn playback_play_pause() {
     #[cfg(target_os = "macos")]
     lyra_core::player::spotify_macos::play_pause();
+    #[cfg(target_os = "linux")]
+    lyra_core::player::spotify_linux::play_pause();
     #[cfg(target_os = "windows")]
     lyra_core::player::spotify_windows::play_pause();
 }
@@ -198,6 +200,8 @@ pub fn playback_play_pause() {
 pub fn playback_next() {
     #[cfg(target_os = "macos")]
     lyra_core::player::spotify_macos::next_track();
+    #[cfg(target_os = "linux")]
+    lyra_core::player::spotify_linux::next_track();
     #[cfg(target_os = "windows")]
     lyra_core::player::spotify_windows::next_track();
 }
@@ -206,6 +210,8 @@ pub fn playback_next() {
 pub fn playback_previous() {
     #[cfg(target_os = "macos")]
     lyra_core::player::spotify_macos::previous_track();
+    #[cfg(target_os = "linux")]
+    lyra_core::player::spotify_linux::previous_track();
     #[cfg(target_os = "windows")]
     lyra_core::player::spotify_windows::previous_track();
 }
@@ -214,6 +220,8 @@ pub fn playback_previous() {
 pub fn playback_seek_ms(position_ms: u64) {
     #[cfg(target_os = "macos")]
     lyra_core::player::spotify_macos::seek_to_seconds(position_ms as f64 / 1000.0);
+    #[cfg(target_os = "linux")]
+    lyra_core::player::spotify_linux::seek_to_seconds(position_ms as f64 / 1000.0);
     #[cfg(target_os = "windows")]
     lyra_core::player::spotify_windows::seek_to_seconds(position_ms as f64 / 1000.0);
 }
