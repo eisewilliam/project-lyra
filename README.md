@@ -1,6 +1,6 @@
 # Lyra
 
-Lyra is an early desktop synced-lyrics companion for Spotify on macOS and Windows. It follows the current track, finds synchronized lyrics, and renders them in lyric surfaces that can stay close to the work already on screen.
+Lyra is an early desktop synced-lyrics companion for Spotify on macOS, Windows, and Linux. It follows the current track, finds synchronized lyrics, and renders them in lyric surfaces that can stay close to the work already on screen.
 
 The current app is built with a Tauri desktop host and a Rust core. It is ready for early use and feedback, but the release path is still intentionally narrow: Spotify playback, LRCLIB-backed synced lyrics, and desktop overlays.
 
@@ -10,15 +10,15 @@ The current app is built with a Tauri desktop host and a Rust core. It is ready 
 - Floating island overlay for compact always-on-top lyrics
 - Karaoke overlay with word-progress highlighting and configurable layout
 - Settings for surface visibility, font scale, overlays, pause behavior, autostart, theme, and preferred monitor
-- Spotify playback integration on macOS through AppleScript and on Windows through SMTC
+- Spotify playback integration on macOS through AppleScript, on Windows through SMTC, and on Linux through MPRIS
 - Synced lyric lookup through [LRCLIB](https://lrclib.net), local flat-file caching, explicit no-lyrics states, retry support, and manual LRC overrides
 - Local-first behavior after lyrics are cached, with no Lyra account or telemetry
 
 ## Early Release Notes
 
-Lyra is still early. The current release path focuses on Spotify playback on macOS and Windows. Lyrics depend on synced LRCLIB coverage unless a local LRC override is available.
+Lyra is still early. The current release path focuses on Spotify playback on macOS, Windows, and Linux. Lyrics depend on synced LRCLIB coverage unless a local LRC override is available.
 
-Linux support, Apple Music support, signing and distribution polish, and additional native platform integrations are not part of this release yet.
+Apple Music support, signing and distribution polish, and additional native platform integrations are not part of this release yet.
 
 ## Surfaces
 
@@ -38,7 +38,7 @@ Linux support, Apple Music support, signing and distribution polish, and additio
 | Rust stable | Install with [rustup](https://rustup.rs) |
 | Node.js 18 or newer | Used by the React/Vite frontend and Tauri CLI |
 | npm | Bundled with Node.js |
-| Platform build tools | Xcode Command Line Tools on macOS; Tauri prerequisites for Windows |
+| Platform build tools | Xcode Command Line Tools on macOS; Tauri prerequisites for Windows and Linux |
 | Spotify desktop app | Lyra follows Spotify playback state from the host OS |
 
 ### Run locally
@@ -129,11 +129,13 @@ Override filenames use the percent-encoded track key:
 spotify%3Atrack%3Aabc123.lrc
 ```
 
-Windows uses the OS data directory selected by the app runtime for the equivalent Lyra data stores.
+Windows and Linux use the OS data directory selected by the app runtime for the equivalent Lyra data stores.
 
 ## Privacy
 
 Lyra does not require an account and does not include telemetry or analytics. Its remote lyric lookups go to [LRCLIB](https://lrclib.net); playback state is read locally from Spotify through the active platform adapter.
+
+On Linux, Lyra reads Spotify through the standard MPRIS service on the user's D-Bus session bus. This keeps playback detection independent of a specific distribution or package format.
 
 ## Roadmap
 
