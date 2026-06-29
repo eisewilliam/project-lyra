@@ -1,5 +1,6 @@
 mod commands;
 mod macos;
+mod linux;
 mod runtime;
 mod tray;
 mod ui_state;
@@ -519,12 +520,12 @@ pub fn run() {
 
             // Karaoke is a display-only overlay — always click-through.
             // Island is click-through when locked (persisted across restarts).
-            if let Some(karaoke) = app.get_webview_window("karaoke") {
-                let _ = karaoke.set_ignore_cursor_events(true);
-            }
-            if let Some(island) = app.get_webview_window("island") {
-                let _ = island.set_ignore_cursor_events(initial.island_locked);
-            }
+            // if let Some(karaoke) = app.get_webview_window("karaoke") {
+            //     let _ = karaoke.set_ignore_cursor_events(true);
+            // }
+            // if let Some(island) = app.get_webview_window("island") {
+            //     let _ = island.set_ignore_cursor_events(initial.island_locked);
+            // }
 
             #[cfg(target_os = "macos")]
             {

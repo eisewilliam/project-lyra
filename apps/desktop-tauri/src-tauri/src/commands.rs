@@ -413,6 +413,27 @@ pub fn window_ready(label: String, state: State<'_, AppState>, app: AppHandle) {
     };
     tray::apply_window_visibility(&app, &label, &ui);
 
+    // Karaoke is a display-only overlay — always click-through.
+    // Island is click-through when locked (persisted across restarts).
+    // Deferred here (rather than in `setup()`) because the window must be
+    // realized — i.e. shown and backed by an actual GTK/gdk surface on
+    // Linux — before `set_ignore_cursor_events` is safe to call. `setup()`
+    // runs before that's guaranteed; `window_ready` fires only after the
+    // frontend has mounted, by which point the window has been shown.
+    match label.as_str() {
+    "karaoke" => {
+        if let Some(win) = app.get_webview_window(&label) {
+            crate::linux::apply_ignore_cursor_events_when_ready(&win, true);
+        }
+    }
+    "island" => {
+        if let Some(win) = app.get_webview_window(&label) {
+            crate::linux::apply_ignore_cursor_events_when_ready(&win, ui.island_locked);
+        }
+    }
+    _ => {}
+}
+
     // Push the current snapshot immediately so the frontend doesn't spend
     // up to 10 s in the booting/loading state waiting for the first
     // poll-driven `playback-tick` emission.
@@ -424,6 +445,28 @@ pub fn window_ready(label: String, state: State<'_, AppState>, app: AppHandle) {
         }
     }
 }
+// #[tauri::command]
+// pub fn window_ready(label: String, state: State<'_, AppState>, app: AppHandle) {
+//     let ui = state.ui.snapshot();
+//     let configured_visible = match label.as_str() {
+//         "main" => ui.floating_visible,
+//         "island" => ui.island_visible,
+//         "karaoke" => ui.karaoke_visible,
+//         _ => false,
+//     };
+//     tray::apply_window_visibility(&app, &label, &ui);
+//
+//     // Push the current snapshot immediately so the frontend doesn't spend
+//     // up to 10 s in the booting/loading state waiting for the first
+//     // poll-driven `playback-tick` emission.
+//     if configured_visible {
+//         if let Ok(render) = state.runtime.lock().map(|mut rt| rt.tick()) {
+//             if let Some(win) = app.get_webview_window(&label) {
+//                 let _ = win.emit("playback-tick", render);
+//             }
+//         }
+//     }
+// }
 
 /// Query whether autostart at login is currently enabled (delegates to the OS).
 #[tauri::command]
