@@ -10,10 +10,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use dbus::{
     arg::{self, PropMap},
-    blocking::{
-        stdintf::org_freedesktop_dbus::{DBus, Properties},
-        Connection,
-    },
+    blocking::{stdintf::org_freedesktop_dbus::Properties, Connection},
 };
 
 use crate::domain::{PlaybackSnapshot, PlaybackState, PlayerSource, TrackRef};
@@ -124,9 +121,7 @@ fn query_spotify(conn: &Connection) -> Result<PlaybackSnapshot, ()> {
         return Ok(stopped_snapshot());
     }
 
-    let metadata: PropMap = proxy
-        .get(MPRIS_PLAYER_IFACE, "Metadata")
-        .map_err(|_| ())?;
+    let metadata: PropMap = proxy.get(MPRIS_PLAYER_IFACE, "Metadata").map_err(|_| ())?;
     let Some(track) = track_from_metadata(&metadata) else {
         return Ok(stopped_snapshot());
     };
@@ -144,11 +139,11 @@ fn query_spotify(conn: &Connection) -> Result<PlaybackSnapshot, ()> {
 
 fn find_spotify_bus_name(conn: &Connection) -> Result<Option<String>, dbus::Error> {
     let proxy = conn.with_proxy(DBUS_NAME, DBUS_PATH, DBUS_TIMEOUT);
-    let mut names = proxy.list_names()?;
+    let (mut names,): (Vec<String>,) = proxy.method_call(DBUS_NAME, "ListNames", ())?;
     names.sort();
     Ok(names
         .into_iter()
-        .find(|name| name.starts_with(SPOTIFY_MPRIS_PREFIX)))
+        .find(|name: &String| name.starts_with(SPOTIFY_MPRIS_PREFIX)))
 }
 
 fn playback_state_from_mpris(status: &str) -> PlaybackState {
@@ -196,12 +191,14 @@ fn track_from_metadata(metadata: &PropMap) -> Option<TrackRef> {
 }
 
 fn prop_string(metadata: &PropMap, key: &str) -> Option<String> {
-    arg::prop_cast::<String>(metadata, key).cloned().or_else(|| {
-        metadata
-            .get(key)
-            .and_then(|value| value.0.as_str())
-            .map(str::to_string)
-    })
+    arg::prop_cast::<String>(metadata, key)
+        .cloned()
+        .or_else(|| {
+            metadata
+                .get(key)
+                .and_then(|value| value.0.as_str())
+                .map(str::to_string)
+        })
 }
 
 fn prop_string_array(metadata: &PropMap, key: &str) -> Option<Vec<String>> {
