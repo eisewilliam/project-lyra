@@ -4,8 +4,7 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 
-const isWindows = navigator.userAgent.includes('Windows');
-document.body.dataset.os = isWindows ? 'windows' : 'macos';
+
 import {
   getNotFoundReason,
   isLyricsNotFound,
@@ -16,6 +15,7 @@ import {
   type NotFoundReason,
 } from '../../utils/lyrics-state'
 import { LyricsPlaceholderIcon } from '../../utils/lyrics-placeholder-icon'
+import { applyHostOsDataset, detectHostOs } from '../../utils/os'
 import { usePageVisible } from '../../utils/use-page-visible'
 import { applyAppearance, type AppSettings } from '../../utils/app-settings'
 import {
@@ -29,6 +29,10 @@ import {
   type PositionBaseline,
 } from '../../utils/playback-sync'
 import './app.css'
+
+const hostOs = detectHostOs();
+const isWindows = hostOs === 'windows';
+applyHostOsDataset();
 
 
 type UiState = { floating_visible: boolean; floating_font_scale: number };

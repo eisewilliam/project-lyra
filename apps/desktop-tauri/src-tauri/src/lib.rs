@@ -1,5 +1,6 @@
 mod commands;
 mod macos;
+mod linux;
 mod runtime;
 mod tray;
 mod ui_state;
@@ -654,12 +655,12 @@ pub fn run() {
 
             // Karaoke is a display-only overlay — always click-through.
             // Island is click-through when locked (persisted across restarts).
-            if let Some(karaoke) = app.get_webview_window("karaoke") {
-                let _ = karaoke.set_ignore_cursor_events(true);
-            }
-            if let Some(island) = app.get_webview_window("island") {
-                let _ = island.set_ignore_cursor_events(initial.island_locked);
-            }
+            // if let Some(karaoke) = app.get_webview_window("karaoke") {
+            //     let _ = karaoke.set_ignore_cursor_events(true);
+            // }
+            // if let Some(island) = app.get_webview_window("island") {
+            //     let _ = island.set_ignore_cursor_events(initial.island_locked);
+            // }
 
             // Apply persisted main-window flags (click-through / always-on-top).
             {
@@ -716,6 +717,23 @@ pub fn run() {
                     set_thread_qos_utility();
                     use lyra_core::player::PlayerAdapter;
                     let adapter = lyra_core::player::spotify_windows::SpotifyWindowsAdapter::new();
+                    poll_loop_generic(handle, move || {
+                        let _ = adapter.poll();
+                        adapter.snapshot()
+                    });
+                });
+            }
+
+            #[cfg(target_os = "linux")]
+            {
+                // Linux: poll Spotify through MPRIS on the user's D-Bus
+                // session bus. MPRIS is distro-independent and is exposed by
+                // the official Spotify desktop client.
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    set_thread_qos_utility();
+                    use lyra_core::player::PlayerAdapter;
+                    let adapter = lyra_core::player::spotify_linux::SpotifyLinuxAdapter::new();
                     poll_loop_generic(handle, move || {
                         let _ = adapter.poll();
                         adapter.snapshot()

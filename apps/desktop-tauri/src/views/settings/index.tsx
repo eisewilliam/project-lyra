@@ -2,9 +2,10 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, memo, type FormEve
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { applyHostOsDataset, detectHostOs } from '../../utils/os';
 import './settings.css';
 
-const isWindows = navigator.userAgent.includes('Windows');
+const isWindows = detectHostOs() === 'windows';
 
 function SettingsWinControls() {
   const win = getCurrentWindow();
@@ -109,7 +110,7 @@ export default function Settings() {
   const [artworkSrc, setArtworkSrc] = useState('');
 
   useEffect(() => {
-    document.body.dataset.os = isWindows ? 'windows' : 'macos';
+    applyHostOsDataset();
 
     let unlisten: (() => void) | undefined;
     (async () => {

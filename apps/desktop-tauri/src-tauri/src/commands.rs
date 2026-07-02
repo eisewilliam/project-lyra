@@ -234,6 +234,8 @@ pub fn nudge_lyric_offset(delta_ms: i64, state: State<'_, AppState>, app: AppHan
 pub fn playback_play_pause() {
     #[cfg(target_os = "macos")]
     lyra_core::player::spotify_macos::play_pause();
+    #[cfg(target_os = "linux")]
+    lyra_core::player::spotify_linux::play_pause();
     #[cfg(target_os = "windows")]
     lyra_core::player::spotify_windows::play_pause();
 }
@@ -242,6 +244,8 @@ pub fn playback_play_pause() {
 pub fn playback_next() {
     #[cfg(target_os = "macos")]
     lyra_core::player::spotify_macos::next_track();
+    #[cfg(target_os = "linux")]
+    lyra_core::player::spotify_linux::next_track();
     #[cfg(target_os = "windows")]
     lyra_core::player::spotify_windows::next_track();
 }
@@ -250,6 +254,8 @@ pub fn playback_next() {
 pub fn playback_previous() {
     #[cfg(target_os = "macos")]
     lyra_core::player::spotify_macos::previous_track();
+    #[cfg(target_os = "linux")]
+    lyra_core::player::spotify_linux::previous_track();
     #[cfg(target_os = "windows")]
     lyra_core::player::spotify_windows::previous_track();
 }
@@ -258,6 +264,8 @@ pub fn playback_previous() {
 pub fn playback_seek_ms(position_ms: u64) {
     #[cfg(target_os = "macos")]
     lyra_core::player::spotify_macos::seek_to_seconds(position_ms as f64 / 1000.0);
+    #[cfg(target_os = "linux")]
+    lyra_core::player::spotify_linux::seek_to_seconds(position_ms as f64 / 1000.0);
     #[cfg(target_os = "windows")]
     lyra_core::player::spotify_windows::seek_to_seconds(position_ms as f64 / 1000.0);
 }
@@ -459,6 +467,27 @@ pub fn window_ready(label: String, state: State<'_, AppState>, app: AppHandle) {
     };
     tray::apply_window_visibility(&app, &label, &ui);
 
+    // Karaoke is a display-only overlay — always click-through.
+    // Island is click-through when locked (persisted across restarts).
+    // Deferred here (rather than in `setup()`) because the window must be
+    // realized — i.e. shown and backed by an actual GTK/gdk surface on
+    // Linux — before `set_ignore_cursor_events` is safe to call. `setup()`
+    // runs before that's guaranteed; `window_ready` fires only after the
+    // frontend has mounted, by which point the window has been shown.
+    match label.as_str() {
+    "karaoke" => {
+        if let Some(win) = app.get_webview_window(&label) {
+            crate::linux::apply_ignore_cursor_events_when_ready(&win, true);
+        }
+    }
+    "island" => {
+        if let Some(win) = app.get_webview_window(&label) {
+            crate::linux::apply_ignore_cursor_events_when_ready(&win, ui.island_locked);
+        }
+    }
+    _ => {}
+}
+
     // Push the current snapshot immediately so the frontend doesn't spend
     // up to 10 s in the booting/loading state waiting for the first
     // poll-driven `playback-tick` emission.
@@ -470,6 +499,28 @@ pub fn window_ready(label: String, state: State<'_, AppState>, app: AppHandle) {
         }
     }
 }
+// #[tauri::command]
+// pub fn window_ready(label: String, state: State<'_, AppState>, app: AppHandle) {
+//     let ui = state.ui.snapshot();
+//     let configured_visible = match label.as_str() {
+//         "main" => ui.floating_visible,
+//         "island" => ui.island_visible,
+//         "karaoke" => ui.karaoke_visible,
+//         _ => false,
+//     };
+//     tray::apply_window_visibility(&app, &label, &ui);
+//
+//     // Push the current snapshot immediately so the frontend doesn't spend
+//     // up to 10 s in the booting/loading state waiting for the first
+//     // poll-driven `playback-tick` emission.
+//     if configured_visible {
+//         if let Ok(render) = state.runtime.lock().map(|mut rt| rt.tick()) {
+//             if let Some(win) = app.get_webview_window(&label) {
+//                 let _ = win.emit("playback-tick", render);
+//             }
+//         }
+//     }
+// }
 
 /// Query whether autostart at login is currently enabled (delegates to the OS).
 #[tauri::command]

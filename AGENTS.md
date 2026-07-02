@@ -37,7 +37,7 @@ Rust bridge  (apps/desktop-tauri/src-tauri/src/)
     ↕  function calls
 lyra-core  (crates/lyra-core/src/)
     ↕  OS / network
-SpotifyMacOsAdapter  +  LrclibClient
+SpotifyMacOsAdapter / SpotifyWindowsAdapter / SpotifyLinuxAdapter  +  LrclibClient
 ```
 
 **Rule**: All business logic lives in `lyra-core`. The Tauri bridge only delegates to it. UI surfaces render state, never compute it.
@@ -53,7 +53,7 @@ All windows are served from one Vite SPA. `main.tsx` routes by `window.location.
 | `karaoke` | `/karaoke` | `views/karaoke` | Fullscreen karaoke overlay |
 | `settings` | `/settings` | `views/settings` | Settings UI |
 
-`island` and `karaoke` are macOS NSPanels (always-on-top, non-activating). See `src-tauri/src/macos.rs` for the Objective-C bridge.
+`island` and `karaoke` are macOS NSPanels (always-on-top, non-activating). See `src-tauri/src/macos.rs` for the Objective-C bridge. On Windows and Linux, the same helper functions fall back to regular Tauri window positioning and visibility APIs.
 
 ### Rust state in `AppState`
 
@@ -72,7 +72,7 @@ AppState {
 
 ### Polling architecture
 
-A background thread (spawned at startup in `lib.rs`) owns the `SpotifyMacOsAdapter` and polls every 500ms. It calls `rt.set_playback_snapshot(snapshot)` under the runtime Mutex — a fast write. The Mutex is never held while AppleScript runs.
+A background poller (spawned at startup in `lib.rs`) owns the platform Spotify adapter. macOS uses a GCD leeway timer; Windows and Linux use the generic sleep-based loop. Each loop calls `rt.set_playback_snapshot(snapshot)` under the runtime Mutex — a fast write. The Mutex is never held while AppleScript, SMTC, or D-Bus work runs.
 
 All three UI windows poll `get_render_snapshot` (a Tauri command) every 300ms. `LyraRuntime::tick()` has a 150ms debounce so at most one real computation fires per burst of calls from multiple windows.
 
@@ -117,9 +117,22 @@ Cache filenames are percent-encoded track URIs:
 | `domain.rs` | All shared types: `TrackRef`, `RenderSnapshot`, `LyricsStatus`, `LyricDocument`, `VisibleLine` |
 | `sync.rs` | `compute_render()` — deterministic line selection and visible window computation |
 | `player/spotify_macos.rs` | AppleScript polling; running check is **outside** the `tell` block to avoid launching Spotify |
+| `player/spotify_windows.rs` | Windows SMTC polling and playback controls |
+| `player/spotify_linux.rs` | Linux MPRIS polling over the user's D-Bus session bus |
 | `lyrics/lrclib.rs` | LRCLIB HTTP client; returns `Ok(None)` when no synced lyrics (not `Err`) |
 | `lyrics/cache.rs` | Flat-file cache + negative cache + manual override resolution |
 | `lyrics/parser.rs` | LRC parser; `parse_lrc(track_key, raw, source)` |
+
+### Linux Spotify integration
+
+Linux uses MPRIS over the D-Bus session bus, not distro-specific process or package checks. The adapter discovers Spotify by scanning session bus names that start with `org.mpris.MediaPlayer2.spotify`, then reads `org.mpris.MediaPlayer2.Player` properties from `/org/mpris/MediaPlayer2`.
+
+Important Linux behavior:
+- Missing D-Bus session, missing Spotify MPRIS service, stopped playback, ads, loading gaps, or incomplete metadata should become a stopped `PlaybackSnapshot`, not a UI error.
+- `PlayerSource::LinuxMpris` is the source for Linux tracks.
+- Track cache keys prefer Spotify identifiers from `mpris:trackid` or `xesam:url`; when Spotify does not expose a usable URI, fall back to a stable synthetic `mpris::<artist>::<title>` key.
+- Playback controls (`PlayPause`, `Next`, `Previous`, `SetPosition`) are sent through MPRIS. `SetPosition` must use the current `mpris:trackid` object path plus a microsecond offset.
+- Keep all Linux playback logic in `crates/lyra-core/src/player/spotify_linux.rs`. Tauri commands and startup code should only delegate to that adapter.
 
 ### Frontend patterns
 
@@ -128,3 +141,5 @@ Cache filenames are percent-encoded track URIs:
 `RenderSnapshot` contains both `active_line_index` (used by the `app` view via `get_all_lyrics`) and `visible_lines` (used by `island` and `karaoke`). The `app` view fetches the full lyric array separately via `get_all_lyrics` and highlights by index; the other views use the pre-windowed `visible_lines` directly.
 
 UI-layer state (window lock, position, font scale) flows through `ui-settings-changed` Tauri events. Playback state is only available by calling `get_render_snapshot`.
+
+Frontend OS styling is selected through `body[data-os]`. Linux must be detected as `linux` instead of falling through to macOS styles; shared playback UI should stay platform-neutral and consume `RenderSnapshot`.
