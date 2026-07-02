@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, memo, type FormEvent, type ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -488,6 +488,7 @@ function Body({
               ]}
               value={app.appearance.font_size}
               onChange={(v) => actions.updateAppSetting('appearance', 'font_size', v, 'font-size')}
+              info="Scales the base text size across the entire application interface."
             />
           </Row>
           <Row label="Primary text color">
@@ -514,6 +515,7 @@ function Body({
               ]}
               value={app.appearance.background_opacity}
               onChange={(v) => actions.updateAppSetting('appearance', 'background_opacity', v)}
+              info="Sets the darkness level of the translucent window backdrop."
             />
           </Row>
         </Group>
@@ -559,6 +561,7 @@ function Body({
               ]}
               value={ui.karaoke_offset_px}
               onChange={(v) => actions.karaoke('karaoke_offset_px', v, 'k-offset')}
+              info="Defines the spacing between the karaoke overlay and the edge of your screen."
             />
           </Row>
           <Row label="Line width">
@@ -573,6 +576,7 @@ function Body({
               ]}
               value={ui.karaoke_width_pct}
               onChange={(v) => actions.karaoke('karaoke_width_pct', v, 'k-width')}
+              info="Sets the width of the karaoke overlay as a percentage of the screen."
             />
           </Row>
         </Group>
@@ -589,6 +593,7 @@ function Body({
               ]}
               value={ui.karaoke_font_scale}
               onChange={(v) => actions.setFont('karaoke', v)}
+              info="Adjusts the text size of the karaoke lyrics window."
             />
           </Row>
           <Row label="Alignment">
@@ -628,6 +633,7 @@ function Body({
               ]}
               value={ui.karaoke_bg_opacity}
               onChange={(v) => actions.karaoke('karaoke_bg_opacity', v, 'k-bg')}
+              info="Controls the shading opacity of the karaoke overlay backdrop."
             />
           </Row>
         </Group>
@@ -729,6 +735,7 @@ function Body({
               ]}
               value={ui.island_width ?? 600}
               onChange={(v) => actions.setIslandSize(v, ui.island_height ?? 72)}
+              info="Controls the width of the Dynamic Island overlay window."
             />
           </Row>
           <Row label="Overlay height">
@@ -742,6 +749,7 @@ function Body({
               ]}
               value={ui.island_height ?? 72}
               onChange={(v) => actions.setIslandSize(ui.island_width ?? 600, v)}
+              info="Controls the height of the Dynamic Island overlay window."
             />
           </Row>
           <Row label="Position">
@@ -753,6 +761,7 @@ function Body({
               Reset to top-center
             </button>
           </Row>
+         
         </>
       ),
     },
@@ -784,6 +793,7 @@ function Body({
             ]}
             value={c.fontScale}
             onChange={(v) => actions.setFont(surface, v)}
+            info="Adjusts the size of lyrics inside this specific surface."
           />
         </Row>
         {c.extraLayout}
@@ -844,16 +854,33 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+const Toggle = memo(
+  function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+    return (
+      <input
+        type="checkbox"
+        checked={value}
+        onChange={(e) => onChange(e.target.checked)}
+        // @ts-expect-error - specific hack
+        switch="true"
+      />
+    );
+  },
+  (prevProps, nextProps) => prevProps.value === nextProps.value
+);
+
+function NativeSelect({ value, options, onChange }: { value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
   return (
-    <input
-      type="checkbox"
-      className="native-toggle"
-      checked={value}
-      onChange={(e) => onChange(e.target.checked)}
-      // @ts-expect-error - specific hack
-      switch="true"
-    />
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {options.map((opt) => (
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -866,78 +893,79 @@ function CustomSelect({
   options: { value: string; label: string }[];
   onChange: (v: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const selected = options.find((opt) => opt.value === value) || options[0];
-  return (
-    <div className="custom-select-container">
-      <button
-        type="button"
-        className={`custom-select-trigger ${open ? 'open' : ''}`}
-        onClick={() => setOpen(!open)}
-      >
-        <span>{selected.label}</span>
-        {isWindows ? (
-          <svg className="custom-select-arrow" width="10" height="10" viewBox="0 0 10 10">
-            <path
-              d="M2.5 4L5 6.5L7.5 4"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-            />
-          </svg>
-        ) : (
-          <svg className="custom-select-arrow" width="8" height="12" viewBox="0 0 8 12">
-            <path
-              d="M1.5 4.5L4 2L6.5 4.5M1.5 7.5L4 10L6.5 7.5"
-              stroke="currentColor"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-            />
-          </svg>
-        )}
-      </button>
-      {open && (
-        <>
-          <div className="custom-select-backdrop" onClick={() => setOpen(false)} />
-          <ul className="custom-select-dropdown" role="listbox">
-            {options.map((opt) => (
-              <li
-                key={opt.value}
-                className={`custom-select-option ${opt.value === value ? 'active' : ''}`}
-                onClick={() => {
-                  onChange(opt.value);
-                  setOpen(false);
-                }}
-                role="option"
-                aria-selected={opt.value === value}
-              >
-                {!isWindows && (
-                  <span className="custom-select-checkmark">
-                    {opt.value === value ? (
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                        <path
-                          d="M2 5L4 7L8 3"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    ) : null}
-                  </span>
-                )}
-                <span>{opt.label}</span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </div>
-  );
+  // const [open, setOpen] = useState(false);
+  // const selected = options.find((opt) => opt.value === value) || options[0];
+  return <NativeSelect value={value} options={options} onChange={onChange} />;
+  // return (
+  //   <div className="custom-select-container">
+  //     <button
+  //       type="button"
+  //       className={`custom-select-trigger ${open ? 'open' : ''}`}
+  //       onClick={() => setOpen(!open)}
+  //     >
+  //       <span>{selected.label}</span>
+  //       {isWindows ? (
+  //         <svg className="custom-select-arrow" width="10" height="10" viewBox="0 0 10 10">
+  //           <path
+  //             d="M2.5 4L5 6.5L7.5 4"
+  //             stroke="currentColor"
+  //             strokeWidth="1.5"
+  //             strokeLinecap="round"
+  //             strokeLinejoin="round"
+  //             fill="none"
+  //           />
+  //         </svg>
+  //       ) : (
+  //         <svg className="custom-select-arrow" width="8" height="12" viewBox="0 0 8 12">
+  //           <path
+  //             d="M1.5 4.5L4 2L6.5 4.5M1.5 7.5L4 10L6.5 7.5"
+  //             stroke="currentColor"
+  //             strokeWidth="1.2"
+  //             strokeLinecap="round"
+  //             strokeLinejoin="round"
+  //             fill="none"
+  //           />
+  //         </svg>
+  //       )}
+  //     </button>
+  //     {open && (
+  //       <>
+  //         <div className="custom-select-backdrop" onClick={() => setOpen(false)} />
+  //         <ul className="custom-select-dropdown" role="listbox">
+  //           {options.map((opt) => (
+  //             <li
+  //               key={opt.value}
+  //               className={`custom-select-option ${opt.value === value ? 'active' : ''}`}
+  //               onClick={() => {
+  //                 onChange(opt.value);
+  //                 setOpen(false);
+  //               }}
+  //               role="option"
+  //               aria-selected={opt.value === value}
+  //             >
+  //               {!isWindows && (
+  //                 <span className="custom-select-checkmark">
+  //                   {opt.value === value ? (
+  //                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+  //                       <path
+  //                         d="M2 5L4 7L8 3"
+  //                         stroke="currentColor"
+  //                         strokeWidth="1.5"
+  //                         strokeLinecap="round"
+  //                         strokeLinejoin="round"
+  //                       />
+  //                     </svg>
+  //                   ) : null}
+  //                 </span>
+  //               )}
+  //               <span>{opt.label}</span>
+  //             </li>
+  //           ))}
+  //         </ul>
+  //       </>
+  //     )}
+  //   </div>
+  // );
 }
 
 function Segmented({
@@ -1031,45 +1059,107 @@ function SnapSlider({
   steps,
   value,
   onChange,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  info,
 }: {
   steps: Array<{ value: number; label: string }>;
   value: number;
   onChange: (v: number) => void;
+  info?: string;
 }) {
   const idx = steps.reduce(
     (best, s, i) =>
       Math.abs(s.value - value) < Math.abs(steps[best].value - value) ? i : best,
     0
   );
+  const reactId = useId();
+  const listId = `snap-slider-${reactId.replace(/:/g, '')}`;
+  const snappedStep = steps[idx] ?? steps[0];
+  const progress = steps.length > 1 ? (idx / (steps.length - 1)) * 100 : 0;
+
+  const handleInput = (event: FormEvent<HTMLInputElement>) => {
+    const nextStep = steps[Number(event.currentTarget.value)];
+    if (nextStep) {
+      onChange(nextStep.value);
+    }
+  };
+
   return (
-    <div className="snap-slider">
-      <input
-        type="range"
-        min={0}
-        max={steps.length - 1}
-        step={1}
-        value={idx}
-        onChange={(e) => onChange(steps[parseInt(e.target.value, 10)].value)}
-      />
-      <div className="snap-slider-labels">
-        {steps.map((s, i) => {
-          const pct = steps.length > 1 ? (i / (steps.length - 1)) * 100 : 0;
-          return (
-            <span
-              key={i}
-              className={`snap-label${i === idx ? ' active' : ''}`}
-              style={{
-                position: 'absolute',
-                left: `${pct}%`,
-                transform: 'translateX(-50%)',
-              }}
-            >
-              {s.label}
+    <span className="snap-slider-control">
+      <span className="snap-slider-range-wrapper">
+        <span className="snap-slider-range">
+          <span className="snap-slider-track-container" aria-hidden="true">
+            <span className="snap-slider-rail" />
+            <span className="snap-slider-fill" style={{ width: `${progress}%` }} />
+            <span className="snap-slider-ticks">
+              {steps.map((s, i) => {
+                const tickProgress = steps.length > 1 ? (i / (steps.length - 1)) * 100 : 0;
+                return (
+                  <span
+                    key={`${s.value}-${s.label}`}
+                    className={`snap-slider-tick${i === idx ? ' active' : ''}`}
+                    style={{ left: `${tickProgress}%` }}
+                  />
+                );
+              })}
             </span>
-          );
-        })}
-      </div>
-    </div>
+          </span>
+          <input
+            className="native-snap-slider"
+            type="range"
+            min={0}
+            max={steps.length - 1}
+            step={1}
+            value={idx}
+            aria-valuetext={snappedStep?.label}
+            title={snappedStep?.label}
+            list={listId}
+            onInput={handleInput}
+          />
+        </span>
+        <span className="snap-slider-labels">
+          {steps.map((s, i) => {
+            const tickProgress = steps.length > 1 ? (i / (steps.length - 1)) * 100 : 0;
+            return (
+              <span
+                key={`${s.value}-${s.label}-label`}
+                className={`snap-slider-label${i === idx ? ' active' : ''}`}
+                style={{ left: `${tickProgress}%` }}
+              >
+                {s.label}
+              </span>
+            );
+          })}
+        </span>
+      </span>
+
+      <datalist id={listId}>
+        {steps.map((s, i) => (
+          <option key={i} value={i} label={s.label} />
+        ))}
+      </datalist>
+    </span>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function IconInfo() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="snap-slider-info-icon"
+    >
+      <circle cx="10" cy="10" r="8" />
+      <line x1="10" y1="14" x2="10" y2="10" />
+      <line x1="10" y1="6" x2="10.01" y2="6" strokeWidth="2.5" />
+    </svg>
   );
 }
 

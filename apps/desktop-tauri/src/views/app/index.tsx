@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
+
 const isWindows = navigator.userAgent.includes('Windows');
 document.body.dataset.os = isWindows ? 'windows' : 'macos';
 import {
@@ -28,6 +29,7 @@ import {
   type PositionBaseline,
 } from '../../utils/playback-sync'
 import './app.css'
+
 
 type UiState = { floating_visible: boolean; floating_font_scale: number };
 
@@ -87,6 +89,7 @@ interface LyricLineProps {
   index: number;
   text: string;
   state: LineState;
+  proximityClass: string;
   words: LyricWord[] | null;
   isLastEmpty: boolean;
   onSeek: (index: number, ts: number) => void;
@@ -99,26 +102,61 @@ interface LyricLineProps {
 const LyricLine = memo(function LyricLine({
   index,
   text,
-  state,
+  proximityClass,
   words,
   isLastEmpty,
   onSeek,
   lyricsRef,
   wordRefs,
 }: LyricLineProps) {
-  const className =
-    state === 'active' ? 'lyric-line active'
-    : state === 'passed' ? 'lyric-line passed'
-    : 'lyric-line';
+  const [isArmed, setIsArmed] = useState(false);
+  const timerRef = useRef<number | null>(null);
+
+  const handleMouseEnter = () => {
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => {
+      setIsArmed(true);
+    }, 600);
+  };
+
+  const handleMouseLeave = () => {
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    setIsArmed(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (isArmed) {
+      onSeek(index, event.timeStamp);
+    }
+  };
+
+  const className = `lyric-line ${proximityClass} ${isArmed ? 'is-armed' : ''}`;
+
   return (
     <div
       ref={(el) => { lyricsRef.current[index] = el; }}
       className={className}
-      onClick={(event) => onSeek(index, event.timeStamp)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onClick={handleClick}
       role="button"
       tabIndex={0}
-      title="Click to seek here"
+      title={isArmed ? "Click to seek here" : "Hover to arm seek"}
     >
+      <span className="seek-indicator" aria-hidden="true">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      </span>
       {words ? (
         words.map((w, wi) => (
           <span
@@ -151,6 +189,8 @@ function WindowControls() {
   );
 }
 
+
+
 function App() {
   const [lyrics, setLyrics] = useState<LineRef[]>([])
   const [activeLine, setActiveLine] = useState<number | null>(null)
@@ -181,8 +221,118 @@ function App() {
   const [hideWhenIdle, setHideWhenIdle] = useState(false)
   const [karaokeMode, setKaraokeMode] = useState(false)
   const [lyricOffsetMs, setLyricOffsetMs] = useState(0)
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [showDelayControl, setShowDelayControl] = useState(false)
+  const [selectValue, setSelectValue] = useState('')
+  const [artworkError, setArtworkError] = useState(false)
+  const [artworkTrackUri, setArtworkTrackUri] = useState('')
   const offsetUriRef = useRef('')
+
+  const trackUri = track?.uri ?? '';
+  if (trackUri !== artworkTrackUri) {
+    setArtworkTrackUri(trackUri);
+    setArtworkError(false);
+  }
+
+  const trackRef = useRef<TrackRef | null>(null);
+  useEffect(() => {
+    trackRef.current = track;
+  }, [track]);
+
+
+
+  const dragPositionMsRef = useRef(0);
+  const isDraggingRef = useRef(false);
+
+  const updateDragPosition = useCallback((clientX: number) => {
+    const currentTrack = trackRef.current;
+    if (!progressTrackRef.current || !currentTrack || currentTrack.duration_ms === 0) return;
+    const rect = progressTrackRef.current.getBoundingClientRect();
+    const pct = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    const targetMs = Math.floor(pct * currentTrack.duration_ms);
+
+    if (progressFillRef.current) {
+      progressFillRef.current.style.width = `${(pct * 100).toFixed(2)}%`;
+    }
+    if (positionLabelRef.current) {
+      positionLabelRef.current.textContent = formatMs(targetMs);
+    }
+    dragPositionMsRef.current = targetMs;
+  }, []);
+
+  const handleMouseMove = useCallback((event: MouseEvent) => {
+    updateDragPosition(event.clientX);
+  }, [updateDragPosition]);
+
+  const handleMouseUpRef = useRef<() => void>(() => { });
+
+  const handleMouseUp = useCallback(() => {
+    window.removeEventListener('mousemove', handleMouseMove);
+    window.removeEventListener('mouseup', handleMouseUpRef.current);
+
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+
+    const targetMs = dragPositionMsRef.current;
+    setPositionMs(targetMs);
+    const now = performance.now();
+    baselineRef.current = { ms: targetMs, at: now, targetMs, targetAt: now, blendDur: 1 };
+
+    invoke('playback_seek_ms', { positionMs: targetMs }).catch(() => { });
+  }, [handleMouseMove]);
+
+  useEffect(() => {
+    handleMouseUpRef.current = handleMouseUp;
+  }, [handleMouseUp]);
+
+  const handleMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const currentTrack = trackRef.current;
+    if (!currentTrack || currentTrack.duration_ms === 0) return;
+    isDraggingRef.current = true;
+
+    updateDragPosition(event.clientX);
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUpRef.current);
+  }, [updateDragPosition, handleMouseMove]);
+
+  // Clean up listeners on unmount
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUpRef.current);
+    };
+  }, [handleMouseMove]);
+
+  // Handle window resizing to temporarily clear vibrancy and prevent lag
+  useEffect(() => {
+    let resizeTimer: number | null = null;
+
+    const handleResize = () => {
+      document.body.dataset.resizing = 'true';
+
+      if (resizeTimer) {
+        window.clearTimeout(resizeTimer);
+      } else {
+        invoke('clear_main_vibrancy').catch(() => { });
+      }
+
+      resizeTimer = window.setTimeout(() => {
+        resizeTimer = null;
+        document.body.removeAttribute('data-resizing');
+        invoke('apply_main_vibrancy').catch(() => { });
+      }, 200);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (resizeTimer) {
+        window.clearTimeout(resizeTimer);
+      }
+    };
+  }, []);
+
+
 
   // Stable so memoized LyricLine children don't re-render on every parent tick.
   const lyricsRefForCb = useRef<LineRef[]>(lyrics);
@@ -201,17 +351,6 @@ function App() {
     setActiveLineWords([]);
     invoke('playback_seek_ms', { positionMs: target }).catch(() => { });
   }, []);
-
-  function seekFromClick(event: React.MouseEvent<HTMLDivElement>) {
-    if (!progressTrackRef.current || !track || track.duration_ms === 0) return
-    const rect = progressTrackRef.current.getBoundingClientRect()
-    const pct = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
-    const targetMs = Math.floor(pct * track.duration_ms)
-    setPositionMs(targetMs)
-    const now = performance.now()
-    baselineRef.current = { ms: targetMs, at: now, targetMs, targetAt: now, blendDur: 1 }
-    invoke('playback_seek_ms', { positionMs: targetMs }).catch(() => { })
-  }
 
   // Subscribe to backend `playback-tick` events. The backend polls Spotify
   // (adaptive cadence: 250ms playing → 2.5s stopped) and emits a snapshot to
@@ -254,6 +393,8 @@ function App() {
       setTrack((prev) => sameTrack(prev, snap.playback.track) ? prev : snap.playback.track);
       setLyricsStatus(snap.lyrics_status);
 
+
+
       // Position sync:
       //  1. Age-correct via observed_at_ms — the backend snapshot may be
       //     up to one poll-interval stale.
@@ -272,7 +413,9 @@ function App() {
 
       if (!playingNow || Math.abs(drift) > 1000) {
         baselineRef.current = { ms: correctedPos, at: now, targetMs: correctedPos, targetAt: now, blendDur: 1 };
-        setPositionMs(correctedPos);
+        if (!isDraggingRef.current) {
+          setPositionMs(correctedPos);
+        }
       } else {
         baselineRef.current = { ms: currentInterp, at: now, targetMs: correctedPos, targetAt: now, blendDur: BLEND_MS };
       }
@@ -312,6 +455,8 @@ function App() {
       unlisten?.();
     };
   }, []);
+
+
 
   // Subscribe to UI settings (font scale).
   useEffect(() => {
@@ -456,7 +601,7 @@ function App() {
       const pos = interpolatePosition(baselineRef.current, performance.now(), isPlaying);
 
       // Progress bar + time label (only while playing — otherwise frozen).
-      if (isPlaying) {
+      if (isPlaying && !isDraggingRef.current) {
         const fill = progressFillRef.current;
         const label = positionLabelRef.current;
         if (durationMs > 0 && fill) {
@@ -515,9 +660,9 @@ function App() {
     return () => cancelAnimationFrame(raf);
   }, [activeLineWords, isPlaying, pageVisible, surfaceVisible, track?.duration_ms])
 
-  const artworkSrc = track?.artwork_url ?? FALLBACK_ART;
   const hasTrack = Boolean(track);
-  const hasArtwork = Boolean(track?.artwork_url);
+  const hasArtwork = Boolean(track?.artwork_url) && !artworkError;
+  const artworkSrc = hasArtwork ? (track?.artwork_url ?? FALLBACK_ART) : FALLBACK_ART;
   const durationMs = track?.duration_ms ?? 0;
   const clampedPositionMs = durationMs > 0 ? Math.min(positionMs, durationMs) : positionMs;
   const progressPct = durationMs > 0 ? Math.min(100, Math.max(0, (clampedPositionMs / durationMs) * 100)) : 0;
@@ -554,103 +699,129 @@ function App() {
 
   return (
     <main className="lyra-window">
-      <div className="drag-region" data-tauri-drag-region />
       {isWindows && <WindowControls />}
 
       {/* Glowing Ambient Background (Color Bounce) */}
       <div className="ambient-bg" aria-hidden="true">
-        <img src={artworkSrc} alt="" decoding="async" />
+        <img src={artworkSrc} alt="" decoding="async" onError={() => setArtworkError(true)} />
         <div className="ambient-dimmer"></div>
       </div>
 
       {/* Left Column: Player Sidebar */}
       <section className="player-sidebar">
+        <div className="drag-region" data-tauri-drag-region />
 
         {/* Large Centered Album Art */}
         <div className="album-art-large">
           <img
             src={artworkSrc}
-            alt={hasTrack ? 'Album cover' : ''}
+            alt={hasTrack && !artworkError ? 'Album cover' : ''}
             className={`album-cover ${hasArtwork ? '' : 'placeholder'}`}
             draggable={false}
             decoding="async"
+            onError={() => setArtworkError(true)}
           />
         </div>
 
+
         {/* Bottom Left Controls matched to reference */}
         <div className="player-controls-bottom">
-          <div className={`track-info ${hasTrack ? '' : 'is-placeholder'} ${snapshotReady ? '' : 'is-loading'}`}>
-            <div className="track-meta">
-              {hasTrack ? (
-                <>
-                  <h2 className="track-title">{track?.title}</h2>
-                  <p className="track-artist">{track?.artist}</p>
-                </>
-              ) : (
-                <div className="track-meta-skeleton" aria-hidden="true">
-                  <span className="track-skeleton-line title" />
-                  <span className="track-skeleton-line artist" />
-                </div>
-              )}
-            </div>
-            <div className="track-actions">
-              <div className="track-menu">
+          {showDelayControl ? (
+            <div className="delay-control-inline">
+              <div className="delay-control-meta">
+                <span className="delay-control-title">Lyrics Delay</span>
+                <span className="delay-control-value">{offsetLabel}</span>
+              </div>
+              <div className="delay-control-actions">
                 <button
-                  className={`track-action-btn ${menuOpen ? 'active' : ''}`}
-                  aria-label="Options"
-                  aria-haspopup="menu"
-                  aria-expanded={menuOpen}
-                  disabled={!hasTrack}
-                  onClick={() => setMenuOpen((o) => !o)}
+                  type="button"
+                  className="delay-control-btn"
+                  onClick={() => nudgeOffset(-100)}
+                  title="Lyrics earlier"
                 >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /><circle cx="5" cy="12" r="2" /></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
                 </button>
-                {menuOpen && (
-                  <>
-                    <div className="track-menu-backdrop" onClick={() => setMenuOpen(false)} />
-                    <div className="track-menu-popover" role="menu">
-                      <div className="track-menu-section">
-                        <span className="track-menu-title">Delay lyrics</span>
-                        <div className="offset-control">
-                          <button
-                            type="button"
-                            className="offset-btn"
-                            aria-label="Lyrics earlier"
-                            onClick={() => nudgeOffset(-100)}
-                          >−</button>
-                          <span className="offset-value">{offsetLabel}</span>
-                          <button
-                            type="button"
-                            className="offset-btn"
-                            aria-label="Lyrics later"
-                            onClick={() => nudgeOffset(100)}
-                          >+</button>
-                        </div>
-                        <button
-                          type="button"
-                          className="track-menu-reset"
-                          onClick={resetOffset}
-                          disabled={lyricOffsetMs === 0}
-                        >Reset to 0</button>
-                      </div>
-                      <button
-                        type="button"
-                        className="track-menu-item"
-                        onClick={() => { retryLyrics(); setMenuOpen(false); }}
-                      >Refresh lyrics</button>
-                    </div>
-                  </>
-                )}
+                <button
+                  type="button"
+                  className="delay-control-btn"
+                  onClick={() => nudgeOffset(100)}
+                  title="Lyrics later"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                </button>
+                <button
+                  type="button"
+                  className="delay-control-reset"
+                  onClick={resetOffset}
+                  disabled={lyricOffsetMs === 0}
+                >
+                  Reset
+                </button>
+                <button
+                  type="button"
+                  className="delay-control-close"
+                  onClick={() => setShowDelayControl(false)}
+                  title="Close"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                </button>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className={`track-info ${hasTrack ? '' : 'is-placeholder'} ${snapshotReady ? '' : 'is-loading'}`}>
+              <div className="track-meta">
+                {hasTrack ? (
+                  <>
+                    <h2 className="track-title">{track?.title}</h2>
+                    <p className="track-artist">{track?.artist}</p>
+                  </>
+                ) : (
+                  <div className="track-meta-skeleton" aria-hidden="true">
+                    <span className="track-skeleton-line title" />
+                    <span className="track-skeleton-line artist" />
+                  </div>
+                )}
+              </div>
+              <div className="track-actions">
+                <div className="track-menu">
+                  {hasTrack && (
+                    <select
+                      className="track-menu-select"
+                      value={selectValue}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'delay') {
+                          setShowDelayControl(true);
+                        } else if (val === 'refresh') {
+                          retryLyrics();
+                        }
+                        setSelectValue('');
+                      }}
+                      aria-label="Track actions"
+                    >
+                      <option value="" disabled hidden>Actions</option>
+                      <option value="delay">☰ Lyrics delay</option>
+                      <option value="refresh">↻ Refresh lyrics</option>
+                    </select>
+                  )}
+                  <button
+                    className="track-action-btn"
+                    aria-label="Options"
+                    disabled={!hasTrack}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /><circle cx="5" cy="12" r="2" /></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="progress-bar">
             <span className="time-label" ref={positionLabelRef}>{formatMs(clampedPositionMs)}</span>
             <div
               className={`progress-track ${hasTrack ? '' : 'is-placeholder'}`}
               ref={progressTrackRef}
-              onClick={seekFromClick}
+              onMouseDown={handleMouseDown}
             >
               <div className="progress-fill" ref={progressFillRef} style={{ width: `${progressPct}%` }}></div>
             </div>
@@ -703,16 +874,35 @@ function App() {
             {lyrics.map((line, index) => {
               const lineState: LineState =
                 index === activeLine ? 'active'
-                : (activeLine !== null && index < activeLine) ? 'passed'
-                : 'upcoming';
+                  : (activeLine !== null && index < activeLine) ? 'passed'
+                    : 'upcoming';
               const isActive = index === activeLine;
               const words = isActive && activeLineWords.length > 0 ? activeLineWords : null;
+
+              let proximityClass = '';
+              if (activeLine !== null) {
+                if (index === activeLine) {
+                  proximityClass = 'is-active';
+                } else if (index === activeLine - 1) {
+                  proximityClass = 'is-passed-1';
+                } else if (index < activeLine - 1) {
+                  proximityClass = 'is-passed-2';
+                } else if (index === activeLine + 1) {
+                  proximityClass = 'is-future-1';
+                } else if (index > activeLine + 1) {
+                  proximityClass = 'is-future-2';
+                }
+              } else {
+                proximityClass = 'is-future-2';
+              }
+
               return (
                 <LyricLine
                   key={index}
                   index={index}
                   text={line.text}
                   state={lineState}
+                  proximityClass={proximityClass}
                   words={words}
                   isLastEmpty={index === lyrics.length - 1}
                   onSeek={seekToLine}

@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light dark;
   --bg-sidebar: rgba(0, 0, 0, 0.035);
   --bg-pane: transparent;
   --bg-card: rgba(255, 255, 255, 0.035);
@@ -41,9 +42,7 @@ body {
   position: fixed;
   inset: 0;
   display: flex;
-  background: rgba(245, 245, 247, 0.90);
-  backdrop-filter: blur(30px) saturate(140%);
-  -webkit-backdrop-filter: blur(30px) saturate(140%);
+  background: transparent;
   color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -55,7 +54,7 @@ body {
 
 @media (prefers-color-scheme: dark) {
   .settings-shell {
-    background: rgba(28, 28, 30, 0.88);
+    background: transparent;
   }
 }
 
@@ -201,7 +200,6 @@ body {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--panel-radius);
-  overflow: hidden;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.16);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -219,9 +217,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 13px 16px;
+  padding: 6px 16px;
+  min-height: 56px;
   border-bottom: 1px solid var(--border-row);
   font-size: 13.5px;
+  box-sizing: border-box;
 }
 
 .row:last-child {
@@ -237,6 +237,190 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.snap-slider-control {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: clamp(300px, 42vw, 460px);
+  max-width: 100%;
+}
+
+.snap-slider-range-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.native-snap-slider {
+  position: relative;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.native-snap-slider::-webkit-slider-runnable-track {
+  background: transparent;
+}
+
+.native-snap-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 8px;
+  height: 18px;
+  border-radius: 999px;
+  background: #ffffff;
+  cursor: pointer;
+  z-index: 3;
+  position: relative;
+  border: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.native-snap-slider::-moz-range-thumb {
+  width: 8px;
+  height: 18px;
+  border-radius: 999px;
+  background: #ffffff;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.snap-slider-range {
+  position: relative;
+  width: 100%;
+  height: 22px;
+  display: flex;
+  align-items: center;
+}
+
+.snap-slider-track-container {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 50%;
+  height: 8px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.snap-slider-rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 6px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: var(--text-secondary);
+  opacity: 0.2;
+}
+
+.snap-slider-fill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  background: var(--text-secondary);
+  opacity: 0.2;
+}
+
+.snap-slider-ticks {
+  position: absolute;
+  inset: 0;
+}
+
+.snap-slider-tick {
+  position: absolute;
+  top: 50%;
+  width: 1.5px;
+  height: 8px;
+  background: var(--text-secondary);
+  opacity: 0.35;
+  transform: translate(-50%, -50%);
+  border-radius: 1px;
+  transition: opacity 0.15s ease;
+}
+
+.snap-slider-tick.active {
+  opacity: 0.7;
+}
+
+.snap-slider-labels {
+  position: relative;
+  display: block;
+  height: 16px;
+  margin: 6px 4px 0 4px;
+}
+
+.snap-slider-label {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  transition: color 0.15s ease, font-weight 0.15s ease;
+}
+
+.snap-slider-label.active {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.snap-slider-info-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  cursor: help;
+  color: var(--text-secondary);
+  transition: color 0.15s ease;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.snap-slider-info-wrapper:hover {
+  color: var(--text-primary);
+}
+
+.snap-slider-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  width: 220px;
+  background: rgba(30, 30, 30, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  text-align: left;
+  white-space: normal;
+}
+
+.snap-slider-info-wrapper:hover .snap-slider-tooltip {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 /* Custom Controls */
@@ -260,67 +444,6 @@ select:hover {
   background-color: var(--input-hover);
 }
 
-input[type="range"] {
-  -webkit-appearance: none;
-  width: 100%;
-  background: transparent;
-}
-input[type="range"]::-webkit-slider-runnable-track {
-  width: 100%;
-  height: 3px;
-  cursor: pointer;
-  background: var(--input-bg);
-  border-radius: 2px;
-}
-input[type="range"]::-webkit-slider-thumb {
-  height: 16px;
-  width: 16px;
-  border-radius: 50%;
-  background: #d0d0d0;
-  box-shadow: var(--knob-shadow);
-  cursor: pointer;
-  -webkit-appearance: none;
-  margin-top: -6.5px;
-  transition: transform 0.1s, background 0.1s;
-}
-input[type="range"]::-webkit-slider-thumb:hover {
-  background: #ffffff;
-}
-input[type="range"]::-webkit-slider-thumb:active {
-  transform: scale(1.12);
-  background: #ffffff;
-}
-
-/* Snap Slider */
-.snap-slider {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 250px;
-}
-
-.snap-slider-labels {
-  position: relative;
-  height: 14px;
-  margin: 4px 8px 0 8px;
-}
-
-.snap-label {
-  font-size: 11px;
-  color: var(--text-secondary);
-  line-height: 1;
-  transition: color 0.15s;
-  white-space: nowrap;
-}
-
-.snap-label.active {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-
-
-
 .action-btn {
   padding: 6px 14px;
   border-radius: 6px;
@@ -340,14 +463,14 @@ input[type="range"]::-webkit-slider-thumb:active {
 
 /* iOS/macOS Toggle Switch */
 .native-toggle {
-  appearance: none;
+  /* appearance: none; */
   width: 44px;
   height: 24px;
-  background: var(--input-bg);
+  /* background: var(--input-bg); */
   border-radius: 24px;
   position: relative;
-  cursor: pointer;
-  outline: none;
+  /* cursor: pointer; */
+  /* outline: none; */
   transition: background 0.3s ease-in-out;
   box-shadow: inset 0 0 0 1px var(--border-color);
 }
@@ -358,10 +481,10 @@ input[type="range"]::-webkit-slider-thumb:active {
   left: 2px;
   width: 20px;
   height: 20px;
-  background: #ffffff;
+  /* background: #ffffff; */
   border-radius: 50%;
-  box-shadow: var(--knob-shadow);
-  transition: transform 0.3s cubic-bezier(0.2, 0.85, 0.32, 1.2);
+  /* box-shadow: var(--knob-shadow); */
+  /* transition: transform 0.3s cubic-bezier(0.2, 0.85, 0.32, 1.2); */
 }
 .native-toggle:checked {
   background: var(--accent);
@@ -393,6 +516,7 @@ input[type="range"]::-webkit-slider-thumb:active {
 /* ----------------================ macOS / Raycast Theme ================---------------- */
 
 body[data-os="macos"] {
+  color-scheme: dark;
   --bg-sidebar: rgba(0, 0, 0, 0.14);
   --bg-pane: transparent;
   --bg-card: rgba(255, 255, 255, 0.045);
@@ -409,6 +533,7 @@ body[data-os="macos"] {
 
 @media (prefers-color-scheme: light) {
   body[data-os="macos"] {
+    color-scheme: light;
     --bg-sidebar: rgba(0, 0, 0, 0.035);
     --bg-pane: transparent;
     --text-primary: #000000;
@@ -520,32 +645,6 @@ body[data-os="macos"] .segmented-option {
 body[data-os="macos"] .segmented-option.active {
   background: transparent !important;
   box-shadow: none !important;
-}
-
-/* MacOS Native Slider Override */
-body[data-os="macos"] input[type="range"]::-webkit-slider-runnable-track {
-  height: 4px;
-  background: rgba(255, 255, 255, 0.22);
-  border-radius: 2px;
-}
-@media (prefers-color-scheme: light) {
-  body[data-os="macos"] input[type="range"]::-webkit-slider-runnable-track {
-    background: rgba(0, 0, 0, 0.18);
-  }
-}
-body[data-os="macos"] input[type="range"]::-webkit-slider-thumb {
-  height: 16px;
-  width: 16px;
-  background: #ffffff;
-  border: 0.5px solid rgba(0, 0, 0, 0.15);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  margin-top: -6px;
-  border-radius: 50%;
-  -webkit-appearance: none;
-  cursor: pointer;
-}
-body[data-os="macos"] input[type="range"]::-webkit-slider-thumb:active {
-  transform: none;
 }
 
 /* MacOS Native Buttons Override */
@@ -664,8 +763,10 @@ body[data-os="macos"] .row {
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 0;
+  padding: 6px 0;
+  min-height: 56px;
   border-bottom: 1px solid var(--border-row);
+  box-sizing: border-box;
 }
 body[data-os="macos"] .row:last-child {
   border-bottom: none;
@@ -722,6 +823,7 @@ body[data-os="macos"] .row-control {
 }
 
 body[data-os="windows"] {
+  color-scheme: dark;
   --bg-sidebar: #202020;
   --bg-pane: #272727;
   --bg-card: #2c2c2c;
@@ -741,6 +843,7 @@ body[data-os="windows"] {
 
 @media (prefers-color-scheme: light) {
   body[data-os="windows"] {
+    color-scheme: light;
     --bg-sidebar: #f3f3f3;
     --bg-pane: #fafafa;
     --bg-card: #ffffff;
@@ -843,7 +946,9 @@ body[data-os="windows"] .group-card {
 }
 
 body[data-os="windows"] .row {
-  padding: 11px 16px;
+  padding: 6px 16px;
+  min-height: 56px;
+  box-sizing: border-box;
 }
 
 body[data-os="windows"] .row-label {
@@ -884,17 +989,17 @@ body[data-os="windows"] .native-toggle:checked::after {
 }
 
 /* Windows 11 Slider Override */
-body[data-os="windows"] input[type="range"]::-webkit-slider-runnable-track {
+body[data-os="windows"] input[type="range"]:not(.native-snap-slider)::-webkit-slider-runnable-track {
   height: 4px;
   background: rgba(255, 255, 255, 0.24);
   border-radius: 2px;
 }
 @media (prefers-color-scheme: light) {
-  body[data-os="windows"] input[type="range"]::-webkit-slider-runnable-track {
+  body[data-os="windows"] input[type="range"]:not(.native-snap-slider)::-webkit-slider-runnable-track {
     background: rgba(0, 0, 0, 0.24);
   }
 }
-body[data-os="windows"] input[type="range"]::-webkit-slider-thumb {
+body[data-os="windows"] input[type="range"]:not(.native-snap-slider)::-webkit-slider-thumb {
   height: 18px;
   width: 18px;
   border-radius: 50%;
@@ -905,7 +1010,7 @@ body[data-os="windows"] input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   cursor: pointer;
 }
-body[data-os="windows"] input[type="range"]::-webkit-slider-thumb:hover {
+body[data-os="windows"] input[type="range"]:not(.native-snap-slider)::-webkit-slider-thumb:hover {
   background: #ffffff;
   border-color: var(--accent);
 }
@@ -1169,4 +1274,3 @@ body[data-os="windows"] .settings-ambient-bg {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
