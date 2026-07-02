@@ -146,7 +146,7 @@ impl UiStateStore {
     }
 
     pub fn snapshot(&self) -> UiState {
-        self.inner.lock().unwrap().clone()
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     /// Cheap read-only accessor for the three surface-visibility flags.
@@ -160,7 +160,7 @@ impl UiStateStore {
     }
 
     pub fn mutate<F: FnOnce(&mut UiState)>(&self, f: F) -> UiState {
-        let mut guard = self.inner.lock().unwrap();
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         f(&mut guard);
         let snap = guard.clone();
         drop(guard);
@@ -169,14 +169,18 @@ impl UiStateStore {
     }
 
     fn save(&self, state: &UiState) {
-        if let Some(parent) = self.path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        // Compact JSON — file is not user-edited and sliders can fire many
-        // mutate-save cycles per drag. to_string is ~3-5× faster than
-        // to_string_pretty and writes a smaller file.
-        if let Ok(json) = serde_json::to_string(state) {
-            let _ = std::fs::write(&self.path, json);
-        }
+        let path = self.path.clone();
+        let state = state.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            // Compact JSON — file is not user-edited and sliders can fire many
+            // mutate-save cycles per drag. to_string is ~3-5× faster than
+            // to_string_pretty and writes a smaller file.
+            if let Ok(json) = serde_json::to_string(&state) {
+                let _ = std::fs::write(path, json);
+            }
+        });
     }
 }

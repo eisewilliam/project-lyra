@@ -9,6 +9,7 @@ use anyhow::Result;
 /// audio); a **negative** offset advances them. Offsets are keyed by track URI
 /// and persisted to a single JSON map so a user's correction survives restarts
 /// and re-applies whenever the same track plays again.
+#[derive(Clone)]
 pub struct OffsetStore {
     path: PathBuf,
     offsets: HashMap<String, i64>,
@@ -32,22 +33,47 @@ impl OffsetStore {
     /// Set the absolute offset for a track and persist. An offset of 0 removes
     /// the entry so the map doesn't accumulate no-op records.
     pub fn set(&mut self, track_key: &str, offset_ms: i64) {
+        self.set_inner(track_key, offset_ms);
+        self.save();
+    }
+
+    pub fn set_sync(&mut self, track_key: &str, offset_ms: i64) {
+        self.set_inner(track_key, offset_ms);
+        let _ = self.save_sync();
+    }
+
+    fn set_inner(&mut self, track_key: &str, offset_ms: i64) {
         if offset_ms == 0 {
             self.offsets.remove(track_key);
         } else {
             self.offsets.insert(track_key.to_string(), offset_ms);
         }
-        let _ = self.save();
     }
 
-    fn save(&self) -> Result<()> {
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent)?;
+    fn save(&self) {
+        let path = self.path.clone();
+        let offsets = self.offsets.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let _ = save_offsets(&path, &offsets);
+            });
+        } else {
+            let _ = save_offsets(&path, &offsets);
         }
-        let json = serde_json::to_string(&self.offsets)?;
-        std::fs::write(&self.path, json)?;
-        Ok(())
     }
+
+    fn save_sync(&self) -> Result<()> {
+        save_offsets(&self.path, &self.offsets)
+    }
+}
+
+fn save_offsets(path: &Path, offsets: &HashMap<String, i64>) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let json = serde_json::to_string(offsets)?;
+    std::fs::write(path, json)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -74,7 +100,7 @@ mod tests {
     fn set_then_get_roundtrips() {
         let dir = tmp_dir();
         let mut store = OffsetStore::new(&dir);
-        store.set("spotify:track:abc", 350);
+        store.set_sync("spotify:track:abc", 350);
         assert_eq!(store.get("spotify:track:abc"), 350);
         // Re-load from disk to confirm persistence.
         let reloaded = OffsetStore::new(&dir);
@@ -85,8 +111,8 @@ mod tests {
     fn zero_offset_removes_entry() {
         let dir = tmp_dir();
         let mut store = OffsetStore::new(&dir);
-        store.set("spotify:track:abc", 200);
-        store.set("spotify:track:abc", 0);
+        store.set_sync("spotify:track:abc", 200);
+        store.set_sync("spotify:track:abc", 0);
         let reloaded = OffsetStore::new(&dir);
         assert_eq!(reloaded.get("spotify:track:abc"), 0);
     }

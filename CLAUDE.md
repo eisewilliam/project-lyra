@@ -93,17 +93,17 @@ Status transitions in `tick()`:
 
 The frontend only calls `refresh_lyrics` once per URI (guarded by `refreshedUriRef`). A failed HTTP fetch stores a negative so status transitions out of `Loading`.
 
-### Two separate persistence stores
+### Persistence stores
 
 | Store | Managed by | Path |
 |---|---|---|
-| `UiState` | `UiStateStore` in `ui_state.rs` | `~/Library/Application Support/Lyra/` |
-| Lyrics cache | `LyricCache` in `lyra-core` | `~/Library/Application Support/Lyra/lyrics_cache/` |
-| Settings (lyra-core) | `ConfigStore` in `lyra-core` | `~/Library/Application Support/Lyra/config.json` |
-| Lyric offsets (per track) | `OffsetStore` in `lyra-core` | `~/Library/Application Support/Lyra/lyric_offsets.json` |
+| `UiState` | `UiStateStore` in `ui_state.rs` | `~/Library/Application Support/lyra/` |
+| Lyrics cache | `LyricCache` in `lyra-core` | `~/Library/Application Support/lyra/lyrics_cache/` |
+| Settings (lyra-core) | `ConfigStore` in `lyra-core` | `~/Library/Application Support/lyra/config.json` |
+| Lyric offsets (per track) | `OffsetStore` in `lyra-core` | `~/Library/Application Support/lyra/lyric_offsets.json` |
 
 Both `app_support_dir()` helpers (`lib.rs` and `runtime.rs`) spell the directory
-`Lyra` — keep them identical so case-sensitive volumes don't split the stores.
+`lyra` — keep them identical so case-sensitive volumes don't split the stores.
 
 Cache filenames are percent-encoded track URIs:
 - Fetched: `lyrics_cache/spotify%3Atrack%3Aabc123.lrc`

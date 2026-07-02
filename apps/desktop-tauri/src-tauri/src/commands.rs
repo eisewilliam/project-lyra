@@ -147,10 +147,14 @@ pub fn set_overlay_position(label: String, x: i32, y: i32, app: AppHandle) {
 /// Called by the island frontend after each drag — persists position to disk.
 /// Pass x = -1 to clear the saved position (reset to default top-center).
 #[tauri::command]
-pub fn save_island_position(x: i32, y: i32, state: State<'_, AppState>) {
-    state.ui.mutate(|s| {
+pub fn save_island_position(x: i32, y: i32, state: State<'_, AppState>, app: tauri::AppHandle) {
+    let new_state = state.ui.mutate(|s| {
         s.island_pos = if x == -1 { None } else { Some((x, y)) };
     });
+    let _ = app.emit("ui-settings-changed", &new_state);
+    if x == -1 {
+        crate::apply_preferred_monitor_positioning(&app, &new_state);
+    }
 }
 
 /// Resize the island window and persist the new dimensions.
@@ -259,9 +263,15 @@ pub fn playback_seek_ms(position_ms: u64) {
 }
 
 #[tauri::command]
-pub fn clear_lyrics_cache(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    let rt = lock_runtime(&state);
-    rt.cache.clear().map_err(|e| e.to_string())
+pub async fn clear_lyrics_cache(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let cache = {
+        let rt = lock_runtime(&state);
+        rt.cache.clone()
+    };
+    tokio::task::spawn_blocking(move || cache.clear())
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -485,4 +495,33 @@ pub fn set_autostart(
     let new_state = state.ui.mutate(|s| s.autostart_enabled = enabled);
     let _ = app.emit("ui-settings-changed", new_state);
     Ok(())
+}
+
+#[tauri::command]
+pub fn clear_main_vibrancy(app: AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(main_win) = app.get_webview_window("main") {
+            let _ = window_vibrancy::clear_vibrancy(&main_win);
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
+}
+
+#[tauri::command]
+pub fn apply_main_vibrancy(app: AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(main_win) = app.get_webview_window("main") {
+            let _ = window_vibrancy::apply_vibrancy(
+                &main_win,
+                window_vibrancy::NSVisualEffectMaterial::HudWindow,
+                None,
+                None,
+            );
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
 }

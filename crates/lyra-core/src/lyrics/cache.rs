@@ -10,6 +10,7 @@ use anyhow::Result;
 const NEGATIVE_TTL_SECS: u64 = 14 * 24 * 60 * 60;
 const NEGATIVE_CACHE_VERSION: &str = "v2";
 
+#[derive(Clone)]
 pub struct LyricCache {
     cache_dir: PathBuf,
     override_dir: PathBuf,
@@ -54,6 +55,7 @@ impl LyricCache {
     }
 
     pub fn put(&self, track_key: &str, raw_lrc: &str) -> Result<()> {
+        std::fs::create_dir_all(&self.cache_dir)?;
         let path = self.cache_dir.join(Self::filename(track_key));
         std::fs::write(path, raw_lrc)?;
         Ok(())
@@ -61,6 +63,7 @@ impl LyricCache {
 
     /// Sentinel file marking a known-missing track so we skip LRCLIB retries.
     pub fn mark_negative(&self, track_key: &str) -> Result<()> {
+        std::fs::create_dir_all(&self.cache_dir)?;
         let path = self
             .cache_dir
             .join(format!("{}.nomatch", Self::stem(track_key)));

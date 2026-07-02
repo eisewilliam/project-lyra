@@ -68,9 +68,8 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
         lock_island,
     });
 
-    let _tray = TrayIconBuilder::new()
+    let mut tray = TrayIconBuilder::new()
         .menu(&menu)
-        .icon(app.default_window_icon().unwrap().clone())
         .icon_as_template(true)
         .on_menu_event(move |app, event| match event.id().as_ref() {
             "show_lyra" => open_lyra(app),
@@ -80,8 +79,13 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
             "settings" => open_settings(app),
             "quit" => app.exit(0),
             _ => {}
-        })
-        .build(app)?;
+        });
+
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+
+    let _tray = tray.build(app)?;
 
     Ok(())
 }

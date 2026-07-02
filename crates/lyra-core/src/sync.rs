@@ -166,7 +166,7 @@ fn shift_words(words: Vec<LyricWord>, offset_ms: i64) -> Vec<LyricWord> {
         .collect()
 }
 
-fn find_active_line(lines: &[crate::domain::LyricLine], pos_ms: u64) -> Option<usize> {
+pub fn find_active_line(lines: &[crate::domain::LyricLine], pos_ms: u64) -> Option<usize> {
     if lines.is_empty() {
         return None;
     }

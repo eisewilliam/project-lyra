@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "lyra",
+  "productName": "Lyra",
   "version": "0.1.0",
   "identifier": "com.lyra",
   "build": {
@@ -22,7 +22,7 @@
         "alwaysOnTop": false,
         "decorations": true,
         "titleBarStyle": "Overlay",
-        "transparent": true,
+        "transparent": false,
         "hiddenTitle": true,
         "visible": false,
         "acceptFirstMouse": true,

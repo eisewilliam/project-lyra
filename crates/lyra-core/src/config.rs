@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::domain::SettingsSnapshot;
 use anyhow::Result;
 
+#[derive(Clone)]
 pub struct ConfigStore {
     path: PathBuf,
 }
@@ -22,11 +23,24 @@ impl ConfigStore {
     }
 
     pub fn save(&self, settings: &SettingsSnapshot) -> Result<()> {
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent)?;
+        let path = self.path.clone();
+        let settings = settings.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let _ = save_settings(&path, &settings);
+            });
+        } else {
+            save_settings(&path, &settings)?;
         }
-        let json = serde_json::to_string_pretty(settings)?;
-        std::fs::write(&self.path, json)?;
         Ok(())
     }
+}
+
+fn save_settings(path: &Path, settings: &SettingsSnapshot) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let json = serde_json::to_string_pretty(settings)?;
+    std::fs::write(path, json)?;
+    Ok(())
 }

@@ -65,12 +65,23 @@ impl RuntimeSurfaceVisibility {
 }
 
 fn app_support_dir() -> std::path::PathBuf {
-    // Must match `runtime::app_support_dir` exactly. On case-sensitive volumes
-    // a casing mismatch ("lyra" vs "Lyra") splits UiState from the config +
-    // lyrics cache into two directories — keep both spelled "Lyra".
+    // Must match `runtime::app_support_dir` exactly. Keep the application
+    // support directory lowercase so all persisted stores share one path.
     dirs_next::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("Lyra")
+        .join("lyra")
+}
+
+fn migrate_app_support_dir() {
+    let base = dirs_next::data_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let old_dir = base.join("Lyra");
+    let new_dir = base.join("lyra");
+
+    if !old_dir.exists() || new_dir.exists() {
+        return;
+    }
+
+    let _ = std::fs::rename(&old_dir, &new_dir);
 }
 
 /// Move all surfaces onto the user's preferred monitor (or the primary monitor
@@ -232,6 +243,7 @@ fn process_tick(
     ctx: &PollContext,
     snapshot: Option<lyra_core::domain::PlaybackSnapshot>,
 ) -> u64 {
+    let is_fast_tick = snapshot.is_none();
     let mut current_state = snapshot.as_ref().map(|s| s.state.clone());
 
     let Some(app_state) = handle.try_state::<AppState>() else {
@@ -252,7 +264,7 @@ fn process_tick(
         .is_visible("karaoke", karaoke_cfg);
     let any_visible = island_vis || floating_vis || karaoke_vis;
 
-    let (render_opt, base_interval_ms) = {
+    let (render_opt, base_interval_ms, next_transition_playback) = {
         let mut rt = match app_state.runtime.lock() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
@@ -263,12 +275,15 @@ fn process_tick(
         // User-configured base cadence. Clamped so a misconfigured value can't
         // peg the CPU (too low) or make track changes feel laggy (too high).
         let base = rt.settings().behavior.poll_interval_ms.clamp(100, 2000);
-        (Some(rt.tick()), base)
+        let render = rt.tick();
+        let current_pos = render.playback.position_ms.unwrap_or(0);
+        let next_t = rt.next_transition_playback_ms(current_pos);
+        (Some(render), base, next_t)
     };
 
     let mut lyrics_ready = false;
 
-    if let Some(render) = render_opt {
+    if let Some(render) = render_opt.as_ref() {
         lyrics_ready = matches!(render.lyrics_status, lyra_core::domain::LyricsStatus::Ready);
         current_state = Some(render.playback.state.clone());
 
@@ -298,9 +313,13 @@ fn process_tick(
             now_ms.saturating_sub(last) > 10_000
         };
         let should_emit = any_visible
-            && match render.playback.state {
-                PlaybackState::Playing => true,
-                _ => changed || heartbeat,
+            && if is_fast_tick {
+                changed
+            } else {
+                match render.playback.state {
+                    PlaybackState::Playing => true,
+                    _ => changed || heartbeat,
+                }
             };
 
         if should_emit {
@@ -337,13 +356,29 @@ fn process_tick(
     // that base for tight line sync; other states back off relative to it
     // since nothing on screen is animating, but never poll *faster* than the
     // user asked for.
-    match (any_visible, current_state, lyrics_ready) {
+    let base_sleep = match (any_visible, current_state.as_ref(), lyrics_ready) {
         (false, _, _) => 10_000,
         (true, Some(PlaybackState::Playing), true) => base_interval_ms,
         (true, Some(PlaybackState::Playing), false) => base_interval_ms.max(1_000),
         (true, Some(PlaybackState::Paused), _) => base_interval_ms.max(1_500),
         (true, Some(PlaybackState::Stopped), _) | (true, None, _) => base_interval_ms.max(2_500),
+    };
+
+    let mut sleep_ms = base_sleep;
+    if any_visible && current_state == Some(PlaybackState::Playing) && lyrics_ready {
+        if let Some(render) = &render_opt {
+            if let Some(trans_pos) = next_transition_playback {
+                let current_pos = render.playback.position_ms.unwrap_or(0);
+                if trans_pos > current_pos {
+                    let time_to_trans = trans_pos - current_pos;
+                    if time_to_trans < base_sleep {
+                        sleep_ms = time_to_trans.max(10);
+                    }
+                }
+            }
+        }
     }
+    sleep_ms
 }
 
 /// macOS poll loop using a GCD `dispatch_source_t` timer with leeway.
@@ -373,6 +408,7 @@ where
         >,
         ctx: PollContext,
         timer: std::sync::Mutex<Option<dispatch2::DispatchRetained<DispatchSource>>>,
+        last_spotify_poll_ms: std::sync::Mutex<u64>,
     }
 
     extern "C" fn handler(raw_ctx: *mut c_void) {
@@ -386,20 +422,54 @@ where
 
         set_thread_qos_utility();
 
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        let poll_interval_ms = {
+            if let Some(app_state) = state.handle.try_state::<AppState>() {
+                let rt = app_state.runtime.lock().unwrap_or_else(|e| e.into_inner());
+                rt.settings().behavior.poll_interval_ms.clamp(100, 2000)
+            } else {
+                300
+            }
+        };
+
+        let last_poll = *state
+            .last_spotify_poll_ms
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let elapsed = now_ms.saturating_sub(last_poll);
+
         // Skip the player poll entirely when no surface is visible — the
         // resulting snapshot would just be coalesced away inside process_tick
         // anyway. Saves a per-10s AppleScript fire while everything is hidden.
-        let snapshot = if any_surface_visible(&state.handle) {
-            (state.poll_fn.lock().unwrap())()
+        // Also skip if the normal polling interval has not elapsed yet (early transition wakeups).
+        let snapshot = if any_surface_visible(&state.handle) && elapsed >= poll_interval_ms {
+            if let Ok(mut g) = state.last_spotify_poll_ms.lock() {
+                *g = now_ms;
+            }
+            (state.poll_fn.lock().unwrap_or_else(|e| e.into_inner()))()
         } else {
             None
         };
         let next_ms = process_tick(&state.handle, &state.ctx, snapshot);
 
-        // Re-arm the one-shot timer for the next fire. Leeway = 25% of
-        // delay, floored at 50ms — kernel can coalesce with other wakes.
-        if let Some(timer) = state.timer.lock().unwrap().as_ref() {
-            let leeway_ns: u64 = (next_ms.saturating_mul(250_000)).max(50_000_000);
+        // Re-arm the one-shot timer for the next fire.
+        // For transitions (next_ms < poll_interval_ms), we use zero leeway for precise wakeups.
+        if let Some(timer) = state
+            .timer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+        {
+            let is_transition = next_ms < poll_interval_ms;
+            let leeway_ns: u64 = if is_transition {
+                0
+            } else {
+                (next_ms.saturating_mul(250_000)).max(50_000_000)
+            };
             let when = DispatchTime::NOW.time((next_ms as i64) * 1_000_000);
             timer.set_timer(when, u64::MAX, leeway_ns);
         }
@@ -415,6 +485,7 @@ where
         poll_fn: std::sync::Mutex::new(Box::new(poll_fn)),
         ctx: PollContext::new(),
         timer: std::sync::Mutex::new(Some(timer.retain())),
+        last_spotify_poll_ms: std::sync::Mutex::new(0),
     }));
 
     timer.set_event_handler_f(handler);
@@ -440,12 +511,31 @@ where
     F: FnMut() -> Option<lyra_core::domain::PlaybackSnapshot> + Send + 'static,
 {
     let ctx = PollContext::new();
+    let mut last_spotify_poll_ms = 0u64;
     loop {
-        let snapshot = if any_surface_visible(&handle) {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        let poll_interval_ms = {
+            if let Some(app_state) = handle.try_state::<AppState>() {
+                let rt = app_state.runtime.lock().unwrap_or_else(|e| e.into_inner());
+                rt.settings().behavior.poll_interval_ms.clamp(100, 2000)
+            } else {
+                300
+            }
+        };
+
+        let elapsed = now_ms.saturating_sub(last_spotify_poll_ms);
+
+        let snapshot = if any_surface_visible(&handle) && elapsed >= poll_interval_ms {
+            last_spotify_poll_ms = now_ms;
             poll_fn()
         } else {
             None
         };
+
         let next_ms = process_tick(&handle, &ctx, snapshot);
         std::thread::sleep(std::time::Duration::from_millis(next_ms));
     }
@@ -499,6 +589,7 @@ pub fn run() {
                 Some(vec![]),
             ))?;
 
+            migrate_app_support_dir();
             let dir = app_support_dir();
             let ui = UiStateStore::load(&dir);
             let initial = ui.snapshot();
@@ -583,6 +674,21 @@ pub fn run() {
 
             #[cfg(target_os = "macos")]
             {
+                use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
+                // Apply native window vibrancy to the settings window
+                if let Some(settings_win) = app.get_webview_window("settings") {
+                    let _ = apply_vibrancy(
+                        &settings_win,
+                        NSVisualEffectMaterial::HudWindow,
+                        None,
+                        None,
+                    );
+                }
+                // Apply native window vibrancy to the main window
+                // if let Some(main_win) = app.get_webview_window("main") {
+                //     let _ = apply_vibrancy(&main_win, NSVisualEffectMaterial::HudWindow, None, None);
+                // }
+
                 // GCD-driven poll loop with leeway timer. Runs on its own
                 // queue thread; QoS_UTILITY set inside each handler fire.
                 let handle = app.handle().clone();
@@ -651,6 +757,8 @@ pub fn run() {
             commands::get_autostart_status,
             commands::set_autostart,
             commands::window_ready,
+            commands::clear_main_vibrancy,
+            commands::apply_main_vibrancy,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
