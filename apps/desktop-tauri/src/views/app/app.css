@@ -1,14 +1,17 @@
 .lyra-window {
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   box-sizing: border-box;
   display: flex;
   flex-direction: row;
-  background: rgba(22, 22, 26, 0.4);
-  backdrop-filter: blur(24px) saturate(120%);
-  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  background: rgb(22, 22, 26);
   color: white;
   position: relative;
+  transition: background 0.15s ease;
+}
+
+body[data-resizing="true"] .lyra-window {
+  background: rgba(18, 18, 22, 0.92) !important;
 }
 
 body[data-os="windows"] .lyra-window {
@@ -67,19 +70,24 @@ body[data-os="windows"] .lyra-window {
  */
 @media (prefers-reduced-motion: reduce) {
   .lyra-window { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(18, 18, 22, 0.82); }
-  .ambient-bg img { filter: none; transform: none; opacity: 0.2; }
-  .lyric-line { filter: none !important; will-change: auto !important; transition: color 0.25s ease, opacity 0.25s ease, transform 0.25s ease !important; }
-  .lyric-line.active { filter: none !important; }
-  .lyric-line.passed { filter: none !important; }
-  .lyric-line:not(.active):hover { filter: none !important; }
+  .ambient-bg img { filter: none; transform: translate(-50%, -50%) scale(20); opacity: 0.2; }
+  /* Respect reduced motion: keep only colour/opacity fades — no scale, no
+     translate, no blur transition, and no enter animation. */
+  .lyric-line { filter: none !important; will-change: auto !important; transform: none !important; animation: none !important; transition: color 0.25s ease, opacity 0.25s ease !important; }
+  .lyric-line.is-active { filter: none !important; transform: none !important; }
+  .lyric-line.is-passed-1,
+  .lyric-line.is-passed-2 { filter: none !important; }
+  .lyric-line:not(.is-active):hover { filter: none !important; }
+  .lyrics-container { transition: none !important; }
   .lyrics-pane { scroll-behavior: auto; }
 }
 :root[data-low-power="true"] .lyra-window { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(18, 18, 22, 0.82); }
-:root[data-low-power="true"] .ambient-bg img { filter: blur(40px) saturate(160%); transform: scale(1.2); opacity: 0.5; }
+:root[data-low-power="true"] .ambient-bg img { filter: blur(2px) saturate(160%); transform: translate(-50%, -50%) scale(20); opacity: 0.5; }
 :root[data-low-power="true"] .lyric-line { filter: none !important; will-change: auto !important; }
-:root[data-low-power="true"] .lyric-line.active { filter: none !important; will-change: transform !important; }
-:root[data-low-power="true"] .lyric-line.passed { filter: none !important; }
-:root[data-low-power="true"] .lyric-line:not(.active):hover { filter: none !important; }
+:root[data-low-power="true"] .lyric-line.is-active { filter: none !important; will-change: transform !important; }
+:root[data-low-power="true"] .lyric-line.is-passed-1,
+:root[data-low-power="true"] .lyric-line.is-passed-2 { filter: none !important; }
+:root[data-low-power="true"] .lyric-line:not(.is-active):hover { filter: none !important; }
 :root[data-low-power="true"] .lyrics-pane { scroll-behavior: auto; }
 
 /* Invisible full-width drag strip at top — allows window dragging over all content */
@@ -107,19 +115,28 @@ body[data-os="windows"] .lyra-window {
 }
 
 .ambient-bg img {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 80px;
+  height: 80px;
   object-fit: cover;
-  /* Massive blur and scaling to create a cinematic gradient wash */
-  filter: blur(120px) saturate(160%);
-  transform: scale(1.4);
+  /* Massive blur and scaling to create a cinematic gradient wash.
+     Blurring a tiny fixed 80px image and scaling it up by 20x is extremely cheap,
+     avoiding expensive full-window blur recalculations on resize. */
+  filter: blur(6px) saturate(160%);
+  transform: translate(-50%, -50%) scale(20);
   opacity: 0.65;
+  will-change: transform;
 }
 
 .ambient-dimmer {
   position: absolute;
   inset: 0;
-  /* A dark vignette to ensure text stays readable while edges glow */
+  /* A dark vignette to ensure text stays readable while edges glow.
+     `--bg-darkness` (the "Background darkness" setting, 0..1) scales the
+     overall strength of the dim. */
+  opacity: var(--bg-darkness, 0.6);
   background: radial-gradient(circle at center, rgba(10,10,12,0.1) 0%, rgba(10,10,12,0.65) 100%),
               linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.5));
 }
@@ -354,9 +371,11 @@ body[data-os="windows"] .lyra-window {
   z-index: 1;
   mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
-  overflow-y: auto;
+  /* The active line is centred by translating .lyrics-container (the "reel"),
+     not by native scrolling — gives a long, eased glide instead of the abrupt
+     jump that scrollIntoView({behavior:'smooth'}) produces. */
+  overflow: hidden;
   scrollbar-width: none;
-  scroll-behavior: smooth;
 }
 
 .lyrics-pane.is-placeholder {
@@ -377,6 +396,10 @@ body[data-os="windows"] .lyra-window {
   width: 100%;
   margin: auto 0;
   padding: 50vh 0;
+  position: relative;
+  /* The reel glide. JS sets `transform: translateY(...)` per active line. */
+  transition: transform 0.62s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
 }
 
 .lyric-line {
@@ -394,46 +417,81 @@ body[data-os="windows"] .lyra-window {
     opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
     filter 0.5s cubic-bezier(0.22, 1, 0.36, 1),
     transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform, filter, opacity;
+  /* will-change intentionally omitted at base level — promoting every line
+     to its own compositing layer is expensive (GPU memory + paint cost).
+     Only the active line gets layer-promotion via .lyric-line.is-active below. */
   scroll-margin-top: 50vh;
   scroll-margin-bottom: 50vh;
-  cursor: pointer;
+  cursor: default;
   user-select: none;
 }
 
-.lyric-line:not(.active):hover {
+.lyric-line:not(.is-active):hover {
   color: rgba(255, 255, 255, 0.75);
   filter: blur(1.5px);
   opacity: 0.95;
 }
 
-.lyric-line.active {
-  color: rgba(255, 255, 255, 1);
+.lyric-line.is-active {
+  color: var(--lyric-color, rgba(255, 255, 255, 1));
   filter: blur(0px);
   opacity: 1;
-  transform: scale(1.04);
+  transform: scale(1.03);
   text-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  will-change: transform, filter, opacity;
+  /* Enter animation: replays each time a line gains `.is-active` (no remount
+     needed). Ends exactly at the resting active state above so it settles
+     without a snap. The 0.5s transitions still handle the outgoing line. */
+  animation: lyric-active-in 460ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes lyric-active-in {
+  from {
+    opacity: 0.5;
+    transform: scale(0.99) translateY(0.14em);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.03) translateY(0);
+    filter: blur(0);
+  }
+}
+
+.lyric-line.is-passed-1,
+.lyric-line.is-future-1 {
+  filter: blur(1px);
+  opacity: 0.60;
+  transform: scale(1);
+}
+
+.lyric-line.is-passed-2,
+.lyric-line.is-future-2 {
+  filter: blur(3.5px);
+  opacity: 0.28;
+  transform: scale(1);
 }
 
 .lyric-line.passed {
   color: rgba(255, 255, 255, 0.28);
-  filter: blur(3px);
-  opacity: 0.7;
 }
 
 /* Word-by-word karaoke highlighting inside the active line.
    Every word uses the SAME gradient mechanism — the visual state (upcoming /
    singing / passed) is driven entirely by --word-progress (0..1), set 60fps
    via refs. No class-swap repaint, so transitions between states are seamless. */
-.lyric-line.active .lyric-word {
+.lyric-line.is-active .lyric-word {
   display: inline;
   color: transparent;
+  /* Sung portion uses the configured --lyric-color; the unsung tail is the
+     same colour at 32% so a custom colour applies to the whole karaoke wipe,
+     not just the brief plain-text frame when the line ends. */
   background-image: linear-gradient(
     to right,
-    #ffffff 0%,
-    #ffffff calc(var(--word-progress, 0) * 100%),
-    rgba(255, 255, 255, 0.32) calc(var(--word-progress, 0) * 100%),
-    rgba(255, 255, 255, 0.32) 100%
+    var(--lyric-color, #ffffff) 0%,
+    var(--lyric-color, #ffffff) calc(var(--word-progress, 0) * 100%),
+    color-mix(in srgb, var(--lyric-color, #ffffff) 32%, transparent) calc(var(--word-progress, 0) * 100%),
+    color-mix(in srgb, var(--lyric-color, #ffffff) 32%, transparent) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
@@ -678,3 +736,190 @@ body[data-os="windows"] .lyra-window {
     scroll-behavior: auto;
   }
 }
+
+/* ── Track quick-options menu (three-dot) ──────────────────────────────────── */
+.track-menu {
+  position: relative;
+}
+
+.track-action-btn.active {
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Native Select Overlay Option */
+.track-menu-select {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  z-index: 2;
+}
+
+.track-menu:hover .track-action-btn {
+  color: #fff;
+}
+
+.track-menu-select:active ~ .track-action-btn {
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+
+/* Inline Timing Control Layout */
+.delay-control-inline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  height: 40px;
+  animation: track-menu-in-bottom 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.delay-control-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.delay-control-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.delay-control-value {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.delay-control-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.delay-control-btn,
+.delay-control-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.delay-control-btn:hover,
+.delay-control-close:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.delay-control-reset {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.delay-control-reset:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.delay-control-reset:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+@keyframes track-menu-in-bottom {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes track-menu-in-top {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ── Karaoke mode (main window): show only active + next line, centered ────── */
+.lyrics-container.is-karaoke {
+  justify-content: center;
+  padding: 0;
+}
+
+.lyrics-container.is-karaoke .lyric-line {
+  display: none;
+}
+
+.lyrics-container.is-karaoke .lyric-line.is-active,
+.lyrics-container.is-karaoke .lyric-line.is-active + .lyric-line {
+  display: block;
+}
+
+.lyrics-container.is-karaoke .lyric-line.is-active {
+  text-align: center;
+}
+
+.lyrics-container.is-karaoke .lyric-line.is-active + .lyric-line {
+  text-align: center;
+  opacity: 0.45;
+}
+
+/* ── Seek Indicator ───────────────────────────────────────────────────────── */
+.seek-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0;
+  height: 12px;
+  opacity: 0;
+  overflow: hidden;
+  transition: width 0.25s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s cubic-bezier(0.22, 1, 0.36, 1), margin-right 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  margin-right: 0;
+  vertical-align: middle;
+  color: inherit;
+}
+
+.lyric-line.is-armed .seek-indicator {
+  width: 14px;
+  opacity: 0.8;
+  margin-right: 8px;
+}
+
+

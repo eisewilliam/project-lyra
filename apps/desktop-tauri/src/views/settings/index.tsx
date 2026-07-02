@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, memo, type FormEvent, type ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -21,7 +21,7 @@ function SettingsWinControls() {
 }
 
 type Surface = 'main' | 'island' | 'karaoke';
-type Section = 'general' | 'main' | 'island' | 'karaoke';
+type Section = 'general' | 'appearance' | 'main' | 'island' | 'karaoke';
 
 type UiState = {
   island_visible: boolean;
@@ -70,17 +70,28 @@ type AppSettings = {
 
 type ConsolidatedState = { ui: UiState; app: AppSettings };
 
+type SettingsRenderSnapshot = {
+  playback: {
+    track: {
+      artwork_url: string | null;
+    } | null;
+  } | null;
+};
+
 type NavItem = { id: Section; label: string; icon: ReactNode; color: string };
 
 const NAV_GROUPS: { header: string | null; items: NavItem[] }[] = [
   {
     header: null,
-    items: [{ id: 'general', label: 'General', icon: <IconGear />, color: '#8e8e93' }],
+    items: [
+      { id: 'general', label: 'General', icon: <IconGear />, color: '#8e8e93' },
+      { id: 'appearance', label: 'Appearance', icon: <IconAppearance />, color: '#ff9500' },
+    ],
   },
   {
     header: 'Surfaces',
     items: [
-      { id: 'main', label: 'Lyra', icon: <IconWindow />, color: '#0A84FF' },
+      { id: 'main', label: 'Main Window', icon: <IconWindow />, color: '#0A84FF' },
       { id: 'island', label: 'Dynamic Island', icon: <IconIsland />, color: '#34c759' },
       { id: 'karaoke', label: 'Karaoke', icon: <IconKaraoke />, color: '#ff453a' },
     ],
@@ -95,6 +106,7 @@ export default function Settings() {
   const [autostartEnabled, setAutostartEnabled] = useState(false);
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
   const debounceRef = useRef<Record<string, number>>({});
+  const [artworkSrc, setArtworkSrc] = useState('');
 
   useEffect(() => {
     document.body.dataset.os = isWindows ? 'windows' : 'macos';
@@ -115,6 +127,28 @@ export default function Settings() {
       });
     })();
     return () => unlisten?.();
+  }, []);
+
+  useEffect(() => {
+    let unlistenTick: (() => void) | undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const initial = await invoke<SettingsRenderSnapshot>('get_render_snapshot');
+        if (!cancelled && initial?.playback?.track?.artwork_url) {
+          setArtworkSrc(initial.playback.track.artwork_url);
+        }
+      } catch { /* ignored */ }
+      unlistenTick = await listen<SettingsRenderSnapshot>('playback-tick', (e) => {
+        if (!cancelled && e.payload?.playback?.track?.artwork_url) {
+          setArtworkSrc(e.payload.playback.track.artwork_url);
+        }
+      });
+    })();
+    return () => {
+      cancelled = true;
+      unlistenTick?.();
+    };
   }, []);
 
   const patchUi = (changes: Partial<UiState>) => {
@@ -259,8 +293,15 @@ export default function Settings() {
 
   const active = ALL_ITEMS.find((n) => n.id === section);
 
+  const artworkSrcUrl = artworkSrc || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
+
   return (
     <div className="settings-shell">
+      {/* Glowing Ambient Background (Color Bounce) */}
+      <div className="settings-ambient-bg" aria-hidden="true">
+        <img src={artworkSrcUrl} alt="" decoding="async" key={artworkSrcUrl} />
+        <div className="settings-ambient-dimmer"></div>
+      </div>
       {isWindows && <SettingsWinControls />}
       <aside className="settings-sidebar">
         <div className="sidebar-traffic-spacer" data-tauri-drag-region="deep" />
@@ -355,24 +396,27 @@ function Body({
       <>
         <Group title="System">
           <Row label="Theme">
-            <select value={ui.theme} onChange={(e) => actions.setTheme(e.target.value)}>
-              <option value="auto">Auto</option>
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-            </select>
+            <CustomSelect
+              value={ui.theme}
+              options={[
+                { value: 'auto', label: 'Auto' },
+                { value: 'dark', label: 'Dark' },
+                { value: 'light', label: 'Light' },
+              ]}
+              onChange={(val) => actions.setTheme(val)}
+            />
           </Row>
           <Row label="Polling interval">
-            <select
+            <CustomSelect
               value={String(app.behavior.poll_interval_ms)}
-              onChange={(e) =>
-                actions.updateAppSetting('behavior', 'poll_interval_ms', parseInt(e.target.value, 10))
-              }
-            >
-              <option value="250">Very Fast (250ms)</option>
-              <option value="500">Fast (500ms)</option>
-              <option value="1000">Normal (1s)</option>
-              <option value="2000">Slow (2s)</option>
-            </select>
+              options={[
+                { value: '250', label: 'Very Fast (250ms)' },
+                { value: '500', label: 'Fast (500ms)' },
+                { value: '1000', label: 'Normal (1s)' },
+                { value: '2000', label: 'Slow (2s)' },
+              ]}
+              onChange={(val) => actions.updateAppSetting('behavior', 'poll_interval_ms', parseInt(val, 10))}
+            />
           </Row>
           <Row label="Hide all displays when paused">
             <Toggle value={app.behavior.hide_when_paused} onChange={(v: boolean) => actions.updateAppSetting('behavior', 'hide_when_paused', v)} />
@@ -398,22 +442,83 @@ function Body({
         {monitors.length > 1 && (
           <Group title="Display">
             <Row label="Show on screen">
-              <select
+              <CustomSelect
                 value={ui.preferred_monitor ?? ''}
-                onChange={(e) =>
-                  actions.setPreferredMonitor(e.target.value === '' ? null : e.target.value)
-                }
-              >
-                <option value="">Primary (default)</option>
-                {monitors.map((m, i) => (
-                  <option key={`${m.name ?? i}-${m.x}-${m.y}`} value={m.name ?? ''}>
-                    {monitorLabel(m, i)}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: 'Primary (default)' },
+                  ...monitors.map((m, i) => ({
+                    value: m.name ?? '',
+                    label: monitorLabel(m, i),
+                  })),
+                ]}
+                onChange={(val) => actions.setPreferredMonitor(val === '' ? null : val)}
+              />
             </Row>
           </Group>
         )}
+      </>
+    );
+  }
+
+  if (section === 'appearance') {
+    return (
+      <>
+        <Group title="Typography">
+          <Row label="Font face">
+            <CustomSelect
+              value={app.appearance.font_family}
+              options={[
+                { value: 'system-ui', label: 'System Default' },
+                { value: "'SF Pro Rounded', sans-serif", label: 'SF Pro Rounded' },
+                { value: "'Inter', sans-serif", label: 'Inter' },
+                { value: 'monospace', label: 'Monospace' },
+              ]}
+              onChange={(val) => actions.updateAppSetting('appearance', 'font_family', val)}
+            />
+          </Row>
+          <Row label="Base font size">
+            <SnapSlider
+              steps={[
+                { value: 12, label: 'XS' },
+                { value: 14, label: 'Small' },
+                { value: 16, label: 'Medium' },
+                { value: 18, label: 'Large' },
+                { value: 20, label: 'XL' },
+                { value: 24, label: 'XXL' },
+              ]}
+              value={app.appearance.font_size}
+              onChange={(v) => actions.updateAppSetting('appearance', 'font_size', v, 'font-size')}
+              info="Scales the base text size across the entire application interface."
+            />
+          </Row>
+          <Row label="Primary text color">
+            <input
+              type="color"
+              style={{ width: 28, height: 28, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
+              value={app.appearance.text_color || '#ffffff'}
+              onChange={(e) =>
+                actions.updateAppSetting('appearance', 'text_color', e.target.value, 'text-color')
+              }
+            />
+          </Row>
+        </Group>
+
+        <Group title="Color & Dimming">
+          <Row label="Background darkness">
+            <SnapSlider
+              steps={[
+                { value: 0, label: 'None' },
+                { value: 0.25, label: '25%' },
+                { value: 0.5, label: '50%' },
+                { value: 0.75, label: '75%' },
+                { value: 1.0, label: '100%' },
+              ]}
+              value={app.appearance.background_opacity}
+              onChange={(v) => actions.updateAppSetting('appearance', 'background_opacity', v)}
+              info="Sets the darkness level of the translucent window backdrop."
+            />
+          </Row>
+        </Group>
       </>
     );
   }
@@ -447,15 +552,16 @@ function Body({
           <Row label="Screen edge offset">
             <SnapSlider
               steps={[
-                { value: 0, label: '0px' },
-                { value: 24, label: '24px' },
-                { value: 48, label: '48px' },
-                { value: 72, label: '72px' },
-                { value: 96, label: '96px' },
-                { value: 120, label: '120px' },
+                { value: 0, label: 'None' },
+                { value: 24, label: 'Small' },
+                { value: 48, label: 'Medium' },
+                { value: 72, label: 'Large' },
+                { value: 96, label: 'Extra' },
+                { value: 120, label: 'Max' },
               ]}
               value={ui.karaoke_offset_px}
               onChange={(v) => actions.karaoke('karaoke_offset_px', v, 'k-offset')}
+              info="Defines the spacing between the karaoke overlay and the edge of your screen."
             />
           </Row>
           <Row label="Line width">
@@ -470,6 +576,7 @@ function Body({
               ]}
               value={ui.karaoke_width_pct}
               onChange={(v) => actions.karaoke('karaoke_width_pct', v, 'k-width')}
+              info="Sets the width of the karaoke overlay as a percentage of the screen."
             />
           </Row>
         </Group>
@@ -486,6 +593,7 @@ function Body({
               ]}
               value={ui.karaoke_font_scale}
               onChange={(v) => actions.setFont('karaoke', v)}
+              info="Adjusts the text size of the karaoke lyrics window."
             />
           </Row>
           <Row label="Alignment">
@@ -525,6 +633,7 @@ function Body({
               ]}
               value={ui.karaoke_bg_opacity}
               onChange={(v) => actions.karaoke('karaoke_bg_opacity', v, 'k-bg')}
+              info="Controls the shading opacity of the karaoke overlay backdrop."
             />
           </Row>
         </Group>
@@ -556,73 +665,38 @@ function Body({
           <Row label="Keep window on top">
             <Toggle value={app.window.always_on_top} onChange={(v: boolean) => actions.updateAppSetting('window', 'always_on_top', v)} />
           </Row>
+          <Row label="Karaoke-style lyrics (active line only)">
+            <Toggle value={app.behavior.karaoke_mode} onChange={(v: boolean) => actions.updateAppSetting('behavior', 'karaoke_mode', v)} />
+          </Row>
         </>
       ),
       extraLayout: (
         <>
-          <Row label="Font face">
-            <select
-              value={app.appearance.font_family}
-              onChange={(e) =>
-                actions.updateAppSetting('appearance', 'font_family', e.target.value)
-              }
-            >
-              <option value="system-ui">System Default</option>
-              <option value="'SF Pro Rounded', sans-serif">SF Pro Rounded</option>
-              <option value="'Inter', sans-serif">Inter</option>
-              <option value="monospace">Monospace</option>
-            </select>
-          </Row>
-          <Row label="Primary text color">
-            <input
-              type="color"
-              style={{ width: 28, height: 28, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
-              value={app.appearance.text_color || '#ffffff'}
-              onChange={(e) =>
-                actions.updateAppSetting('appearance', 'text_color', e.target.value, 'text-color')
-              }
-            />
-          </Row>
-          <Row label="Background darkness">
-            <SnapSlider
-              steps={[
-                { value: 0, label: 'None' },
-                { value: 0.25, label: '25%' },
-                { value: 0.5, label: '50%' },
-                { value: 0.75, label: '75%' },
-                { value: 1.0, label: '100%' },
-              ]}
-              value={app.appearance.background_opacity}
-              onChange={(v) => actions.updateAppSetting('appearance', 'background_opacity', v)}
-            />
-          </Row>
           <Row label="Buffer lines above">
-            <select
+            <CustomSelect
               value={String(app.appearance.context_lines_above)}
-              onChange={(e) =>
-                actions.updateAppSetting('appearance', 'context_lines_above', parseInt(e.target.value, 10))
-              }
-            >
-              <option value="1">1 Line</option>
-              <option value="2">2 Lines</option>
-              <option value="3">3 Lines</option>
-              <option value="4">4 Lines</option>
-              <option value="5">5 Lines</option>
-            </select>
+              options={[
+                { value: '1', label: '1 Line' },
+                { value: '2', label: '2 Lines' },
+                { value: '3', label: '3 Lines' },
+                { value: '4', label: '4 Lines' },
+                { value: '5', label: '5 Lines' },
+              ]}
+              onChange={(val) => actions.updateAppSetting('appearance', 'context_lines_above', parseInt(val, 10))}
+            />
           </Row>
           <Row label="Buffer lines below">
-            <select
+            <CustomSelect
               value={String(app.appearance.context_lines_below)}
-              onChange={(e) =>
-                actions.updateAppSetting('appearance', 'context_lines_below', parseInt(e.target.value, 10))
-              }
-            >
-              <option value="1">1 Line</option>
-              <option value="2">2 Lines</option>
-              <option value="3">3 Lines</option>
-              <option value="4">4 Lines</option>
-              <option value="5">5 Lines</option>
-            </select>
+              options={[
+                { value: '1', label: '1 Line' },
+                { value: '2', label: '2 Lines' },
+                { value: '3', label: '3 Lines' },
+                { value: '4', label: '4 Lines' },
+                { value: '5', label: '5 Lines' },
+              ]}
+              onChange={(val) => actions.updateAppSetting('appearance', 'context_lines_below', parseInt(val, 10))}
+            />
           </Row>
         </>
       )
@@ -652,28 +726,30 @@ function Body({
           <Row label="Overlay width">
             <SnapSlider
               steps={[
-                { value: 400, label: '400' },
-                { value: 500, label: '500' },
-                { value: 600, label: '600' },
-                { value: 700, label: '700' },
-                { value: 800, label: '800' },
-                { value: 900, label: '900' },
+                { value: 400, label: 'Narrow' },
+                { value: 500, label: 'Small' },
+                { value: 600, label: 'Medium' },
+                { value: 700, label: 'Wide' },
+                { value: 800, label: 'Wider' },
+                { value: 900, label: 'Full' },
               ]}
               value={ui.island_width ?? 600}
               onChange={(v) => actions.setIslandSize(v, ui.island_height ?? 72)}
+              info="Controls the width of the Dynamic Island overlay window."
             />
           </Row>
           <Row label="Overlay height">
             <SnapSlider
               steps={[
-                { value: 52, label: '52' },
-                { value: 64, label: '64' },
-                { value: 72, label: '72' },
-                { value: 88, label: '88' },
-                { value: 104, label: '104' },
+                { value: 52, label: 'Compact' },
+                { value: 64, label: 'Small' },
+                { value: 72, label: 'Medium' },
+                { value: 88, label: 'Large' },
+                { value: 104, label: 'Tall' },
               ]}
               value={ui.island_height ?? 72}
               onChange={(v) => actions.setIslandSize(ui.island_width ?? 600, v)}
+              info="Controls the height of the Dynamic Island overlay window."
             />
           </Row>
           <Row label="Position">
@@ -685,6 +761,7 @@ function Body({
               Reset to top-center
             </button>
           </Row>
+         
         </>
       ),
     },
@@ -716,6 +793,7 @@ function Body({
             ]}
             value={c.fontScale}
             onChange={(v) => actions.setFont(surface, v)}
+            info="Adjusts the size of lyrics inside this specific surface."
           />
         </Row>
         {c.extraLayout}
@@ -776,17 +854,118 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+const Toggle = memo(
+  function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+    return (
+      <input
+        type="checkbox"
+        checked={value}
+        onChange={(e) => onChange(e.target.checked)}
+        // @ts-expect-error - specific hack
+        switch="true"
+      />
+    );
+  },
+  (prevProps, nextProps) => prevProps.value === nextProps.value
+);
+
+function NativeSelect({ value, options, onChange }: { value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
   return (
-    <input
-      type="checkbox"
-      className="native-toggle"
-      checked={value}
-      onChange={(e) => onChange(e.target.checked)}
-      // @ts-expect-error - specific hack
-      switch="true"
-    />
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {options.map((opt) => (
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
+      ))}
+    </select>
   );
+}
+
+function CustomSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (v: string) => void;
+}) {
+  // const [open, setOpen] = useState(false);
+  // const selected = options.find((opt) => opt.value === value) || options[0];
+  return <NativeSelect value={value} options={options} onChange={onChange} />;
+  // return (
+  //   <div className="custom-select-container">
+  //     <button
+  //       type="button"
+  //       className={`custom-select-trigger ${open ? 'open' : ''}`}
+  //       onClick={() => setOpen(!open)}
+  //     >
+  //       <span>{selected.label}</span>
+  //       {isWindows ? (
+  //         <svg className="custom-select-arrow" width="10" height="10" viewBox="0 0 10 10">
+  //           <path
+  //             d="M2.5 4L5 6.5L7.5 4"
+  //             stroke="currentColor"
+  //             strokeWidth="1.5"
+  //             strokeLinecap="round"
+  //             strokeLinejoin="round"
+  //             fill="none"
+  //           />
+  //         </svg>
+  //       ) : (
+  //         <svg className="custom-select-arrow" width="8" height="12" viewBox="0 0 8 12">
+  //           <path
+  //             d="M1.5 4.5L4 2L6.5 4.5M1.5 7.5L4 10L6.5 7.5"
+  //             stroke="currentColor"
+  //             strokeWidth="1.2"
+  //             strokeLinecap="round"
+  //             strokeLinejoin="round"
+  //             fill="none"
+  //           />
+  //         </svg>
+  //       )}
+  //     </button>
+  //     {open && (
+  //       <>
+  //         <div className="custom-select-backdrop" onClick={() => setOpen(false)} />
+  //         <ul className="custom-select-dropdown" role="listbox">
+  //           {options.map((opt) => (
+  //             <li
+  //               key={opt.value}
+  //               className={`custom-select-option ${opt.value === value ? 'active' : ''}`}
+  //               onClick={() => {
+  //                 onChange(opt.value);
+  //                 setOpen(false);
+  //               }}
+  //               role="option"
+  //               aria-selected={opt.value === value}
+  //             >
+  //               {!isWindows && (
+  //                 <span className="custom-select-checkmark">
+  //                   {opt.value === value ? (
+  //                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+  //                       <path
+  //                         d="M2 5L4 7L8 3"
+  //                         stroke="currentColor"
+  //                         strokeWidth="1.5"
+  //                         strokeLinecap="round"
+  //                         strokeLinejoin="round"
+  //                       />
+  //                     </svg>
+  //                   ) : null}
+  //                 </span>
+  //               )}
+  //               <span>{opt.label}</span>
+  //             </li>
+  //           ))}
+  //         </ul>
+  //       </>
+  //     )}
+  //   </div>
+  // );
 }
 
 function Segmented({
@@ -798,8 +977,42 @@ function Segmented({
   options: { value: string; label: string }[];
   onChange: (v: string) => void;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+
+  const updateIndicator = () => {
+    const container = containerRef.current;
+    if (!container) return;
+    const activeBtn = container.querySelector<HTMLButtonElement>('.segmented-option.active');
+    if (!activeBtn) return;
+    const containerRect = container.getBoundingClientRect();
+    const btnRect = activeBtn.getBoundingClientRect();
+    setIndicator({
+      left: btnRect.left - containerRect.left,
+      width: btnRect.width,
+    });
+  };
+
+  useLayoutEffect(() => {
+    updateIndicator();
+  }, [value, options]);
+
+  useEffect(() => {
+    window.addEventListener('resize', updateIndicator);
+    return () => window.removeEventListener('resize', updateIndicator);
+  }, []);
+
   return (
-    <div className="segmented">
+    <div className="segmented" ref={containerRef}>
+      {indicator && (
+        <div
+          className="segmented-indicator"
+          style={{
+            width: indicator.width,
+            transform: `translateX(${indicator.left}px)`,
+          }}
+        />
+      )}
       {options.map((opt) => (
         <button
           key={opt.value}
@@ -850,30 +1063,109 @@ function SnapSlider({
   steps: Array<{ value: number; label: string }>;
   value: number;
   onChange: (v: number) => void;
+  info?: string;
 }) {
   const idx = steps.reduce(
     (best, s, i) =>
       Math.abs(s.value - value) < Math.abs(steps[best].value - value) ? i : best,
     0
   );
+  const reactId = useId();
+  const listId = `snap-slider-${reactId.replace(/:/g, '')}`;
+  const snappedStep = steps[idx] ?? steps[0];
+  const progress = steps.length > 1 ? (idx / (steps.length - 1)) * 100 : 0;
+
+  const handleInput = (event: FormEvent<HTMLInputElement>) => {
+    const nextStep = steps[Number(event.currentTarget.value)];
+    if (nextStep) {
+      onChange(nextStep.value);
+    }
+  };
+
   return (
-    <div className="snap-slider">
-      <input
-        type="range"
-        min={0}
-        max={steps.length - 1}
-        step={1}
-        value={idx}
-        onChange={(e) => onChange(steps[parseInt(e.target.value, 10)].value)}
-      />
-      <div className="snap-slider-labels">
-        {steps.map((s, i) => (
-          <span key={i} className={`snap-label${i === idx ? ' active' : ''}`}>
-            {s.label}
+    <span className="snap-slider-control">
+      <span className="snap-slider-range-wrapper">
+        <span className="snap-slider-range">
+          <span className="snap-slider-track-container" aria-hidden="true">
+            <span className="snap-slider-rail" />
+            <span className="snap-slider-fill" style={{ width: `${progress}%` }} />
+            <span className="snap-slider-ticks">
+              {steps.map((s, i) => {
+                const tickProgress = steps.length > 1 ? (i / (steps.length - 1)) * 100 : 0;
+                return (
+                  <span
+                    key={`${s.value}-${s.label}`}
+                    className={`snap-slider-tick${i === idx ? ' active' : ''}`}
+                    style={{ left: `${tickProgress}%` }}
+                  />
+                );
+              })}
+            </span>
           </span>
+          <input
+            className="native-snap-slider"
+            type="range"
+            min={0}
+            max={steps.length - 1}
+            step={1}
+            value={idx}
+            aria-valuetext={snappedStep?.label}
+            title={snappedStep?.label}
+            list={listId}
+            onInput={handleInput}
+          />
+        </span>
+        <span className="snap-slider-labels">
+          {steps.map((s, i) => {
+            const tickProgress = steps.length > 1 ? (i / (steps.length - 1)) * 100 : 0;
+            return (
+              <span
+                key={`${s.value}-${s.label}-label`}
+                className={`snap-slider-label${i === idx ? ' active' : ''}`}
+                style={{ left: `${tickProgress}%` }}
+              >
+                {s.label}
+              </span>
+            );
+          })}
+        </span>
+      </span>
+
+      <datalist id={listId}>
+        {steps.map((s, i) => (
+          <option key={i} value={i} label={s.label} />
         ))}
-      </div>
-    </div>
+      </datalist>
+    </span>
+  );
+}
+
+export function IconInfo() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="snap-slider-info-icon"
+    >
+      <circle cx="10" cy="10" r="8" />
+      <line x1="10" y1="14" x2="10" y2="10" />
+      <line x1="10" y1="6" x2="10.01" y2="6" strokeWidth="2.5" />
+    </svg>
+  );
+}
+
+function IconAppearance() {
+  return (
+    <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11.5 3.5l5 5-10.5 10.5h-4v-4z" />
+      <path d="M14 6l2.5 2.5" />
+    </svg>
   );
 }
 

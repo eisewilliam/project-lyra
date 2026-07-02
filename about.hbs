@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Lyra — Third-Party Licenses</title>
+    <style>
+      body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem auto; max-width: 52rem; line-height: 1.5; color: #1a1a1a; background: #fff; padding: 0 1rem; }
+      h1 { font-size: 1.6rem; }
+      h2 { font-size: 1.1rem; margin-top: 2.5rem; border-bottom: 1px solid #ddd; padding-bottom: 0.3rem; }
+      .intro { color: #444; }
+      .used-by { color: #666; font-size: 0.85rem; }
+      pre { white-space: pre-wrap; background: #f6f6f6; padding: 1rem; border-radius: 6px; font-size: 0.8rem; overflow-x: auto; }
+    </style>
+  </head>
+  <body>
+    <h1>Lyra — Third-Party Licenses</h1>
+    <p class="intro">
+      Lyra is licensed under the MIT License. It bundles the following
+      open-source components, each under its own license, reproduced in full
+      below.
+    </p>
+    {{#each licenses}}
+    <h2>{{name}} <span class="used-by">({{id}})</span></h2>
+    <p class="used-by">Used by:
+      {{#each used_by}}{{#if @index}}, {{/if}}{{crate.name}} {{crate.version}}{{/each}}
+    </p>
+    <pre>{{text}}</pre>
+    {{/each}}
+  </body>
+</html>

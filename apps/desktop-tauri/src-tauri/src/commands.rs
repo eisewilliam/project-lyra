@@ -6,7 +6,17 @@ use lyra_core::{
     lyrics::LyricSource,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::MutexGuard;
 use tauri::{AppHandle, Emitter, Manager, State};
+
+use crate::runtime::LyraRuntime;
+
+/// Lock the runtime mutex, recovering the guard if a previous holder panicked.
+/// A poisoned lock should degrade gracefully (stale-but-usable state) rather
+/// than cascade-panic every command and kill the poll thread.
+fn lock_runtime<'a>(state: &'a State<'_, AppState>) -> MutexGuard<'a, LyraRuntime> {
+    state.runtime.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 // ── UI State ──────────────────────────────────────────────────────────────────
 
@@ -137,10 +147,14 @@ pub fn set_overlay_position(label: String, x: i32, y: i32, app: AppHandle) {
 /// Called by the island frontend after each drag — persists position to disk.
 /// Pass x = -1 to clear the saved position (reset to default top-center).
 #[tauri::command]
-pub fn save_island_position(x: i32, y: i32, state: State<'_, AppState>) {
-    state.ui.mutate(|s| {
+pub fn save_island_position(x: i32, y: i32, state: State<'_, AppState>, app: tauri::AppHandle) {
+    let new_state = state.ui.mutate(|s| {
         s.island_pos = if x == -1 { None } else { Some((x, y)) };
     });
+    let _ = app.emit("ui-settings-changed", &new_state);
+    if x == -1 {
+        crate::apply_preferred_monitor_positioning(&app, &new_state);
+    }
 }
 
 /// Resize the island window and persist the new dimensions.
@@ -158,30 +172,60 @@ pub fn set_island_size(width: u32, height: u32, state: State<'_, AppState>, app:
 
 #[tauri::command]
 pub fn get_render_snapshot(state: State<'_, AppState>) -> RenderSnapshot {
-    state.runtime.lock().unwrap().tick()
+    lock_runtime(&state).tick()
 }
 
 #[tauri::command]
 pub fn get_all_lyrics(state: State<'_, AppState>) -> Vec<String> {
-    state.runtime.lock().unwrap().all_lyrics_lines()
+    lock_runtime(&state).all_lyrics_lines()
 }
 
 #[tauri::command]
-pub fn get_all_lines(state: State<'_, AppState>) -> Vec<lyra_core::domain::LyricLine> {
-    state.runtime.lock().unwrap().all_lines()
+pub fn get_all_lines(state: State<'_, AppState>) -> Vec<crate::runtime::LyricLineSlim> {
+    lock_runtime(&state).all_lines_slim()
 }
 
 #[tauri::command]
 pub fn get_settings(state: State<'_, AppState>) -> SettingsSnapshot {
-    state.runtime.lock().unwrap().settings().clone()
+    lock_runtime(&state).settings().clone()
 }
 
+// ── Lyric timing offset (per track) ─────────────────────────────────────────────
+
+/// Current track's manual lyric offset in milliseconds (positive = lyrics
+/// delayed, negative = advanced).
 #[tauri::command]
-pub fn set_click_through(enabled: bool, state: State<'_, AppState>) {
-    let mut rt = state.runtime.lock().unwrap();
-    let mut s = rt.settings().clone();
-    s.window.click_through = enabled;
-    rt.update_settings(s);
+pub fn get_lyric_offset(state: State<'_, AppState>) -> i64 {
+    lock_runtime(&state).current_offset()
+}
+
+/// Set the absolute lyric offset for the current track, then broadcast a fresh
+/// snapshot so every surface re-syncs immediately. Returns the stored offset.
+#[tauri::command]
+pub fn set_lyric_offset(offset_ms: i64, state: State<'_, AppState>, app: AppHandle) -> i64 {
+    let offset = offset_ms.clamp(-30_000, 30_000);
+    let render = {
+        let mut rt = lock_runtime(&state);
+        rt.set_current_offset(offset);
+        rt.tick()
+    };
+    let _ = app.emit("playback-tick", render);
+    offset
+}
+
+/// Add `delta_ms` to the current track's offset (used by the quick ± buttons).
+/// Returns the new offset.
+#[tauri::command]
+pub fn nudge_lyric_offset(delta_ms: i64, state: State<'_, AppState>, app: AppHandle) -> i64 {
+    let new_offset = {
+        let mut rt = lock_runtime(&state);
+        let next = (rt.current_offset() + delta_ms).clamp(-30_000, 30_000);
+        rt.set_current_offset(next);
+        next
+    };
+    let render = lock_runtime(&state).tick();
+    let _ = app.emit("playback-tick", render);
+    new_offset
 }
 
 // ── Playback Control ──────────────────────────────────────────────────────────
@@ -219,9 +263,15 @@ pub fn playback_seek_ms(position_ms: u64) {
 }
 
 #[tauri::command]
-pub fn clear_lyrics_cache(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    let rt = state.runtime.lock().unwrap();
-    rt.cache.clear().map_err(|e| e.to_string())
+pub async fn clear_lyrics_cache(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let cache = {
+        let rt = lock_runtime(&state);
+        rt.cache.clone()
+    };
+    tokio::task::spawn_blocking(move || cache.clear())
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -295,20 +345,28 @@ use lyra_core::domain::SettingsPatch;
 
 #[tauri::command]
 pub fn update_settings(patch: SettingsPatch, state: State<'_, AppState>, app: AppHandle) {
-    let mut rt = state.runtime.lock().unwrap();
-    let mut s = rt.settings().clone();
+    let s = {
+        let mut rt = lock_runtime(&state);
+        let mut s = rt.settings().clone();
 
-    if let Some(w) = patch.window {
-        s.window = w;
-    }
-    if let Some(a) = patch.appearance {
-        s.appearance = a;
-    }
-    if let Some(b) = patch.behavior {
-        s.behavior = b;
-    }
+        if let Some(w) = patch.window {
+            s.window = w;
+        }
+        if let Some(a) = patch.appearance {
+            s.appearance = a;
+        }
+        if let Some(b) = patch.behavior {
+            s.behavior = b;
+        }
 
-    rt.update_settings(s.clone());
+        rt.update_settings(s.clone());
+        s
+    };
+
+    // Apply OS-level window flags to the main window. The overlay panels
+    // (island/karaoke) manage their own click-through/level natively, so only
+    // the regular main window is driven from these settings.
+    crate::apply_main_window_settings(&app, &s.window);
     let _ = app.emit("app-settings-changed", s);
 }
 
@@ -366,11 +424,7 @@ pub fn get_available_monitors(app: AppHandle) -> Vec<MonitorInfo> {
 /// Persist the preferred monitor and immediately reposition all surfaces onto
 /// it. Resets the island's saved position so it re-centres on the new display.
 #[tauri::command]
-pub fn set_preferred_monitor(
-    name: Option<String>,
-    state: State<'_, AppState>,
-    app: AppHandle,
-) {
+pub fn set_preferred_monitor(name: Option<String>, state: State<'_, AppState>, app: AppHandle) {
     let new_state = state.ui.mutate(|s| {
         // If the monitor is actually changing, clear the saved island position
         // so apply_preferred_monitor_positioning will centre it on the new display.
@@ -441,4 +495,33 @@ pub fn set_autostart(
     let new_state = state.ui.mutate(|s| s.autostart_enabled = enabled);
     let _ = app.emit("ui-settings-changed", new_state);
     Ok(())
+}
+
+#[tauri::command]
+pub fn clear_main_vibrancy(app: AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(main_win) = app.get_webview_window("main") {
+            let _ = window_vibrancy::clear_vibrancy(&main_win);
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
+}
+
+#[tauri::command]
+pub fn apply_main_vibrancy(app: AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(main_win) = app.get_webview_window("main") {
+            let _ = window_vibrancy::apply_vibrancy(
+                &main_win,
+                window_vibrancy::NSVisualEffectMaterial::HudWindow,
+                None,
+                None,
+            );
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
 }

@@ -138,7 +138,7 @@ pub struct BehaviorSettings {
     pub hide_when_paused: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SettingsSnapshot {
     pub window: WindowSettings,
     pub appearance: AppearanceSettings,
@@ -151,7 +151,10 @@ pub enum UiIntent {
     SetClickThrough(bool),
     UpdateSettings(SettingsPatch),
     RefreshLyrics,
-    ImportOverride { track_key: String, file_path: String },
+    ImportOverride {
+        track_key: String,
+        file_path: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,9 +171,12 @@ impl Default for WindowSettings {
             y: None,
             width: 400,
             height: 200,
-            always_on_top: true,
+            // Conservative defaults for the main window: these now drive real
+            // behaviour (previously inert), so default to "don't pin / don't
+            // auto-hide" and let the user opt in via Settings.
+            always_on_top: false,
             click_through: false,
-            hide_when_idle: true,
+            hide_when_idle: false,
         }
     }
 }
@@ -194,16 +200,6 @@ impl Default for BehaviorSettings {
             karaoke_mode: false,
             poll_interval_ms: 300,
             hide_when_paused: false,
-        }
-    }
-}
-
-impl Default for SettingsSnapshot {
-    fn default() -> Self {
-        Self {
-            window: WindowSettings::default(),
-            appearance: AppearanceSettings::default(),
-            behavior: BehaviorSettings::default(),
         }
     }
 }

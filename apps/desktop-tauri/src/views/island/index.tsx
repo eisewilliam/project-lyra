@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { getCurrentWindow, currentMonitor } from '@tauri-apps/api/window';
-import { PhysicalSize } from '@tauri-apps/api/dpi';
+import { LogicalSize } from '@tauri-apps/api/dpi';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
@@ -12,6 +12,18 @@ import {
 } from '../../utils/lyrics-state';
 import { LyricsPlaceholderIcon } from '../../utils/lyrics-placeholder-icon';
 import { usePageVisible } from '../../utils/use-page-visible';
+import { applyAppearance, type AppSettings } from '../../utils/app-settings';
+import {
+  BLEND_MS,
+  interpolatePosition,
+  makeWindowReady,
+  syncSurfaceVisible,
+  applySurfaceVisible,
+  wordsKey,
+  runWordColouring,
+  type LyricWord,
+  type PositionBaseline,
+} from '../../utils/playback-sync';
 import './island.css';
 
 type UiState = {
@@ -29,15 +41,12 @@ type UiState = {
   island_cover_circle: boolean;
   island_cover_spin: boolean;
 };
-type AppSettingsSnapshot = { behavior: { hide_when_paused: boolean } };
 
 type VisibleLine = { index: number; text: string; is_active: boolean };
 
-type LyricWord = { start_ms: number; end_ms: number; text: string };
-
 type RenderSnapshot = {
   playback: {
-    track: { uri: string; title: string; artist: string; artwork_url: string | null } | null;
+    track: { uri: string; title: string; artist: string; artwork_url: string | null; duration_ms: number } | null;
     state: 'Playing' | 'Paused' | 'Stopped';
     position_ms: number | null;
     observed_at_ms: number;
@@ -49,71 +58,16 @@ type RenderSnapshot = {
 };
 
 const TOP_DOCK_SNAP_PX = 80;
-const BLEND_MS = 500;
 const SURFACE_LABEL = 'island';
 const FALLBACK_ART = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
-let islandWindowReadyPromise: Promise<void> | null = null;
-
-function ensureIslandWindowReady(): Promise<void> {
-  if (!islandWindowReadyPromise) {
-    islandWindowReadyPromise = invoke('window_ready', { label: SURFACE_LABEL })
-      .then(() => undefined)
-      .catch((err) => {
-        islandWindowReadyPromise = null;
-        throw err;
-      });
-  }
-  return islandWindowReadyPromise;
-}
-
-type PositionBaseline = {
-  ms: number;
-  at: number;
-  targetMs: number;
-  targetAt: number;
-  blendDur: number;
-};
-
-function interpolatePosition(b: PositionBaseline, now: number, playing: boolean): number {
-  if (!playing) return b.ms;
-  const currentTraj = b.ms + (now - b.at);
-  const targetTraj = b.targetMs + (now - b.targetAt);
-  const elapsed = now - b.at;
-  if (elapsed >= b.blendDur) return targetTraj;
-  const t = elapsed / Math.max(1, b.blendDur);
-  return currentTraj * (1 - t) + targetTraj * t;
-}
+const ensureIslandWindowReady = makeWindowReady(SURFACE_LABEL);
+const VISUALIZER_BARS = 4;
 
 function applyIslandFont(scale: number) {
   document.documentElement.style.setProperty('--font-scale', String(scale));
 }
 
-function applySurfaceVisible(visible: boolean) {
-  document.documentElement.dataset.surfaceVisible = String(visible);
-}
-
 applySurfaceVisible(false);
-
-function syncSurfaceVisible(
-  desiredRef: { current: boolean },
-  autoHiddenRef: { current: boolean },
-  setVisible: (visible: boolean) => void,
-  desired?: boolean,
-  autoHidden?: boolean,
-) {
-  if (desired !== undefined) desiredRef.current = desired;
-  if (autoHidden !== undefined) autoHiddenRef.current = autoHidden;
-  const visible = desiredRef.current && !autoHiddenRef.current;
-  setVisible(visible);
-  applySurfaceVisible(visible);
-  return visible;
-}
-
-function wordsKey(words: LyricWord[] | null | undefined) {
-  return (words ?? [])
-    .map((word) => `${word.start_ms}:${word.end_ms}:${word.text}`)
-    .join('|');
-}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -127,11 +81,76 @@ async function setIslandPanelPosition(x: number, y: number) {
   await invoke('set_overlay_position', { label: SURFACE_LABEL, x, y });
 }
 
+function hashString(value: string) {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+
+
+function wordAccent(posMs: number, words: LyricWord[]) {
+  let accent = 0;
+  for (const word of words) {
+    const attack = Math.abs(posMs - word.start_ms);
+    const sustain = posMs >= word.start_ms && posMs <= word.end_ms ? 0.35 : 0;
+    accent = Math.max(accent, clamp01(1 - attack / 180), sustain);
+  }
+  return accent;
+}
+
+function musicAwareLevel(
+  barIndex: number,
+  posMs: number,
+  seed: number,
+  _lineProgress: number,
+  words: LyricWord[],
+) {
+  // Base speed derived from seed (ranges from ~0.005 to ~0.008 rad/ms)
+  const baseFreq = 0.005 + (seed % 4) * 0.0008;
+
+  // 1. Slow swell: Large waves flowing from left to right across bars
+  const slowSwell = Math.sin(posMs * (baseFreq * 0.5) + barIndex * 0.8 + seed * 0.05);
+
+  // 2. Mid dancer: Rhythmic dancing waves traveling in reverse direction for complexity
+  const midDancer = Math.sin(posMs * baseFreq - barIndex * 1.4 + seed * 0.15);
+
+  // 3. Fast flutter: High frequency micro-movements simulating crisp audio dynamics
+  const fastFlutter = Math.sin(posMs * (baseFreq * 2.4) + barIndex * 2.2);
+
+  // Blend waves together and normalize to [0, 1] range
+  const organicWave = (slowSwell * 0.35 + midDancer * 0.45 + fastFlutter * 0.2 + 1) / 2;
+
+  // Vocal accent reactivity
+  const lyricAccent = wordAccent(posMs, words);
+  const lyricBoost = lyricAccent * 0.35;
+
+  // Amplify the wave dynamically when words are active
+  const level = organicWave * (0.65 + lyricBoost) + lyricBoost;
+
+  return clamp01(0.1 + level * 0.9);
+}
+
 export default function Island() {
   const [activeLine, setActiveLine] = useState<string | null>(null);
   const [nextLine, setNextLine] = useState<string | null>(null);
   const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
+  const [artworkError, setArtworkError] = useState(false);
+  const [artworkTrackUri, setArtworkTrackUri] = useState('');
   const [trackTitle, setTrackTitle] = useState('');
+
+  const artUrl = artworkUrl ?? '';
+  if (artUrl !== artworkTrackUri) {
+    setArtworkTrackUri(artUrl);
+    setArtworkError(false);
+  }
   const [trackArtist, setTrackArtist] = useState('');
   const [hasTrack, setHasTrack] = useState(false);
   const [hasVisibleLyrics, setHasVisibleLyrics] = useState(false);
@@ -147,7 +166,12 @@ export default function Island() {
   const [coverCircle, setCoverCircle] = useState(false);
   const [coverSpin, setCoverSpin] = useState(false);
   const [surfaceVisible, setSurfaceVisible] = useState(false);
+  const [islandHeight, setIslandHeight] = useState(72);
+  const [durationMs, setDurationMs] = useState(0);
+  const [trackKey, setTrackKey] = useState('');
+  const progressRingRef = useRef<SVGSVGElement | null>(null);
   const saveTimerRef = useRef<number | null>(null);
+  const visualizerRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const refreshedUriRef = useRef('');
   const lastUriRef = useRef('');
   const activeWordsKeyRef = useRef('');
@@ -157,6 +181,7 @@ export default function Island() {
   const desiredVisibleRef = useRef(true);
   const autoHiddenRef = useRef(false);
   const [hideWhenPaused, setHideWhenPaused] = useState(false);
+  const [hideWhenIdle, setHideWhenIdle] = useState(false);
 
   // Init: read persisted state, position window, subscribe to lock + settings changes.
   useEffect(() => {
@@ -175,14 +200,17 @@ export default function Island() {
       const win = getCurrentWindow();
       const [state, appSettings] = await Promise.all([
         invoke<UiState>('get_ui_state'),
-        invoke<AppSettingsSnapshot>('get_settings'),
+        invoke<AppSettings>('get_settings'),
       ]);
       setHideWhenPaused(appSettings.behavior.hide_when_paused);
+      setHideWhenIdle(appSettings.window.hide_when_idle);
+      applyAppearance(appSettings.appearance);
       syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, state.island_visible);
       setLocked(state.island_locked);
       setShowCover(state.island_show_cover ?? true);
       setCoverCircle(state.island_cover_circle ?? false);
       setCoverSpin(state.island_cover_spin ?? false);
+      setIslandHeight(state.island_height ?? 72);
       applyIslandFont(state.island_font_scale);
 
       try {
@@ -225,17 +253,21 @@ export default function Island() {
         setShowCover(e.payload.island_show_cover ?? true);
         setCoverCircle(e.payload.island_cover_circle ?? false);
         setCoverSpin(e.payload.island_cover_spin ?? false);
+        setIslandHeight(e.payload.island_height ?? 72);
         applyIslandFont(e.payload.island_font_scale);
         if (e.payload.island_width && e.payload.island_height) {
           getCurrentWindow().setSize(
-            new PhysicalSize(e.payload.island_width, e.payload.island_height)
+            new LogicalSize(e.payload.island_width, e.payload.island_height)
           ).catch(() => { });
         }
       });
-      unlistenAppSettings = await listen<AppSettingsSnapshot>('app-settings-changed', (e) => {
+      unlistenAppSettings = await listen<AppSettings>('app-settings-changed', (e) => {
         const enabled = e.payload.behavior.hide_when_paused;
+        const idleEnabled = e.payload.window.hide_when_idle;
         setHideWhenPaused(enabled);
-        if (!enabled) {
+        setHideWhenIdle(idleEnabled);
+        applyAppearance(e.payload.appearance);
+        if (!enabled && !idleEnabled) {
           syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, undefined, false);
         }
       });
@@ -273,14 +305,17 @@ export default function Island() {
     };
   }, []);
 
-  // Auto-hide/show the window when playback state changes, if hide_when_paused is enabled.
+  // Auto-hide/show the window: hide while paused (hide_when_paused) or while
+  // there's no track at all (hide_when_idle).
   useEffect(() => {
     if (!snapshotReady) return;
     const win = getCurrentWindow();
-    if (hideWhenPaused && !isPlaying && desiredVisibleRef.current) {
+    const idle = !hasTrack;
+    const shouldAutoHide = (hideWhenPaused && !isPlaying) || (hideWhenIdle && idle);
+    if (shouldAutoHide && desiredVisibleRef.current) {
       syncSurfaceVisible(desiredVisibleRef, autoHiddenRef, setSurfaceVisible, undefined, true);
       void win.hide();
-    } else if (autoHiddenRef.current && (!hideWhenPaused || isPlaying)) {
+    } else if (autoHiddenRef.current && !shouldAutoHide) {
       const visible = syncSurfaceVisible(
         desiredVisibleRef,
         autoHiddenRef,
@@ -292,7 +327,7 @@ export default function Island() {
         void win.show();
       }
     }
-  }, [hideWhenPaused, isPlaying, snapshotReady]);
+  }, [hideWhenPaused, hideWhenIdle, isPlaying, hasTrack, snapshotReady]);
 
   // Subscribe to backend `playback-tick` events. See app view for rationale.
   useEffect(() => {
@@ -315,6 +350,7 @@ export default function Island() {
         activeWordsKeyRef.current = '';
         setActiveLineWords([]);
         setActiveLineProgress(0);
+        wordRefs.current = [];
       }
 
       setSnapshotReady(true);
@@ -326,6 +362,8 @@ export default function Island() {
       setArtworkUrl(track?.artwork_url ?? null);
       setTrackTitle(track?.title ?? '');
       setTrackArtist(track?.artist ?? '');
+      setTrackKey(track?.uri ?? '');
+      setDurationMs(track?.duration_ms ?? 0);
       const nextWords = snap.active_line_words ?? [];
       const nextWordsKey = wordsKey(nextWords);
       if (nextWordsKey !== activeWordsKeyRef.current) {
@@ -385,39 +423,83 @@ export default function Island() {
 
   useEffect(() => {
     if (activeLineWords.length === 0 || !pageVisible || !surfaceVisible) return;
-    let raf = 0;
-    const tick = () => {
-      const pos = interpolatePosition(baselineRef.current, performance.now(), isPlaying);
-      for (let i = 0; i < activeLineWords.length; i++) {
-        const w = activeLineWords[i];
-        const el = wordRefs.current[i];
-        if (!el) continue;
-        let cls: string;
-        let progress: number;
-        if (pos >= w.end_ms) {
-          cls = 'lyric-word passed';
-          progress = 1;
-        } else if (pos >= w.start_ms) {
-          cls = 'lyric-word singing';
-          progress = Math.max(0, Math.min(1, (pos - w.start_ms) / Math.max(1, w.end_ms - w.start_ms)));
-        } else {
-          cls = 'lyric-word upcoming';
-          progress = 0;
-        }
-        if (el.className !== cls) el.className = cls;
-        const progStr = progress.toFixed(3);
-        if (el.getAttribute('data-last-prog') !== progStr) {
-          el.setAttribute('data-last-prog', progStr);
-          el.style.setProperty('--word-progress', progStr);
-        }
-      }
-      if (isPlaying) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return runWordColouring(activeLineWords, wordRefs, baselineRef, isPlaying);
   }, [activeLineWords, isPlaying, pageVisible, surfaceVisible]);
 
-  const artSrc = artworkUrl ?? FALLBACK_ART;
+  useEffect(() => {
+    const bars = visualizerRefs.current;
+    const setResting = () => {
+      for (const bar of bars) {
+        if (!bar) continue;
+        bar.style.setProperty('--meter-height', '3px');
+        bar.style.setProperty('--meter-opacity', '0.36');
+      }
+    };
+
+    if (!isPlaying || !pageVisible || !surfaceVisible) {
+      setResting();
+      return;
+    }
+
+    const seed = hashString(trackKey || `${trackTitle}|${trackArtist}`);
+    let rafId = 0;
+    const tick = () => {
+      const pos = interpolatePosition(baselineRef.current, performance.now(), true);
+      for (let i = 0; i < VISUALIZER_BARS; i++) {
+        const level = musicAwareLevel(i, pos, seed, activeLineProgress, activeLineWords);
+        // Exponent 1.1 increases contrast between high/low points, making it more pronounced.
+        // Omit Math.round to allow subpixel height rendering for buttery smooth 60fps movement.
+        const height = 3 + Math.pow(level, 1.1) * 15;
+        const opacity = 0.35 + level * 0.65;
+        const bar = bars[i];
+        if (!bar) continue;
+        bar.style.setProperty('--meter-height', `${height}px`);
+        bar.style.setProperty('--meter-opacity', opacity.toFixed(3));
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [
+    activeLineProgress,
+    activeLineWords,
+    isPlaying,
+    pageVisible,
+    surfaceVisible,
+    trackArtist,
+    trackKey,
+    trackTitle,
+  ]);
+
+  // High-efficiency 60fps progress ring extrapolation
+  useEffect(() => {
+    if (!isPlaying || durationMs <= 0 || !pageVisible || !surfaceVisible) {
+      // Static update when paused or hidden
+      const pos = interpolatePosition(baselineRef.current, performance.now(), isPlaying);
+      const pct = Math.max(0, Math.min(1, pos / durationMs));
+      if (progressRingRef.current) {
+        progressRingRef.current.style.setProperty('--track-progress', String(pct));
+      }
+      return;
+    }
+
+    let rafId: number;
+    const tick = () => {
+      const pos = interpolatePosition(baselineRef.current, performance.now(), isPlaying);
+      const pct = Math.max(0, Math.min(1, pos / durationMs));
+      if (progressRingRef.current) {
+        progressRingRef.current.style.setProperty('--track-progress', String(pct));
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [isPlaying, durationMs, pageVisible, surfaceVisible]);
+
+  const hasArtwork = Boolean(artworkUrl) && !artworkError;
+  const artSrc = hasArtwork ? (artworkUrl ?? FALLBACK_ART) : FALLBACK_ART;
   const panelState = resolveLyricsSurfaceState({
     booted: snapshotReady,
     hasTrack,
@@ -432,10 +514,17 @@ export default function Island() {
     !isLyricsError(lyricsStatus) &&
     !isLyricsNotFound(lyricsStatus);
   const barsActive = (panelState === 'ready' || showTrackIntro) && isPlaying;
+  // Identity of the current active line — used as a React key so the line
+  // element remounts (and replays its enter animation) on every line change.
+  const activeContentKey = activeLineWords.length > 0
+    ? activeLineWords.map((word) => `${word.start_ms}:${word.text}`).join('|')
+    : activeLine || '';
+
+  const isCompactLayout = islandHeight <= 64;
 
   return (
     <div
-      className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${isDocked ? 'docked' : 'floating'} ${panelState !== 'ready' && !showTrackIntro ? 'has-placeholder' : ''}`}
+      className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${isDocked ? 'docked' : 'floating'} ${panelState !== 'ready' && !showTrackIntro ? 'has-placeholder' : ''} ${isCompactLayout ? 'is-compact' : ''}`}
       onMouseDown={(e) => {
         if (locked || e.button !== 0) return;
         e.preventDefault();
@@ -443,20 +532,38 @@ export default function Island() {
       }}
     >
       <div className="island-background">
-        <img src={artSrc} alt="" className="island-bg-img" decoding="async" />
+        <img src={artSrc} alt="" className="island-bg-img" decoding="async" onError={() => setArtworkError(true)} />
         <div className="island-bg-dimmer"></div>
       </div>
 
       <div className="panel-content">
         {showCover && (
-          <div className={`panel-art ${coverCircle ? 'is-circle' : ''} ${coverSpin ? 'is-spinning' : ''} ${!isPlaying ? 'is-paused' : ''}`}>
-            <img
-              src={artSrc}
-              className={`panel-cover ${artworkUrl ? '' : 'placeholder'}`}
-              draggable={false}
-              alt={hasTrack ? 'Album' : ''}
-              decoding="async"
-            />
+          <div className="panel-art-container" style={{ position: 'relative', flexShrink: 0 }}>
+            <div className={`panel-art ${coverCircle ? 'is-circle' : ''} ${coverSpin ? 'is-spinning' : ''} ${!isPlaying ? 'is-paused' : ''}`}>
+              <img
+                src={artSrc}
+                className={`panel-cover ${hasArtwork ? '' : 'placeholder'}`}
+                draggable={false}
+                alt={hasTrack && !artworkError ? 'Album' : ''}
+                decoding="async"
+                onError={() => setArtworkError(true)}
+              />
+            </div>
+            {hasTrack && durationMs > 0 && (
+              <svg ref={progressRingRef} className="progress-ring-svg" viewBox="0 0 44 44">
+                {coverCircle ? (
+                  <>
+                    <circle className="progress-ring-bg" cx="22" cy="22" r="20" />
+                    <circle className="progress-ring-fill circle-fill" cx="22" cy="22" r="20" />
+                  </>
+                ) : (
+                  <>
+                    <rect className="progress-ring-bg" x="2" y="2" width="40" height="40" rx="8" />
+                    <rect className="progress-ring-fill rect-fill" x="2" y="2" width="40" height="40" rx="8" />
+                  </>
+                )}
+              </svg>
+            )}
           </div>
         )}
 
@@ -464,10 +571,9 @@ export default function Island() {
           {panelState === 'ready' ? (
             <>
               <GlidingLine
+                key={activeContentKey}
                 className={`panel-lyric-active ${hasActiveLyric ? '' : 'is-preroll'}`}
-                contentKey={activeLineWords.length > 0
-                  ? activeLineWords.map((word) => `${word.start_ms}:${word.text}`).join('|')
-                  : activeLine || ''}
+                contentKey={activeContentKey}
                 syncProgress={activeLineProgress}
               >
                 {activeLineWords.length > 0 ? (
@@ -482,7 +588,7 @@ export default function Island() {
                   activeLine || (nextLine !== null ? '♪' : '')
                 )}
               </GlidingLine>
-              <div className="panel-lyric-next">
+              <div className="panel-lyric-next" key={nextLine || 'none'}>
                 {nextLine === '' ? '♪' : (nextLine || '')}
               </div>
             </>
@@ -496,10 +602,23 @@ export default function Island() {
           )}
         </div>
 
-        <div className={`audio-bars ${barsActive ? '' : 'is-idle'}`}>
-          <span className="bar"></span>
-          <span className="bar"></span>
-          <span className="bar"></span>
+        <div
+          className={`audio-bars ${barsActive ? 'is-playing' : 'is-paused'}`}
+          aria-hidden="true"
+        >
+          {Array.from({ length: VISUALIZER_BARS }, (_, i) => {
+            return (
+              <span
+                key={i}
+                ref={(el) => { visualizerRefs.current[i] = el; }}
+                className="bar"
+                style={{
+                  '--meter-height': '3px',
+                  '--meter-opacity': '0.36',
+                } as CSSProperties}
+              />
+            );
+          })}
         </div>
       </div>
     </div>

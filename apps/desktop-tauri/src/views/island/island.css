@@ -3,7 +3,7 @@ html, body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--app-font-family, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif);
 }
 
 .floating-panel {
@@ -135,14 +135,17 @@ html, body {
 }
 
 .panel-lyric-active {
-  font-size: calc(16px * var(--font-scale, 1));
+  font-size: calc(1rem * var(--font-scale, 1));
   font-weight: 700;
-  color: #fff;
+  color: var(--lyric-color, #fff);
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
   white-space: nowrap;
   overflow: hidden;
   letter-spacing: -0.02em;
   transition: color 220ms ease, opacity 220ms ease, text-shadow 220ms ease;
+  /* Re-keyed per line in the view, so this enter animation replays on every
+     line change — a fade + gentle rise instead of an instant text swap. */
+  animation: lyric-line-enter 360ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .panel-lyric-active.is-preroll {
@@ -173,10 +176,10 @@ html, body {
   color: transparent;
   background-image: linear-gradient(
     to right,
-    #ffffff 0%,
-    #ffffff calc(var(--word-progress, 0) * 100%),
-    rgba(255, 255, 255, 0.4) calc(var(--word-progress, 0) * 100%),
-    rgba(255, 255, 255, 0.4) 100%
+    var(--lyric-color, #ffffff) 0%,
+    var(--lyric-color, #ffffff) calc(var(--word-progress, 0) * 100%),
+    color-mix(in srgb, var(--lyric-color, #ffffff) 40%, transparent) calc(var(--word-progress, 0) * 100%),
+    color-mix(in srgb, var(--lyric-color, #ffffff) 40%, transparent) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
@@ -184,7 +187,7 @@ html, body {
 }
 
 .panel-lyric-next {
-  font-size: calc(14px * var(--font-scale, 1));
+  font-size: calc(0.85rem * var(--font-scale, 1));
   font-weight: 600;
   color: rgba(255, 255, 255, 0.45);
   white-space: nowrap;
@@ -192,6 +195,13 @@ html, body {
   text-overflow: ellipsis;
   filter: blur(1.5px);
   letter-spacing: -0.01em;
+  animation: lyric-line-enter 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Shared line-change enter: fade up. Distance is in em so it tracks font size. */
+@keyframes lyric-line-enter {
+  from { opacity: 0; transform: translateY(0.5em); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .panel-lyric-next.is-track-intro {
@@ -266,34 +276,47 @@ html, body {
 .audio-bars {
   display: flex;
   gap: 2px;
-  align-items: center;
-  height: 16px;
+  align-items: center; /* Centered animation (grows from both top and bottom) */
+  justify-content: flex-end;
+  height: 18px;
+  min-width: 18px; /* Accommodate 4 wider bars cleanly */
   flex-shrink: 0;
-}
-
-.audio-bars.is-idle {
-  opacity: 0.28;
+  opacity: 0.9;
 }
 
 .audio-bars .bar {
-  width: 3px;
-  background: #fff;
+  width: 3px; /* Increased width */
+  min-height: 3px;
+  height: var(--meter-height, 3px);
   border-radius: 2px;
-  animation: bounce 1s infinite alternate;
-  box-shadow: 0 0 8px rgba(255,255,255,0.4);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.98) 0%,
+      color-mix(in srgb, var(--lyric-color, #ffffff) 78%, rgba(255, 255, 255, 0.8)) 54%,
+      color-mix(in srgb, var(--lyric-color, #ffffff) 72%, rgba(64, 190, 255, 0.85)) 100%
+    );
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--lyric-color, #ffffff) 45%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  opacity: var(--meter-opacity, 0.55);
+  transform-origin: center; /* Scale/grow from center */
+  transition:
+    height 84ms linear,
+    opacity 120ms ease,
+    filter 160ms ease;
 }
-.audio-bars .bar:nth-child(2) { animation-delay: 0.2s; }
-.audio-bars .bar:nth-child(3) { animation-delay: 0.4s; }
 
-.audio-bars.is-idle .bar {
-  animation: none;
-  height: 8px;
+.audio-bars.is-playing .bar {
+  filter: saturate(1.2);
+  transition: none; /* Disable transitions when active to let 60fps JS update smoothly without jank */
+}
+
+.audio-bars.is-paused .bar {
+  height: 3px;
+  opacity: 0.36;
   box-shadow: none;
-}
-
-@keyframes bounce {
-  0% { height: 4px; }
-  100% { height: 16px; }
+  transition: height 0.2s ease, opacity 0.2s ease;
 }
 
 @keyframes island-shimmer {
@@ -314,12 +337,90 @@ html, body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .audio-bars .bar,
   .panel-placeholder.is-loading .panel-placeholder-line,
   .panel-placeholder.is-loading .panel-placeholder-indicator,
   .panel-lyric-content,
+  .panel-lyric-active,
+  .panel-lyric-next,
   .floating-panel {
-    animation: none;
+    animation: none !important;
     transition: none;
   }
+  .audio-bars .bar {
+    transition: height 180ms linear, opacity 180ms linear;
+  }
+  /* No rise — show the new line in place, instantly. */
+  .panel-lyric-active,
+  .panel-lyric-next {
+    transform: none !important;
+  }
+}
+
+/* Compact and Small Heights (<= 64px logical height) Legibility Polish */
+.floating-panel.is-compact .panel-lyric-next {
+  display: none !important;
+}
+.floating-panel.is-compact .panel-art {
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 8px !important;
+}
+.floating-panel.is-compact .panel-content {
+  padding: 0 12px !important;
+  gap: 10px !important;
+}
+.floating-panel.is-compact .panel-placeholder-indicator {
+  width: 24px !important;
+  height: 24px !important;
+}
+.floating-panel.is-compact .panel-placeholder-icon {
+  width: 12px !important;
+  height: 12px !important;
+}
+.floating-panel.is-compact .panel-placeholder-lines {
+  gap: 4px !important;
+}
+.floating-panel.is-compact .panel-placeholder-line {
+  height: 5px !important;
+}
+.floating-panel.is-compact .audio-bars {
+  transform: scale(0.75);
+  transform-origin: center right;
+  margin-left: -4px;
+}
+
+/* Progress Ring Overlay Styles */
+.progress-ring-svg {
+  position: absolute;
+  inset: -2.5px;
+  width: calc(100% + 5px);
+  height: calc(100% + 5px);
+  z-index: 10;
+  pointer-events: none;
+  transform: rotate(-90deg); /* Start from the top center */
+  overflow: visible;
+}
+
+.progress-ring-bg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 1.5px;
+}
+
+.progress-ring-fill {
+  fill: none;
+  stroke: var(--lyric-color, #ffffff);
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.3));
+}
+
+.circle-fill {
+  stroke-dasharray: 125.66;
+  stroke-dashoffset: calc(125.66 * (1 - var(--track-progress, 0)));
+}
+
+.rect-fill {
+  stroke-dasharray: 146.27;
+  stroke-dashoffset: calc(146.27 * (1 - var(--track-progress, 0)));
 }

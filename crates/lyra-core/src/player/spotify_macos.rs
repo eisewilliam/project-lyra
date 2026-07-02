@@ -1,5 +1,5 @@
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::domain::{PlaybackSnapshot, PlaybackState, PlayerSource, TrackRef};
@@ -37,7 +37,7 @@ impl SpotifyMacOsAdapter {
     /// (player state, URI, current position). When the URI matches the
     /// cached one we skip the heavy metadata fetch.
     fn query_lite() -> Option<RawSpotifyLite> {
-        let script = r#"
+        const SCRIPT: &str = r#"
 if application "Spotify" is not running then return "not_running"
 tell application "Spotify"
     set ps to player state as string
@@ -47,7 +47,7 @@ tell application "Spotify"
     return ps & "|" & tid & "|" & (pos as string)
 end tell
 "#;
-        let raw = run_osascript(script)?;
+        let raw = run_compiled_script(&LITE_SCRIPT, SCRIPT)?;
         if raw == "not_running" || raw == "stopped" || raw.is_empty() {
             return Some(RawSpotifyLite::Stopped);
         }
@@ -64,7 +64,7 @@ end tell
 
     /// Full metadata fetch — only invoked on track change.
     fn query_meta() -> Option<CachedMeta> {
-        let script = r#"
+        const SCRIPT: &str = r#"
 if application "Spotify" is not running then return "not_running"
 tell application "Spotify"
     set ps to player state as string
@@ -81,7 +81,7 @@ tell application "Spotify"
     return tid & "|" & tn & "|" & ta & "|" & tal & "|" & (tdur as string) & "|" & tart
 end tell
 "#;
-        let raw = run_osascript(script)?;
+        let raw = run_compiled_script(&META_SCRIPT, SCRIPT)?;
         if raw == "not_running" || raw == "stopped" || raw.is_empty() {
             return None;
         }
@@ -104,60 +104,92 @@ end tell
     }
 }
 
-use objc::{class, msg_send, sel, sel_impl};
 use objc::runtime::Object;
+use objc::{class, msg_send, sel, sel_impl};
 
-fn run_osascript(script: &'static str) -> Option<String> {
+/// Wraps a raw NSAppleScript pointer that lives for the process lifetime.
+/// AppleScript objects are not formally thread-safe per Apple docs, but our
+/// polling driver runs handlers serially on a single GCD queue, so reuse is
+/// safe in practice. The Send/Sync impls reflect that contract.
+struct CompiledScript {
+    ptr: *mut Object,
+}
+
+unsafe impl Send for CompiledScript {}
+unsafe impl Sync for CompiledScript {}
+
+static LITE_SCRIPT: OnceLock<CompiledScript> = OnceLock::new();
+static META_SCRIPT: OnceLock<CompiledScript> = OnceLock::new();
+
+/// Compile an AppleScript source string once into a retained NSAppleScript
+/// instance. The returned pointer is kept alive for the process lifetime via
+/// `OnceLock` — never released.
+fn compile_script(source: &str) -> Option<*mut Object> {
     unsafe {
         let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
-
-        let script_bytes = script.as_bytes();
+        let bytes = source.as_bytes();
         let str_alloc: *mut Object = msg_send![class!(NSString), alloc];
-        let script_str: *mut Object = msg_send![
+        let src_str: *mut Object = msg_send![
             str_alloc,
-            initWithBytes: script_bytes.as_ptr()
-            length: script_bytes.len()
-            encoding: 4
+            initWithBytes: bytes.as_ptr()
+            length: bytes.len()
+            encoding: 4u64
         ];
+        let s_alloc: *mut Object = msg_send![class!(NSAppleScript), alloc];
+        let script: *mut Object = msg_send![s_alloc, initWithSource: src_str];
+        let _: () = msg_send![src_str, release];
 
-        let script_alloc: *mut Object = msg_send![class!(NSAppleScript), alloc];
-        let script_obj: *mut Object = msg_send![script_alloc, initWithSource: script_str];
-
-        if script_obj.is_null() {
-            let _: () = msg_send![script_str, release];
+        if script.is_null() {
             let _: () = msg_send![pool, drain];
             return None;
         }
 
+        // Pre-compile so the first execute call doesn't pay the parse cost.
+        let mut compile_err: *mut Object = std::ptr::null_mut();
+        let _: bool = msg_send![script, compileAndReturnError: &mut compile_err];
+
+        let _: () = msg_send![pool, drain];
+        Some(script)
+    }
+}
+
+/// Execute a compiled NSAppleScript and return its `stringValue` result.
+fn execute_compiled(script_ptr: *mut Object) -> Option<String> {
+    if script_ptr.is_null() {
+        return None;
+    }
+    unsafe {
+        let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
         let mut err_ptr: *mut Object = std::ptr::null_mut();
-        let desc: *mut Object = msg_send![script_obj, executeAndReturnError: &mut err_ptr];
-
-        let _: () = msg_send![script_str, release];
-        let _: () = msg_send![script_obj, release];
-
+        let desc: *mut Object = msg_send![script_ptr, executeAndReturnError: &mut err_ptr];
         if desc.is_null() {
             let _: () = msg_send![pool, drain];
             return None;
         }
-
         let val: *mut Object = msg_send![desc, stringValue];
         if val.is_null() {
             let _: () = msg_send![pool, drain];
             return None;
         }
-
         let utf8: *const std::ffi::c_char = msg_send![val, UTF8String];
         if utf8.is_null() {
             let _: () = msg_send![pool, drain];
             return None;
         }
-
         let c_str = std::ffi::CStr::from_ptr(utf8);
         let res = c_str.to_string_lossy().trim().to_string();
-        
         let _: () = msg_send![pool, drain];
         Some(res)
     }
+}
+
+/// Get-or-init the cached compiled script and execute it. Compilation runs
+/// once per process; subsequent calls skip the parse stage entirely.
+fn run_compiled_script(slot: &OnceLock<CompiledScript>, source: &str) -> Option<String> {
+    let script = slot.get_or_init(|| CompiledScript {
+        ptr: compile_script(source).unwrap_or(std::ptr::null_mut()),
+    });
+    execute_compiled(script.ptr)
 }
 
 enum RawSpotifyLite {
@@ -240,7 +272,11 @@ impl PlayerAdapter for SpotifyMacOsAdapter {
                     observed_at_ms,
                 }
             }
-            RawSpotifyLite::Track { state, uri, position_ms } => {
+            RawSpotifyLite::Track {
+                state,
+                uri,
+                position_ms,
+            } => {
                 let pb_state = if state == "playing" {
                     PlaybackState::Playing
                 } else {
@@ -268,7 +304,11 @@ impl PlayerAdapter for SpotifyMacOsAdapter {
                     uri: uri.clone(),
                     title: m.title,
                     artist: m.artist,
-                    album: if m.album.is_empty() { None } else { Some(m.album) },
+                    album: if m.album.is_empty() {
+                        None
+                    } else {
+                        Some(m.album)
+                    },
                     duration_ms: m.duration_ms,
                     artwork_url: m.artwork_url,
                 });
@@ -292,7 +332,10 @@ impl PlayerAdapter for SpotifyMacOsAdapter {
 
 fn derive_event(prev: &Option<PlaybackSnapshot>, next: &PlaybackSnapshot) -> Option<PlayerEvent> {
     let Some(prev) = prev else {
-        return next.track.as_ref().map(|t| PlayerEvent::TrackChanged(t.clone()));
+        return next
+            .track
+            .as_ref()
+            .map(|t| PlayerEvent::TrackChanged(t.clone()));
     };
 
     let prev_uri = prev.track.as_ref().map(|t| &t.uri);

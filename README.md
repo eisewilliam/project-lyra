@@ -144,6 +144,21 @@ The near-term release work is about making the existing desktop experience relia
 - Refine overlay behavior and settings based on real use
 - Extend player and platform support after the current Spotify desktop path is stable
 
+## Disclaimer
+
+Lyra is an independent, open-source project.
+
+- **Not affiliated with Spotify.** Lyra is not affiliated with, endorsed by, sponsored by, or in any way officially connected to Spotify AB. "Spotify" is a trademark of Spotify AB. Lyra reads playback state from the locally installed Spotify desktop app through the operating system (AppleScript on macOS, System Media Transport Controls on Windows) and does not use the Spotify Web API.
+- **Lyrics are third-party content.** Lyric text is retrieved at runtime from [LRCLIB](https://lrclib.net), a third-party community database, on the user's behalf and cached locally on the user's machine. Lyra does not own, license, host, or redistribute any lyrics, and no lyric content is bundled with the application. Lyrics are the property of their respective copyright holders.
+- **Takedown / copyright concerns.** Lyra stores no lyric data on any server it controls; lyric availability and content are governed by LRCLIB. Rights holders with concerns about specific lyric content should contact LRCLIB. For questions about this project specifically, open an issue or email williamseisenherz@gmail.com.
+- **No warranty.** Lyra is provided "as is", without warranty of any kind. See the [LICENSE](LICENSE) for full terms.
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding conventions, and the pull-request process, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations. Security issues should follow [SECURITY.md](SECURITY.md).
+
 ## License
 
-MIT. See [LICENSE](LICENSE).
+Lyra is licensed under the [MIT License](LICENSE). Copyright (c) 2026 Olusegun William Eise.
+
+Third-party dependencies retain their own licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

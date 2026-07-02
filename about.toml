@@ -1,0 +1,32 @@
+# cargo-about configuration.
+#
+# Generates a single document containing the full license text of every Rust
+# dependency in the workspace, for attribution when shipping binaries.
+#
+#   cargo install cargo-about
+#   cargo about generate about.hbs > apps/desktop-tauri/src-tauri/licenses.html
+#
+# After generating, add this line to the `bundle.resources` map in
+# apps/desktop-tauri/src-tauri/tauri.conf.json so it ships inside the app:
+#
+#   "licenses.html": "licenses.html"
+
+# Licenses we accept in the dependency tree. A dependency under any other
+# license will fail generation so it can be reviewed before release.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "0BSD",
+]
+
+# Treat a crate with no detectable license as an error rather than skipping it.
+no-clarify = false

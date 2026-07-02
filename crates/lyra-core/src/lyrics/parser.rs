@@ -16,7 +16,13 @@ pub fn parse_lrc(track_key: &str, raw: &str, source: LyricSourceKind) -> Result<
         // Skip metadata tags like [ar:...], [ti:...], [by:...], [offset:...]
         let tag_end = line.find(']').unwrap_or(0);
         let tag = &line[1..tag_end];
-        if tag.contains(':') && !tag.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        if tag.contains(':')
+            && !tag
+                .chars()
+                .next()
+                .map(|c| c.is_ascii_digit())
+                .unwrap_or(false)
+        {
             continue;
         }
 
@@ -25,7 +31,9 @@ pub fn parse_lrc(track_key: &str, raw: &str, source: LyricSourceKind) -> Result<
         let mut timestamps: Vec<u64> = Vec::new();
 
         while remaining.starts_with('[') {
-            let end = remaining.find(']').ok_or_else(|| anyhow!("unclosed bracket"))?;
+            let end = remaining
+                .find(']')
+                .ok_or_else(|| anyhow!("unclosed bracket"))?;
             let ts_str = &remaining[1..end];
             if let Ok(ms) = parse_timestamp(ts_str) {
                 timestamps.push(ms);
@@ -64,7 +72,9 @@ pub fn parse_lrc(track_key: &str, raw: &str, source: LyricSourceKind) -> Result<
     for line in &mut lines {
         if let Some(ws) = line.words.as_mut() {
             let fallback_end = line.end_ms.unwrap_or_else(|| {
-                ws.last().map(|w| w.end_ms.max(w.start_ms + 500)).unwrap_or(line.start_ms + 5000)
+                ws.last()
+                    .map(|w| w.end_ms.max(w.start_ms + 500))
+                    .unwrap_or(line.start_ms + 5000)
             });
             let count = ws.len();
             for i in 0..count {
@@ -79,7 +89,9 @@ pub fn parse_lrc(track_key: &str, raw: &str, source: LyricSourceKind) -> Result<
                     let chars = ws[i].text.chars().filter(|c| !c.is_whitespace()).count() as u64;
                     let typical_ms = (chars * 1000 / 8).max(300);
                     let max_ms = typical_ms * 2;
-                    ws[i].end_ms = (ws[i].start_ms + max_ms).min(fallback_end).max(ws[i].start_ms + 200);
+                    ws[i].end_ms = (ws[i].start_ms + max_ms)
+                        .min(fallback_end)
+                        .max(ws[i].start_ms + 200);
                 }
             }
         }
@@ -115,7 +127,9 @@ fn extract_words(text: &str) -> (String, Option<Vec<LyricWord>>) {
     }
 
     while let Some(stripped) = rest.strip_prefix('<') {
-        let Some(close) = stripped.find('>') else { break };
+        let Some(close) = stripped.find('>') else {
+            break;
+        };
         let ts_str = &stripped[..close];
         let Ok(start_ms) = parse_timestamp(ts_str) else {
             // Malformed marker — keep literal text and bail.

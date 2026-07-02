@@ -1,4 +1,6 @@
-use tauri::menu::{CheckMenuItem, CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+use tauri::menu::{
+    CheckMenuItem, CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem,
+};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, Wry};
 
@@ -66,9 +68,8 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
         lock_island,
     });
 
-    let _tray = TrayIconBuilder::new()
+    let mut tray = TrayIconBuilder::new()
         .menu(&menu)
-        .icon(app.default_window_icon().unwrap().clone())
         .icon_as_template(true)
         .on_menu_event(move |app, event| match event.id().as_ref() {
             "show_lyra" => open_lyra(app),
@@ -78,8 +79,13 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
             "settings" => open_settings(app),
             "quit" => app.exit(0),
             _ => {}
-        })
-        .build(app)?;
+        });
+
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+
+    let _tray = tray.build(app)?;
 
     Ok(())
 }
@@ -186,20 +192,24 @@ mod tests {
 
     #[test]
     fn dock_is_regular_when_main_surface_is_visible() {
-        let mut state = UiState::default();
-        state.floating_visible = true;
-        state.island_visible = false;
-        state.karaoke_visible = false;
+        let state = UiState {
+            floating_visible: true,
+            island_visible: false,
+            karaoke_visible: false,
+            ..UiState::default()
+        };
 
         assert!(super::dock_visible_for_state(&state));
     }
 
     #[test]
     fn dock_is_accessory_when_only_menu_bar_and_overlays_remain() {
-        let mut state = UiState::default();
-        state.floating_visible = false;
-        state.island_visible = true;
-        state.karaoke_visible = true;
+        let state = UiState {
+            floating_visible: false,
+            island_visible: true,
+            karaoke_visible: true,
+            ..UiState::default()
+        };
 
         assert!(!super::dock_visible_for_state(&state));
     }
