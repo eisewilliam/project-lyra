@@ -1059,8 +1059,6 @@ function SnapSlider({
   steps,
   value,
   onChange,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  info,
 }: {
   steps: Array<{ value: number; label: string }>;
   value: number;
@@ -1142,8 +1140,7 @@ function SnapSlider({
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function IconInfo() {
+export function IconInfo() {
   return (
     <svg
       viewBox="0 0 20 20"
