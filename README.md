@@ -37,7 +37,7 @@ Apple Music support, signing and distribution polish, and additional native plat
 |---|---|
 | Rust stable | Install with [rustup](https://rustup.rs) |
 | Node.js 18 or newer | Used by the React/Vite frontend and Tauri CLI |
-| npm | Bundled with Node.js |
+| pnpm | Standard package manager for frontend work |
 | Platform build tools | Xcode Command Line Tools on macOS; Tauri prerequisites for Windows and Linux |
 | Spotify desktop app | Lyra follows Spotify playback state from the host OS |
 
@@ -47,15 +47,15 @@ From the repository root:
 
 ```bash
 cd apps/desktop-tauri
-npm install
-npm run tauri dev
+pnpm install
+pnpm tauri dev
 ```
 
 ### Build a desktop bundle
 
 ```bash
 cd apps/desktop-tauri
-npm run tauri build
+pnpm tauri build
 ```
 
 ### Verify the workspace
@@ -71,7 +71,7 @@ Run frontend lint from the desktop app directory:
 
 ```bash
 cd apps/desktop-tauri
-npm run lint
+pnpm lint
 ```
 
 ## Architecture

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { getCurrentWindow, currentMonitor, PhysicalPosition, PhysicalSize } from '@tauri-apps/api/window';
-import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
   isLyricsError,
@@ -8,10 +7,10 @@ import {
   resolveLyricsSurfaceState,
   type LyricsPlaceholderState,
   type LyricsStatus,
-} from '../../utils/lyrics-state';
-import { LyricsPlaceholderIcon } from '../../utils/lyrics-placeholder-icon';
-import { usePageVisible } from '../../utils/use-page-visible';
-import { applyAppearance, type AppSettings } from '../../utils/app-settings';
+} from '@/utils/lyrics-state';
+import { LyricsPlaceholderIcon } from '@/utils/lyrics-placeholder-icon';
+import { usePageVisible } from '@/utils/use-page-visible';
+import { applyAppearance } from '@/utils/app-settings';
 import {
   BLEND_MS,
   interpolatePosition,
@@ -20,37 +19,16 @@ import {
   applySurfaceVisible,
   wordsKey,
   runWordColouring,
-  type LyricWord,
   type PositionBaseline,
-} from '../../utils/playback-sync';
+} from '@/utils/playback-sync';
+import type { AppSettings, LyricWord, RenderSnapshot, UiState } from '@/types/tauri-contracts';
+import {
+  getRenderSnapshot,
+  getSettings,
+  getUiState,
+  refreshLyrics,
+} from '@/utils/tauri-commands';
 import './karaoke.css';
-
-type UiState = {
-  karaoke_visible: boolean;
-  karaoke_font_scale: number;
-  karaoke_position: string;
-  karaoke_alignment: string;
-  karaoke_width_pct: number;
-  karaoke_offset_px: number;
-  karaoke_lines: number;
-  karaoke_bg_opacity: number;
-  karaoke_bold: boolean;
-};
-
-type VisibleLine = { index: number; text: string; is_active: boolean };
-
-type RenderSnapshot = {
-  playback: {
-    track: { uri: string; title: string; artist: string } | null;
-    state: 'Playing' | 'Paused' | 'Stopped';
-    position_ms: number | null;
-    observed_at_ms: number;
-  };
-  lyrics_status: LyricsStatus;
-  line_progress: number | null;
-  visible_lines: VisibleLine[];
-  active_line_words: LyricWord[] | null;
-};
 
 function applyStyle(s: UiState) {
   const root = document.documentElement.style;
@@ -132,8 +110,8 @@ export default function Karaoke() {
       await ensureKaraokeWindowReady();
 
       const [state, appSettings] = await Promise.all([
-        invoke<UiState>('get_ui_state'),
-        invoke<AppSettings>('get_settings'),
+        getUiState(),
+        getSettings(),
       ]);
       setHideWhenPaused(appSettings.behavior.hide_when_paused);
       setHideWhenIdle(appSettings.window.hide_when_idle);
@@ -255,7 +233,7 @@ export default function Karaoke() {
 
       if (uri && snap.lyrics_status === 'Loading' && refreshedUriRef.current !== uri) {
         refreshedUriRef.current = uri;
-        invoke('refresh_lyrics').catch(() => { });
+        refreshLyrics().catch(() => { });
       }
 
       if (hasActiveLine) {
@@ -274,7 +252,7 @@ export default function Karaoke() {
     (async () => {
       await ensureKaraokeWindowReady();
       try {
-        const initial = await invoke<RenderSnapshot>('get_render_snapshot');
+        const initial = await getRenderSnapshot();
         apply(initial);
       } catch { /* transient */ }
       unlisten = await listen<RenderSnapshot>('playback-tick', (e) => apply(e.payload));

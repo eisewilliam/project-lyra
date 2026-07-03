@@ -1,11 +1,12 @@
 // Shared playback-sync primitives used by all three lyric surfaces (main,
 // island, karaoke). These were previously copy-pasted into each view; keeping
 // one definition means a sync/interpolation fix lands everywhere at once.
-import { invoke } from '@tauri-apps/api/core';
+import type { LyricWord } from '@/types/tauri-contracts';
+import { windowReady } from '@/utils/tauri-commands';
 
 export const BLEND_MS = 500;
 
-export type LyricWord = { start_ms: number; end_ms: number; text: string };
+export type { LyricWord };
 
 export type PositionBaseline = {
   ms: number;
@@ -65,7 +66,7 @@ export function makeWindowReady(label: string): () => Promise<void> {
   let promise: Promise<void> | null = null;
   return () => {
     if (!promise) {
-      promise = invoke('window_ready', { label })
+      promise = windowReady(label as 'main' | 'island' | 'karaoke')
         .then(() => undefined)
         .catch((err) => {
           promise = null;

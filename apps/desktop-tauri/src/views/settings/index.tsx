@@ -1,8 +1,37 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, memo, type FormEvent, type ReactNode } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { applyHostOsDataset, detectHostOs } from '../../utils/os';
+import { applyHostOsDataset, detectHostOs } from '@/utils/os';
+import type {
+  AppSettings,
+  IslandSettingsPatch,
+  KaraokeSettingsPatch,
+  MonitorInfo,
+  RenderSnapshot,
+  SettingsPatch,
+  UiState,
+  UiStatePatch,
+} from '@/types/tauri-contracts';
+import {
+  clearLyricsCache,
+  getAutostartStatus,
+  getAvailableMonitors,
+  getRenderSnapshot,
+  getSettings,
+  getUiState,
+  saveIslandPosition,
+  setAutostart,
+  setFontScale,
+  setIslandLocked,
+  setIslandSize,
+  setPreferredMonitor,
+  setShowOnFullscreen,
+  setTheme,
+  toggleSurface,
+  updateIslandSettings,
+  updateKaraokeSettings,
+  updateSettings,
+} from '@/utils/tauri-commands';
 import './settings.css';
 
 const isWindows = detectHostOs() === 'windows';
@@ -24,60 +53,7 @@ function SettingsWinControls() {
 type Surface = 'main' | 'island' | 'karaoke';
 type Section = 'general' | 'appearance' | 'main' | 'island' | 'karaoke';
 
-type UiState = {
-  island_visible: boolean;
-  floating_visible: boolean;
-  karaoke_visible: boolean;
-  island_locked: boolean;
-  island_pos: [number, number] | null;
-  island_width: number | null;
-  island_height: number | null;
-  island_font_scale: number;
-  karaoke_font_scale: number;
-  floating_font_scale: number;
-  island_show_cover: boolean;
-  island_cover_circle: boolean;
-  island_cover_spin: boolean;
-  island_show_on_fullscreen: boolean;
-  karaoke_show_on_fullscreen: boolean;
-  floating_show_on_fullscreen: boolean;
-  theme: string;
-  karaoke_position: string;
-  karaoke_alignment: string;
-  karaoke_width_pct: number;
-  karaoke_offset_px: number;
-  karaoke_lines: number;
-  karaoke_bg_opacity: number;
-  karaoke_bold: boolean;
-  autostart_enabled: boolean;
-  preferred_monitor: string | null;
-};
-
-type MonitorInfo = {
-  name: string | null;
-  width: number;
-  height: number;
-  x: number;
-  y: number;
-  scale_factor: number;
-  is_primary: boolean;
-};
-
-type AppSettings = {
-  window: { click_through: boolean; hide_when_idle: boolean; always_on_top: boolean };
-  appearance: { font_family: string; font_size: number; text_color: string; background_opacity: number; context_lines_above: number; context_lines_below: number };
-  behavior: { karaoke_mode: boolean; poll_interval_ms: number; hide_when_paused: boolean };
-};
-
 type ConsolidatedState = { ui: UiState; app: AppSettings };
-
-type SettingsRenderSnapshot = {
-  playback: {
-    track: {
-      artwork_url: string | null;
-    } | null;
-  } | null;
-};
 
 type NavItem = { id: Section; label: string; icon: ReactNode; color: string };
 
@@ -115,10 +91,10 @@ export default function Settings() {
     let unlisten: (() => void) | undefined;
     (async () => {
       const [ui, app, autostart, monitorList] = await Promise.all([
-        invoke<UiState>('get_ui_state'),
-        invoke<AppSettings>('get_settings'),
-        invoke<boolean>('get_autostart_status').catch(() => false),
-        invoke<MonitorInfo[]>('get_available_monitors').catch(() => [] as MonitorInfo[]),
+        getUiState(),
+        getSettings(),
+        getAutostartStatus().catch(() => false),
+        getAvailableMonitors().catch(() => [] as MonitorInfo[]),
       ]);
       setState({ ui, app });
       setAutostartEnabled(autostart);
@@ -135,12 +111,12 @@ export default function Settings() {
     let cancelled = false;
     (async () => {
       try {
-        const initial = await invoke<SettingsRenderSnapshot>('get_render_snapshot');
+        const initial = await getRenderSnapshot();
         if (!cancelled && initial?.playback?.track?.artwork_url) {
           setArtworkSrc(initial.playback.track.artwork_url);
         }
       } catch { /* ignored */ }
-      unlistenTick = await listen<SettingsRenderSnapshot>('playback-tick', (e) => {
+      unlistenTick = await listen<RenderSnapshot>('playback-tick', (e) => {
         if (!cancelled && e.payload?.playback?.track?.artwork_url) {
           setArtworkSrc(e.payload.playback.track.artwork_url);
         }
@@ -152,7 +128,7 @@ export default function Settings() {
     };
   }, []);
 
-  const patchUi = (changes: Partial<UiState>) => {
+  const patchUi = (changes: UiStatePatch) => {
     setState((prev) => (prev ? { ...prev, ui: { ...prev.ui, ...changes } } : prev));
   };
 
@@ -182,8 +158,8 @@ export default function Settings() {
         karaoke: 'karaoke_visible',
       };
       const key = map[surface];
-      patchUi({ [key]: !state?.ui[key] } as Partial<UiState>);
-      invoke('toggle_surface', { label: surface });
+      patchUi({ [key]: !state?.ui[key] } as UiStatePatch);
+      toggleSurface(surface);
     },
     setFullscreen: (surface: Surface, value: boolean) => {
       const map: Record<Surface, keyof UiState> = {
@@ -191,22 +167,22 @@ export default function Settings() {
         island: 'island_show_on_fullscreen',
         karaoke: 'karaoke_show_on_fullscreen',
       };
-      patchUi({ [map[surface]]: value } as Partial<UiState>);
-      invoke('set_show_on_fullscreen', { surface, value });
+      patchUi({ [map[surface]]: value } as UiStatePatch);
+      setShowOnFullscreen(surface, value);
     },
     setLock: (locked: boolean) => {
       patchUi({ island_locked: locked });
-      invoke('set_island_locked', { locked });
+      setIslandLocked(locked);
     },
     setIslandSize: (width: number, height: number) => {
       patchUi({ island_width: width, island_height: height });
       debounced('island-size', 120, () => {
-        invoke('set_island_size', { width, height });
+        setIslandSize(width, height);
       });
     },
     resetIslandPosition: () => {
       patchUi({ island_pos: null });
-      invoke('save_island_position', { x: -1, y: -1 });
+      saveIslandPosition(-1, -1);
     },
     setFont: (surface: Surface, scale: number) => {
       const map: Record<Surface, keyof UiState> = {
@@ -214,18 +190,18 @@ export default function Settings() {
         island: 'island_font_scale',
         karaoke: 'karaoke_font_scale',
       };
-      patchUi({ [map[surface]]: scale } as Partial<UiState>);
+      patchUi({ [map[surface]]: scale } as UiStatePatch);
       debounced(`font-${surface}`, 80, () => {
-        invoke('set_font_scale', { surface, scale });
+        setFontScale(surface, scale);
       });
     },
     island: (key: keyof UiState, value: unknown) => {
-      patchUi({ [key]: value } as Partial<UiState>);
+      patchUi({ [key]: value } as UiStatePatch);
       const payload = {
         show_cover: undefined,
         cover_circle: undefined,
         cover_spin: undefined,
-      } as Record<string, unknown>;
+      } as IslandSettingsPatch;
       const fieldMap: Record<string, string> = {
         island_show_cover: 'show_cover',
         island_cover_circle: 'cover_circle',
@@ -233,23 +209,23 @@ export default function Settings() {
       };
       const field = fieldMap[key as string];
       if (!field) return;
-      payload[field] = value;
-      invoke('update_island_settings', { patch: payload });
+      payload[field as keyof IslandSettingsPatch] = value as boolean;
+      updateIslandSettings(payload);
     },
     setTheme: (theme: string) => {
       patchUi({ theme });
-      invoke('set_theme', { theme });
+      setTheme(theme);
     },
     updateAppSetting: (category: keyof AppSettings, key: string, value: unknown, dbKey?: string) => {
       if (!state) return;
-      const patch = { [category]: { ...state.app[category], [key]: value } as Record<string, unknown> };
+      const patch = { [category]: { ...state.app[category], [key]: value } } as SettingsPatch;
       patchApp(patch);
-      const send = () => invoke('update_settings', { patch });
+      const send = () => updateSettings(patch);
       if (dbKey) debounced(dbKey, 150, send);
       else send();
     },
     karaoke: (key: keyof UiState, value: unknown, dbKey?: string) => {
-      patchUi({ [key]: value } as Partial<UiState>);
+      patchUi({ [key]: value } as UiStatePatch);
       const payload = {
         position: undefined,
         alignment: undefined,
@@ -258,7 +234,7 @@ export default function Settings() {
         lines: undefined,
         bg_opacity: undefined,
         bold: undefined,
-      } as Record<string, unknown>;
+      } as KaraokeSettingsPatch;
       const fieldMap: Record<string, string> = {
         karaoke_position: 'position',
         karaoke_alignment: 'alignment',
@@ -270,25 +246,25 @@ export default function Settings() {
       };
       const field = fieldMap[key as string];
       if (!field) return;
-      payload[field] = value;
-      const send = () => invoke('update_karaoke_settings', { patch: payload });
+      payload[field as keyof KaraokeSettingsPatch] = value as never;
+      const send = () => updateKaraokeSettings(payload);
       if (dbKey) debounced(dbKey, 80, send);
       else send();
     },
     setAutostart: (enabled: boolean) => {
       setAutostartEnabled(enabled);
-      invoke('set_autostart', { enabled }).catch(() => setAutostartEnabled(!enabled));
+      setAutostart(enabled).catch(() => setAutostartEnabled(!enabled));
     },
     clearCache: async () => {
       try {
-        await invoke('clear_lyrics_cache');
+        await clearLyricsCache();
       } catch (err) {
         console.error('Failed to clear cache', err);
       }
     },
     setPreferredMonitor: (name: string | null) => {
       patchUi({ preferred_monitor: name });
-      invoke('set_preferred_monitor', { name });
+      setPreferredMonitor(name);
     },
   };
 

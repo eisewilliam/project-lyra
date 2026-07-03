@@ -8,10 +8,10 @@ All frontend commands run from `apps/desktop-tauri/`. All Rust commands run from
 
 ```bash
 # Dev (hot reload, opens Tauri windows)
-cd apps/desktop-tauri && npm run tauri dev
+cd apps/desktop-tauri && pnpm tauri dev
 
 # Production build
-cd apps/desktop-tauri && npm run tauri build
+cd apps/desktop-tauri && pnpm tauri build
 
 # Rust tests (lyra-core only — no integration tests exist yet)
 cargo test -p lyra-core
@@ -23,7 +23,7 @@ cargo test -p lyra-core <test_name>
 cargo check --manifest-path apps/desktop-tauri/src-tauri/Cargo.toml
 
 # Frontend lint
-cd apps/desktop-tauri && npm run lint
+cd apps/desktop-tauri && pnpm lint
 ```
 
 ## Architecture

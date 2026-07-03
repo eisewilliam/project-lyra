@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { getCurrentWindow, currentMonitor } from '@tauri-apps/api/window';
 import { LogicalSize } from '@tauri-apps/api/dpi';
-import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
   isLyricsError,
@@ -9,10 +8,10 @@ import {
   resolveLyricsSurfaceState,
   type LyricsPlaceholderState,
   type LyricsStatus,
-} from '../../utils/lyrics-state';
-import { LyricsPlaceholderIcon } from '../../utils/lyrics-placeholder-icon';
-import { usePageVisible } from '../../utils/use-page-visible';
-import { applyAppearance, type AppSettings } from '../../utils/app-settings';
+} from '@/utils/lyrics-state';
+import { LyricsPlaceholderIcon } from '@/utils/lyrics-placeholder-icon';
+import { usePageVisible } from '@/utils/use-page-visible';
+import { applyAppearance } from '@/utils/app-settings';
 import {
   BLEND_MS,
   interpolatePosition,
@@ -21,41 +20,18 @@ import {
   applySurfaceVisible,
   wordsKey,
   runWordColouring,
-  type LyricWord,
   type PositionBaseline,
-} from '../../utils/playback-sync';
+} from '@/utils/playback-sync';
+import type { AppSettings, LyricWord, RenderSnapshot, UiState } from '@/types/tauri-contracts';
+import {
+  getRenderSnapshot,
+  getSettings,
+  getUiState,
+  refreshLyrics,
+  saveIslandPosition,
+  setOverlayPosition,
+} from '@/utils/tauri-commands';
 import './island.css';
-
-type UiState = {
-  island_visible: boolean;
-  floating_visible: boolean;
-  karaoke_visible: boolean;
-  island_locked: boolean;
-  island_pos: [number, number] | null;
-  island_width: number | null;
-  island_height: number | null;
-  island_font_scale: number;
-  karaoke_font_scale: number;
-  floating_font_scale: number;
-  island_show_cover: boolean;
-  island_cover_circle: boolean;
-  island_cover_spin: boolean;
-};
-
-type VisibleLine = { index: number; text: string; is_active: boolean };
-
-type RenderSnapshot = {
-  playback: {
-    track: { uri: string; title: string; artist: string; artwork_url: string | null; duration_ms: number } | null;
-    state: 'Playing' | 'Paused' | 'Stopped';
-    position_ms: number | null;
-    observed_at_ms: number;
-  };
-  lyrics_status: LyricsStatus;
-  line_progress: number | null;
-  visible_lines: VisibleLine[];
-  active_line_words: LyricWord[] | null;
-};
 
 const TOP_DOCK_SNAP_PX = 80;
 const SURFACE_LABEL = 'island';
@@ -78,7 +54,7 @@ function snapToTopEdge(value: number, topEdge: number) {
 }
 
 async function setIslandPanelPosition(x: number, y: number) {
-  await invoke('set_overlay_position', { label: SURFACE_LABEL, x, y });
+  await setOverlayPosition(SURFACE_LABEL, x, y);
 }
 
 function hashString(value: string) {
@@ -199,8 +175,8 @@ export default function Island() {
 
       const win = getCurrentWindow();
       const [state, appSettings] = await Promise.all([
-        invoke<UiState>('get_ui_state'),
-        invoke<AppSettings>('get_settings'),
+        getUiState(),
+        getSettings(),
       ]);
       setHideWhenPaused(appSettings.behavior.hide_when_paused);
       setHideWhenIdle(appSettings.window.hide_when_idle);
@@ -289,7 +265,7 @@ export default function Island() {
             window.clearTimeout(saveTimerRef.current);
           }
           saveTimerRef.current = window.setTimeout(() => {
-            invoke('save_island_position', { x: payload.x, y: snappedY }).catch(() => { });
+            saveIslandPosition(payload.x, snappedY).catch(() => { });
           }, 250);
         }).catch(() => { });
       });
@@ -389,7 +365,7 @@ export default function Island() {
 
       if (uri && snap.lyrics_status === 'Loading' && refreshedUriRef.current !== uri) {
         refreshedUriRef.current = uri;
-        invoke('refresh_lyrics').catch(() => { });
+        refreshLyrics().catch(() => { });
       }
 
       setHasActiveLyric(hasActiveLine);
@@ -409,7 +385,7 @@ export default function Island() {
     (async () => {
       await ensureIslandWindowReady();
       try {
-        const initial = await invoke<RenderSnapshot>('get_render_snapshot');
+        const initial = await getRenderSnapshot();
         apply(initial);
       } catch { /* transient */ }
       unlisten = await listen<RenderSnapshot>('playback-tick', (e) => apply(e.payload));

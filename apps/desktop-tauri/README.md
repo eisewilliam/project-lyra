@@ -18,18 +18,18 @@ All windows are served from one SPA. [`src/main.tsx`](src/main.tsx) selects the 
 Run frontend and Tauri commands from this directory:
 
 ```bash
-npm install
-npm run tauri dev
-npm run tauri build
-npm run lint
+pnpm install
+pnpm tauri dev
+pnpm tauri build
+pnpm lint
 ```
 
 The Vite-only commands remain available for frontend work:
 
 ```bash
-npm run dev
-npm run build
-npm run preview
+pnpm dev
+pnpm build
+pnpm preview
 ```
 
 Run Rust workspace checks from the repository root:

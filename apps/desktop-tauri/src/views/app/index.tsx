@@ -1,5 +1,4 @@
 import { memo, useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
-import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
@@ -13,11 +12,11 @@ import {
   type LyricsPlaceholderState,
   type LyricsStatus,
   type NotFoundReason,
-} from '../../utils/lyrics-state'
-import { LyricsPlaceholderIcon } from '../../utils/lyrics-placeholder-icon'
-import { applyHostOsDataset, detectHostOs } from '../../utils/os'
-import { usePageVisible } from '../../utils/use-page-visible'
-import { applyAppearance, type AppSettings } from '../../utils/app-settings'
+} from '@/utils/lyrics-state'
+import { LyricsPlaceholderIcon } from '@/utils/lyrics-placeholder-icon'
+import { applyHostOsDataset, detectHostOs } from '@/utils/os'
+import { usePageVisible } from '@/utils/use-page-visible'
+import { applyAppearance } from '@/utils/app-settings'
 import {
   BLEND_MS,
   interpolatePosition,
@@ -25,40 +24,31 @@ import {
   syncSurfaceVisible,
   wordsKey,
   applySurfaceVisible,
-  type LyricWord,
   type PositionBaseline,
-} from '../../utils/playback-sync'
+} from '@/utils/playback-sync'
+import type { AppSettings, LyricWord, RenderSnapshot, TrackRef, UiState } from '@/types/tauri-contracts'
+import {
+  applyMainVibrancy,
+  clearMainVibrancy,
+  forceRefreshLyrics,
+  getAllLines,
+  getLyricOffset,
+  getRenderSnapshot,
+  getSettings,
+  getUiState,
+  nudgeLyricOffset,
+  playbackNext,
+  playbackPlayPause,
+  playbackPrevious,
+  playbackSeekMs,
+  refreshLyrics,
+  setLyricOffset,
+} from '@/utils/tauri-commands'
 import './app.css'
 
 const hostOs = detectHostOs();
 const isWindows = hostOs === 'windows';
 applyHostOsDataset();
-
-
-type UiState = { floating_visible: boolean; floating_font_scale: number };
-
-type TrackRef = {
-  uri: string;
-  title: string;
-  artist: string;
-  album: string | null;
-  duration_ms: number;
-  artwork_url: string | null;
-};
-
-type RenderSnapshot = {
-  playback: {
-    track: TrackRef | null;
-    state: 'Playing' | 'Paused' | 'Stopped';
-    position_ms: number | null;
-    /// Backend wall-clock ms (Unix epoch) when this snapshot was sampled —
-    /// used to age-correct the position value on the frontend.
-    observed_at_ms: number;
-  };
-  lyrics_status: LyricsStatus;
-  active_line_index: number | null;
-  active_line_words: LyricWord[] | null;
-};
 
 function applyFloatingFont(scale: number) {
   document.documentElement.style.setProperty('--font-scale', String(scale));
@@ -281,7 +271,7 @@ function App() {
     const now = performance.now();
     baselineRef.current = { ms: targetMs, at: now, targetMs, targetAt: now, blendDur: 1 };
 
-    invoke('playback_seek_ms', { positionMs: targetMs }).catch(() => { });
+    playbackSeekMs(targetMs).catch(() => { });
   }, [handleMouseMove]);
 
   useEffect(() => {
@@ -317,13 +307,13 @@ function App() {
       if (resizeTimer) {
         window.clearTimeout(resizeTimer);
       } else {
-        invoke('clear_main_vibrancy').catch(() => { });
+        clearMainVibrancy().catch(() => { });
       }
 
       resizeTimer = window.setTimeout(() => {
         resizeTimer = null;
         document.body.removeAttribute('data-resizing');
-        invoke('apply_main_vibrancy').catch(() => { });
+        applyMainVibrancy().catch(() => { });
       }, 200);
     };
 
@@ -353,7 +343,7 @@ function App() {
     setPositionMs(target);
     setActiveLine(index);
     setActiveLineWords([]);
-    invoke('playback_seek_ms', { positionMs: target }).catch(() => { });
+    playbackSeekMs(target).catch(() => { });
   }, []);
 
   // Subscribe to backend `playback-tick` events. The backend polls Spotify
@@ -382,7 +372,7 @@ function App() {
         // shows the stored value (the backend already applies it to sync).
         if (uri && offsetUriRef.current !== uri) {
           offsetUriRef.current = uri;
-          invoke<number>('get_lyric_offset')
+          getLyricOffset()
             .then((ms) => setLyricOffsetMs(ms))
             .catch(() => setLyricOffsetMs(0));
         } else if (!uri) {
@@ -434,12 +424,12 @@ function App() {
 
       if (uri && snap.lyrics_status === 'Loading' && refreshedUriRef.current !== uri) {
         refreshedUriRef.current = uri;
-        invoke('refresh_lyrics').catch(() => { });
+        refreshLyrics().catch(() => { });
       }
 
       if (uri && snap.lyrics_status === 'Ready' && lyricsLoadedUriRef.current !== uri) {
         lyricsLoadedUriRef.current = uri;
-        invoke<Array<{ start_ms: number; text: string }>>('get_all_lines')
+        getAllLines()
           .then(lines => setLyrics(lines.map(l => ({ start_ms: l.start_ms, text: l.text }))))
           .catch(() => { });
       }
@@ -448,7 +438,7 @@ function App() {
     (async () => {
       await ensureMainWindowReady();
       try {
-        const initial = await invoke<RenderSnapshot>('get_render_snapshot');
+        const initial = await getRenderSnapshot();
         apply(initial);
       } catch { /* transient */ }
       unlisten = await listen<RenderSnapshot>('playback-tick', (e) => apply(e.payload));
@@ -472,8 +462,8 @@ function App() {
       await ensureMainWindowReady();
 
       const [s, appSettings] = await Promise.all([
-        invoke<UiState>('get_ui_state'),
-        invoke<AppSettings>('get_settings'),
+        getUiState(),
+        getSettings(),
       ]);
       setHideWhenPaused(appSettings.behavior.hide_when_paused);
       setHideWhenIdle(appSettings.window.hide_when_idle);
@@ -683,19 +673,19 @@ function App() {
 
   function retryLyrics() {
     refreshedUriRef.current = '';
-    invoke('force_refresh_lyrics').catch(() => { });
+    forceRefreshLyrics().catch(() => { });
   }
 
   // Per-track lyric timing offset (the quick-menu "Delay lyrics" control).
   // Positive = lyrics later, negative = earlier. The backend persists per URI
   // and re-broadcasts a snapshot, so the visible sync updates immediately.
   function nudgeOffset(deltaMs: number) {
-    invoke<number>('nudge_lyric_offset', { deltaMs })
+    nudgeLyricOffset(deltaMs)
       .then((ms) => setLyricOffsetMs(ms))
       .catch(() => { });
   }
   function resetOffset() {
-    invoke<number>('set_lyric_offset', { offsetMs: 0 })
+    setLyricOffset(0)
       .then((ms) => setLyricOffsetMs(ms))
       .catch(() => { });
   }
@@ -806,6 +796,7 @@ function App() {
                       <option value="" disabled hidden>Actions</option>
                       <option value="delay">☰ Lyrics delay</option>
                       <option value="refresh">↻ Refresh lyrics</option>
+                      <option value="settings">⛭ Settings</option>
                     </select>
                   )}
                   <button
@@ -836,7 +827,7 @@ function App() {
             <button
               className="btn-icon skip"
               aria-label="Previous"
-              onClick={() => invoke('playback_previous').catch(() => { })}
+              onClick={() => playbackPrevious().catch(() => { })}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg>
             </button>
@@ -845,7 +836,7 @@ function App() {
               aria-label={isPlaying ? "Pause" : "Play"}
               onClick={() => {
                 setIsPlaying(p => !p);
-                invoke('playback_play_pause').catch(() => { });
+                playbackPlayPause().catch(() => { });
               }}
             >
               {isPlaying ? (
@@ -857,7 +848,7 @@ function App() {
             <button
               className="btn-icon skip"
               aria-label="Next"
-              onClick={() => invoke('playback_next').catch(() => { })}
+              onClick={() => playbackNext().catch(() => { })}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg>
             </button>

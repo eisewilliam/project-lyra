@@ -23,7 +23,7 @@ impl TrayMenuRefs {
 }
 
 pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
-    let show_lyra = MenuItemBuilder::new("Show Lyra")
+    let show_lyra = MenuItemBuilder::new("Open Lyra")
         .id("show_lyra")
         .build(app)?;
     let show_island = CheckMenuItemBuilder::new("Show Dynamic Island")

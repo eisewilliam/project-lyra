@@ -6,6 +6,7 @@
 
 # Node
 node_modules/
+.pnpm-store/
 dist/
 .env
 .env.*
@@ -33,4 +34,3 @@ apps/desktop-tauri/src-tauri/licenses.html
 # SonarQube
 .scannerwork/
 .sonar/
-

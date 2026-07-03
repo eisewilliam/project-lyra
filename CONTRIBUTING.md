@@ -34,7 +34,7 @@ compute it. Please keep that boundary intact. See [docs/ARCHITECTURE.md](docs/AR
 |---|---|
 | Rust stable | Install with [rustup](https://rustup.rs) |
 | Node.js 18+ | React/Vite frontend and Tauri CLI |
-| npm | Bundled with Node.js |
+| pnpm | Standard package manager for frontend work |
 | Platform build tools | Xcode Command Line Tools on macOS; Tauri prerequisites on Windows |
 | Spotify desktop app | Lyra follows local Spotify playback state |
 
@@ -43,8 +43,8 @@ compute it. Please keep that boundary intact. See [docs/ARCHITECTURE.md](docs/AR
 ```bash
 # Install frontend deps and run the app with hot reload
 cd apps/desktop-tauri
-npm install
-npm run tauri dev
+pnpm install
+pnpm tauri dev
 ```
 
 ## Before you open a pull request
@@ -63,7 +63,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 
 # Frontend lint (from apps/desktop-tauri)
-cd apps/desktop-tauri && npm run lint
+cd apps/desktop-tauri && pnpm lint
 ```
 
 ## Pull request process
