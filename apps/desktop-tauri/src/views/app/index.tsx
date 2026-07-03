@@ -622,7 +622,7 @@ function App() {
       for (let i = 0; i < activeLineWords.length; i++) {
         const w = activeLineWords[i];
         const el = wordRefs.current[i];
-        if (!el) continue;
+        if (!w || !el) continue;
         let cls: string;
         let progress: number;
         if (pos >= w.end_ms) {
@@ -911,7 +911,7 @@ function App() {
           <LyricsPlaceholder
             state={lyricsViewState}
             notFoundReason={notFoundReason}
-            onRetry={canRetry ? retryLyrics : undefined}
+            {...(canRetry ? { onRetry: retryLyrics } : {})}
           />
         )}
       </section>

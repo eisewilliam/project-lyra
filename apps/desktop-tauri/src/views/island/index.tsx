@@ -370,11 +370,12 @@ export default function Island() {
 
       setHasActiveLyric(hasActiveLine);
       if (hasActiveLine) {
-        setActiveLine(snap.visible_lines[activeIdx].text);
+        const currentLine = snap.visible_lines[activeIdx];
+        const nextLine = snap.visible_lines[activeIdx + 1];
+        if (!currentLine) return;
+        setActiveLine(currentLine.text);
         setNextLine(
-          activeIdx + 1 < snap.visible_lines.length
-            ? snap.visible_lines[activeIdx + 1].text
-            : null
+          nextLine ? nextLine.text : null
         );
       } else {
         setActiveLine(null);

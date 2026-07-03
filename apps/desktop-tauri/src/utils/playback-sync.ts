@@ -96,7 +96,7 @@ export function runWordColouring(
     for (let i = 0; i < words.length; i++) {
       const w = words[i];
       const el = wordRefs.current[i];
-      if (!el) continue;
+      if (!w || !el) continue;
       let cls: string;
       let progress: number;
       if (pos >= w.end_ms) {

@@ -197,19 +197,15 @@ export default function Settings() {
     },
     island: (key: keyof UiState, value: unknown) => {
       patchUi({ [key]: value } as UiStatePatch);
-      const payload = {
-        show_cover: undefined,
-        cover_circle: undefined,
-        cover_spin: undefined,
-      } as IslandSettingsPatch;
-      const fieldMap: Record<string, string> = {
+      const payload: IslandSettingsPatch = {};
+      const fieldMap: Partial<Record<keyof UiState, keyof IslandSettingsPatch>> = {
         island_show_cover: 'show_cover',
         island_cover_circle: 'cover_circle',
         island_cover_spin: 'cover_spin',
       };
-      const field = fieldMap[key as string];
+      const field = fieldMap[key];
       if (!field) return;
-      payload[field as keyof IslandSettingsPatch] = value as boolean;
+      payload[field] = Boolean(value);
       updateIslandSettings(payload);
     },
     setTheme: (theme: string) => {
@@ -226,16 +222,8 @@ export default function Settings() {
     },
     karaoke: (key: keyof UiState, value: unknown, dbKey?: string) => {
       patchUi({ [key]: value } as UiStatePatch);
-      const payload = {
-        position: undefined,
-        alignment: undefined,
-        width_pct: undefined,
-        offset_px: undefined,
-        lines: undefined,
-        bg_opacity: undefined,
-        bold: undefined,
-      } as KaraokeSettingsPatch;
-      const fieldMap: Record<string, string> = {
+      const payload: KaraokeSettingsPatch = {};
+      const fieldMap: Partial<Record<keyof UiState, keyof KaraokeSettingsPatch>> = {
         karaoke_position: 'position',
         karaoke_alignment: 'alignment',
         karaoke_width_pct: 'width_pct',
@@ -244,9 +232,9 @@ export default function Settings() {
         karaoke_bg_opacity: 'bg_opacity',
         karaoke_bold: 'bold',
       };
-      const field = fieldMap[key as string];
+      const field = fieldMap[key];
       if (!field) return;
-      payload[field as keyof KaraokeSettingsPatch] = value as never;
+      Object.assign(payload, { [field]: value });
       const send = () => updateKaraokeSettings(payload);
       if (dbKey) debounced(dbKey, 80, send);
       else send();
@@ -833,13 +821,13 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 
 const Toggle = memo(
   function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+    const nativeSwitchProps = { switch: 'true' };
     return (
       <input
+        {...nativeSwitchProps}
         type="checkbox"
         checked={value}
         onChange={(e) => onChange(e.target.checked)}
-        // @ts-expect-error - specific hack
-        switch="true"
       />
     );
   },
@@ -1042,14 +1030,19 @@ function SnapSlider({
   onChange: (v: number) => void;
   info?: string;
 }) {
+  const reactId = useId();
+  const firstStep = steps[0];
+  if (!firstStep) return null;
+
   const idx = steps.reduce(
-    (best, s, i) =>
-      Math.abs(s.value - value) < Math.abs(steps[best].value - value) ? i : best,
+    (best, s, i) => {
+      const bestStep = steps[best] ?? firstStep;
+      return Math.abs(s.value - value) < Math.abs(bestStep.value - value) ? i : best;
+    },
     0
   );
-  const reactId = useId();
   const listId = `snap-slider-${reactId.replace(/:/g, '')}`;
-  const snappedStep = steps[idx] ?? steps[0];
+  const snappedStep = steps[idx] ?? firstStep;
   const progress = steps.length > 1 ? (idx / (steps.length - 1)) * 100 : 0;
 
   const handleInput = (event: FormEvent<HTMLInputElement>) => {
