@@ -33,8 +33,8 @@ export function Segmented({
   }, [value, options]);
 
   useEffect(() => {
-    window.addEventListener('resize', updateIndicator);
-    return () => window.removeEventListener('resize', updateIndicator);
+    globalThis.addEventListener('resize', updateIndicator);
+    return () => globalThis.removeEventListener('resize', updateIndicator);
   }, []);
 
   return (

@@ -19,14 +19,14 @@ export function ActionFeedbackButton({
 
   useEffect(() => {
     return () => {
-      if (resetTimerRef.current) window.clearTimeout(resetTimerRef.current);
+      if (resetTimerRef.current) globalThis.clearTimeout(resetTimerRef.current);
     };
   }, []);
 
   const handleClick = async () => {
     if (status === 'pending') return;
     if (resetTimerRef.current) {
-      window.clearTimeout(resetTimerRef.current);
+      globalThis.clearTimeout(resetTimerRef.current);
       resetTimerRef.current = null;
     }
 
@@ -39,20 +39,20 @@ export function ActionFeedbackButton({
       setStatus('failure');
     }
 
-    resetTimerRef.current = window.setTimeout(() => {
+    resetTimerRef.current = globalThis.setTimeout(() => {
       setStatus('idle');
       resetTimerRef.current = null;
     }, 2000);
   };
 
-  const text =
-    status === 'pending'
-      ? pendingLabel
-      : status === 'success'
-        ? feedbackLabel
-        : status === 'failure'
-          ? failureLabel
-          : label;
+  let text = label;
+  if (status === 'pending') {
+    text = pendingLabel;
+  } else if (status === 'success') {
+    text = feedbackLabel;
+  } else if (status === 'failure') {
+    text = failureLabel;
+  }
 
   return (
     <button className="action-btn" type="button" onClick={handleClick} disabled={status === 'pending'} aria-live="polite">

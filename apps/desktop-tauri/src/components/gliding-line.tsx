@@ -30,8 +30,8 @@ export function GlidingLine({
     updateOverflow();
 
     if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', updateOverflow);
-      return () => window.removeEventListener('resize', updateOverflow);
+      globalThis.addEventListener('resize', updateOverflow);
+      return () => globalThis.removeEventListener('resize', updateOverflow);
     }
 
     const observer = new ResizeObserver(updateOverflow);
