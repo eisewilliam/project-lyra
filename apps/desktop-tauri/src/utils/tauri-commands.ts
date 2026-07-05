@@ -23,12 +23,15 @@ export function getUiState(): Promise<UiState> {
   return invoke('get_ui_state');
 }
 
-export function toggleSurface(label: 'main' | 'island' | 'karaoke'): Promise<void> {
+export type SurfaceLabel = 'main' | 'island' | 'karaoke';
+export type OverlayLabel = 'island' | 'karaoke';
+
+export function toggleSurface(label: SurfaceLabel): Promise<void> {
   return invoke('toggle_surface', { label });
 }
 
 export function setShowOnFullscreen(
-  surface: 'main' | 'island' | 'karaoke',
+  surface: SurfaceLabel,
   value: boolean,
 ): Promise<void> {
   return invoke('set_show_on_fullscreen', { surface, value });
@@ -38,7 +41,7 @@ export function setIslandLocked(locked: boolean): Promise<void> {
   return invoke('set_island_locked', { locked });
 }
 
-export function setFontScale(surface: 'main' | 'island' | 'karaoke', scale: number): Promise<void> {
+export function setFontScale(surface: SurfaceLabel, scale: number): Promise<void> {
   return invoke('set_font_scale', { surface, scale });
 }
 
@@ -54,7 +57,7 @@ export function updateKaraokeSettings(patch: KaraokeSettingsPatch): Promise<void
   return invoke('update_karaoke_settings', { patch });
 }
 
-export function setOverlayPosition(label: 'island' | 'karaoke', x: number, y: number): Promise<void> {
+export function setOverlayPosition(label: OverlayLabel, x: number, y: number): Promise<void> {
   return invoke('set_overlay_position', { label, x, y });
 }
 
@@ -130,7 +133,7 @@ export function setPreferredMonitor(name: string | null): Promise<void> {
   return invoke('set_preferred_monitor', { name });
 }
 
-export function windowReady(label: 'main' | 'island' | 'karaoke'): Promise<void> {
+export function windowReady(label: SurfaceLabel): Promise<void> {
   return invoke('window_ready', { label });
 }
 

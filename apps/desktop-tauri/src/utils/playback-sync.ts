@@ -2,7 +2,7 @@
 // island, karaoke). These were previously copy-pasted into each view; keeping
 // one definition means a sync/interpolation fix lands everywhere at once.
 import type { LyricWord } from '@/types/tauri-contracts';
-import { windowReady } from '@/utils/tauri-commands';
+import { windowReady, type SurfaceLabel } from '@/utils/tauri-commands';
 
 export const BLEND_MS = 500;
 
@@ -66,7 +66,7 @@ export function makeWindowReady(label: string): () => Promise<void> {
   let promise: Promise<void> | null = null;
   return () => {
     if (!promise) {
-      promise = windowReady(label as 'main' | 'island' | 'karaoke')
+      promise = windowReady(label as SurfaceLabel)
         .then(() => undefined)
         .catch((err) => {
           promise = null;

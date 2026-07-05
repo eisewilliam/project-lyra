@@ -27,9 +27,20 @@ Lyra is a desktop lyrics app with a Rust core, Tauri bridge, and React UI. These
 ### Component Boundaries
 
 - Components should have one primary responsibility: layout, data binding, control behavior, or presentational rendering.
+- Prefer one exported component per file, especially for route files and surface-level components.
+- Small private subcomponents may live in the same file when they exist only to implement one reusable component and are not reused elsewhere.
 - Shared components must accept explicit props and avoid reaching directly into Tauri commands or global document state.
 - Route entrypoints may coordinate hooks and compose components, but should not contain large presentational trees.
 - Extract a component when markup, state, and event handling for one UI unit exceed what can be understood at a glance.
+
+### Redundancy And Repetition
+
+- In new code and refactored code, reduce repetition when it lowers maintenance risk, prevents inconsistent behavior, or clarifies an established boundary.
+- Do not extract code only to satisfy "DRY"; keep local repetition when a shared abstraction would hide intent or couple unrelated concerns.
+- Centralize stable values and mappings that must stay consistent, such as placeholder labels, settings option arrays, surface config maps, command payload maps, and shared fallback constants.
+- Prefer shared hooks or utilities for repeated event, listener, subscription, timer, observer, and cleanup patterns once the lifecycle behavior is understood.
+- Remove dead comments, stale fallback code, and commented-out implementations when working near them.
+- Keep redundancy cleanup behavior-preserving unless the change is explicitly scoped as a user-visible behavior update.
 
 ### File Naming
 
@@ -45,6 +56,11 @@ Lyra is a desktop lyrics app with a Rust core, Tauri bridge, and React UI. These
 - Every hook that registers a listener, timeout, interval, animation frame, or observer must clean it up.
 - Hooks that call Tauri commands should expose typed state and typed actions, not raw `invoke` calls.
 - Hook names remain `usePascalCase`; hook file names use `kebab-case`.
+- **Documentation:** All custom hooks must be documented using JSDoc/TSDoc comments directly above the hook signature and options interfaces. This ensures rich editor auto-complete and hover context. Documentation must cover:
+  - **Responsibility:** What external systems, APIs, or event listeners (e.g., Tauri events like `playback-tick`) the hook coordinates.
+  - **Inputs & Outputs:** The purpose and constraints of options/params (especially callbacks, configurations, and refs) and returned states/handlers.
+  - **Lifecycle Side Effects & Cleanup:** The lifecycle of any async boundaries, subscriptions, timers, or observers, and how cleanups or cancellation tokens are implemented to handle unmounts.
+
 
 ### State And Data Flow
 
