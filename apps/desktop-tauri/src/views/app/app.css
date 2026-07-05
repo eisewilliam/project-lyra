@@ -7,7 +7,7 @@
   background: rgb(22, 22, 26);
   color: white;
   position: relative;
-  transition: background 0.15s ease;
+  transition: background var(--motion-duration-base) var(--motion-ease-control);
 }
 
 body[data-resizing="true"] .lyra-window {
@@ -280,6 +280,18 @@ body[data-os="windows"] .lyra-window {
   color: #fff;
 }
 
+.btn-icon:focus-visible,
+.track-action-btn:focus-visible,
+.track-menu-select:focus-visible ~ .track-action-btn,
+.delay-control-btn:focus-visible,
+.delay-control-reset:focus-visible,
+.delay-control-close:focus-visible,
+.track-menu-select:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.48);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
 .track-action-btn:disabled {
   color: rgba(255, 255, 255, 0.28);
   cursor: default;
@@ -389,6 +401,16 @@ body[data-os="windows"] .lyra-window {
   display: none;
 }
 
+.lyrics-pane:focus {
+  outline: none;
+}
+
+.lyrics-pane:focus-visible .lyric-line.is-keyboard-focus {
+  outline: 2px solid rgba(255, 255, 255, 0.48);
+  outline-offset: 6px;
+  border-radius: 6px;
+}
+
 .lyrics-container {
   display: flex;
   flex-direction: column;
@@ -398,7 +420,7 @@ body[data-os="windows"] .lyra-window {
   padding: 50vh 0;
   position: relative;
   /* The reel glide. JS sets `transform: translateY(...)` per active line. */
-  transition: transform 0.62s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform var(--duration-reel) var(--ease-standard);
   will-change: transform;
 }
 
@@ -431,10 +453,10 @@ button.lyric-line:focus-visible {
   transform: scale(1);
   transform-origin: left center;
   transition:
-    color 0.5s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
-    filter 0.5s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+    color var(--duration-base) var(--ease-standard),
+    opacity var(--duration-base) var(--ease-standard),
+    filter var(--duration-base) var(--ease-standard),
+    transform var(--duration-base) var(--ease-standard);
   /* will-change intentionally omitted at base level — promoting every line
      to its own compositing layer is expensive (GPU memory + paint cost).
      Only the active line gets layer-promotion via .lyric-line.is-active below. */
@@ -460,7 +482,7 @@ button.lyric-line:focus-visible {
   /* Enter animation: replays each time a line gains `.is-active` (no remount
      needed). Ends exactly at the resting active state above so it settles
      without a snap. The 0.5s transitions still handle the outgoing line. */
-  animation: lyric-active-in 460ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: lyric-active-in var(--duration-enter) var(--ease-standard);
 }
 
 @keyframes lyric-active-in {
@@ -798,7 +820,6 @@ button.lyric-line:focus-visible {
   align-items: center;
   width: 100%;
   height: 40px;
-  animation: track-menu-in-bottom 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .delay-control-meta {
@@ -840,7 +861,10 @@ button.lyric-line:focus-visible {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition:
+    background-color var(--motion-duration-base) var(--motion-ease-control),
+    border-color var(--motion-duration-base) var(--motion-ease-control),
+    color var(--motion-duration-base) var(--motion-ease-control);
   padding: 0;
 }
 
@@ -860,7 +884,10 @@ button.lyric-line:focus-visible {
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition:
+    background-color var(--motion-duration-base) var(--motion-ease-control),
+    color var(--motion-duration-base) var(--motion-ease-control),
+    opacity var(--motion-duration-base) var(--motion-ease-control);
 }
 
 .delay-control-reset:hover:not(:disabled) {
@@ -871,28 +898,6 @@ button.lyric-line:focus-visible {
 .delay-control-reset:disabled {
   opacity: 0.35;
   cursor: default;
-}
-
-@keyframes track-menu-in-bottom {
-  from {
-    opacity: 0;
-    transform: scale(0.96) translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-@keyframes track-menu-in-top {
-  from {
-    opacity: 0;
-    transform: scale(0.96) translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
 }
 
 /* ── Karaoke mode (main window): show only active + next line, centered ────── */
@@ -939,5 +944,3 @@ button.lyric-line:focus-visible {
   opacity: 0.8;
   margin-right: 8px;
 }
-
-

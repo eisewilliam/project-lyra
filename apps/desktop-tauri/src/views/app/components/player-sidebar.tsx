@@ -1,10 +1,13 @@
 import { memo, type RefObject } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { TrackRef } from '@/types/tauri-contracts';
 import type { PositionBaseline } from '@/utils/playback-sync';
 import { DelayControl } from './delay-control';
 import { ProgressBar } from './progress-bar';
 import { TrackInfo } from './track-info';
 import { TransportControls } from './transport-controls';
+
+const INLINE_CONTROL_EASE = [0.22, 1, 0.36, 1] as const;
 
 export const PlayerSidebar = memo(function PlayerSidebar({
 
@@ -64,6 +67,8 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   selectValue: string;
   track: TrackRef | null;
 }>) {
+  const prefersReducedMotion = useReducedMotion();
+
   return (
     <section className="player-sidebar">
       <div className="drag-region" data-tauri-drag-region />
@@ -80,25 +85,36 @@ export const PlayerSidebar = memo(function PlayerSidebar({
       </div>
 
       <div className="player-controls-bottom">
-        {showDelayControl ? (
-          <DelayControl
-            lyricOffsetMs={lyricOffsetMs}
-            offsetLabel={offsetLabel}
-            onClose={() => setShowDelayControl(false)}
-            onNudgeOffset={onNudgeOffset}
-            onResetOffset={onResetOffset}
-          />
-        ) : (
-          <TrackInfo
-            hasTrack={hasTrack}
-            onRetryLyrics={onRetryLyrics}
-            selectValue={selectValue}
-            setSelectValue={setSelectValue}
-            setShowDelayControl={setShowDelayControl}
-            snapshotReady={snapshotReady}
-            track={track}
-          />
-        )}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={showDelayControl ? 'delay-control' : 'track-info'}
+            className="w-full"
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={prefersReducedMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: -4 }}
+            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.18, ease: INLINE_CONTROL_EASE }}
+          >
+            {showDelayControl ? (
+              <DelayControl
+                lyricOffsetMs={lyricOffsetMs}
+                offsetLabel={offsetLabel}
+                onClose={() => setShowDelayControl(false)}
+                onNudgeOffset={onNudgeOffset}
+                onResetOffset={onResetOffset}
+              />
+            ) : (
+              <TrackInfo
+                hasTrack={hasTrack}
+                onRetryLyrics={onRetryLyrics}
+                selectValue={selectValue}
+                setSelectValue={setSelectValue}
+                setShowDelayControl={setShowDelayControl}
+                snapshotReady={snapshotReady}
+                track={track}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
 
         <ProgressBar
           baselineRef={baselineRef}
@@ -122,4 +138,3 @@ export const PlayerSidebar = memo(function PlayerSidebar({
     </section>
   );
 });
-

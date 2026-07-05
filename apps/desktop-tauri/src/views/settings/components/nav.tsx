@@ -30,19 +30,19 @@ export function SettingsNav({
   onSectionChange: (section: Section) => void;
 }>) {
   return (
-    <aside className="settings-sidebar">
-      <div className="sidebar-traffic-spacer" data-tauri-drag-region="deep" />
-      <nav>
+    <aside className="settings-sidebar flex w-[220px] shrink-0 flex-col box-border p-2.5 z-[1]">
+      <div className="sidebar-traffic-spacer h-12 shrink-0" data-tauri-drag-region="deep" />
+      <nav className="flex flex-col gap-4">
         {NAV_GROUPS.map((group) => (
-          <div className="nav-group" key={group.header || 'general-group'}>
-            {group.header && <div className="nav-section">{group.header}</div>}
+          <div className="nav-group flex flex-col gap-1" key={group.header || 'general-group'}>
+            {group.header && <div className="nav-section px-2.5 py-1">{group.header}</div>}
             {group.items.map((item) => (
               <button
                 key={item.id}
-                className={`nav-item ${section === item.id ? 'active' : ''}`}
+                className={`nav-item flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left ${section === item.id ? 'active' : ''}`}
                 onClick={() => onSectionChange(item.id)}
               >
-                <span className="nav-icon">
+                <span className="nav-icon inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center">
                   {item.icon}
                 </span>
                 <span className="nav-label">{item.label}</span>

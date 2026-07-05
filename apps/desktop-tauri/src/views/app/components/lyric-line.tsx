@@ -6,6 +6,7 @@ type LyricLineProps = Readonly<{
   text: string;
   proximityClass: string;
   words: readonly LyricWord[] | null;
+  isKeyboardFocused: boolean;
   isLastEmpty: boolean;
   onSeek: (index: number, ts: number) => void;
   lyricsRef: RefObject<(HTMLButtonElement | null)[]>;
@@ -17,6 +18,7 @@ export const LyricLine = memo(function LyricLine({
   text,
   proximityClass,
   words,
+  isKeyboardFocused,
   isLastEmpty,
   onSeek,
   lyricsRef,
@@ -59,7 +61,7 @@ export const LyricLine = memo(function LyricLine({
     }
   };
 
-  const className = `lyric-line ${proximityClass} ${isArmed ? 'is-armed' : ''}`;
+  const className = `lyric-line ${proximityClass} ${isArmed ? 'is-armed' : ''} ${isKeyboardFocused ? 'is-keyboard-focus' : ''}`;
 
   const defaultText = text || (isLastEmpty ? '' : '♪');
   const lineContent = words ? (
@@ -88,7 +90,7 @@ export const LyricLine = memo(function LyricLine({
       onMouseLeave={handleMouseLeave}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
-      tabIndex={0}
+      tabIndex={-1}
       title={isArmed ? "Click to seek here" : "Hover to arm seek"}
       type="button"
     >
