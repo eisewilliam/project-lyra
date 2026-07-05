@@ -3,14 +3,9 @@
 // CSS custom properties. Used by every lyric surface so font/colour/darkness
 // settings take effect uniformly.
 
-import type {
-  AppSettings,
-  AppearanceSettings,
-  BehaviorSettings,
-  WindowSettings,
-} from '@/types/tauri-contracts';
+import type { AppearanceSettings } from '@/types/tauri-contracts';
 
-export type { AppSettings, AppearanceSettings, BehaviorSettings, WindowSettings };
+export type { AppSettings, AppearanceSettings, BehaviorSettings, WindowSettings } from '@/types/tauri-contracts';
 
 const SYSTEM_FONT_STACK =
   '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';

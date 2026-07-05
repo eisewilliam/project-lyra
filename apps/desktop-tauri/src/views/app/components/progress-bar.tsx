@@ -16,7 +16,7 @@ export function ProgressBar({
   progressTrackRef,
   setPositionMs,
   track,
-}: {
+}: Readonly<{
   baselineRef: RefObject<PositionBaseline>;
   clampedPositionMs: number;
   durationMs: number;
@@ -28,7 +28,7 @@ export function ProgressBar({
   progressTrackRef: RefObject<HTMLDivElement | null>;
   setPositionMs: React.Dispatch<React.SetStateAction<number>>;
   track: TrackRef | null;
-}) {
+}>) {
   const handleProgressKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (!track || track.duration_ms === 0) return;
     let targetMs: number;

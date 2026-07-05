@@ -8,7 +8,7 @@ export function TrackInfo({
   setShowDelayControl,
   snapshotReady,
   track,
-}: {
+}: Readonly<{
   hasTrack: boolean;
   onRetryLyrics: () => void;
   selectValue: string;
@@ -16,7 +16,7 @@ export function TrackInfo({
   setShowDelayControl: React.Dispatch<React.SetStateAction<boolean>>;
   snapshotReady: boolean;
   track: TrackRef | null;
-}) {
+}>) {
   const handleTrackActionChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const val = event.target.value;
     if (val === 'delay') {

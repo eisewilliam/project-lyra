@@ -1,4 +1,4 @@
-import type { RefObject } from 'react';
+import { memo, type RefObject } from 'react';
 import type { TrackRef } from '@/types/tauri-contracts';
 import type { PositionBaseline } from '@/utils/playback-sync';
 import { DelayControl } from './delay-control';
@@ -6,7 +6,8 @@ import { ProgressBar } from './progress-bar';
 import { TrackInfo } from './track-info';
 import { TransportControls } from './transport-controls';
 
-export function PlayerSidebar({
+export const PlayerSidebar = memo(function PlayerSidebar({
+
   artworkError,
   artworkSrc,
   clampedPositionMs,
@@ -34,7 +35,7 @@ export function PlayerSidebar({
   baselineRef,
   selectValue,
   track,
-}: {
+}: Readonly<{
   artworkError: boolean;
   artworkSrc: string;
   clampedPositionMs: number;
@@ -62,7 +63,7 @@ export function PlayerSidebar({
   baselineRef: RefObject<PositionBaseline>;
   selectValue: string;
   track: TrackRef | null;
-}) {
+}>) {
   return (
     <section className="player-sidebar">
       <div className="drag-region" data-tauri-drag-region />
@@ -120,4 +121,5 @@ export function PlayerSidebar({
       </div>
     </section>
   );
-}
+});
+

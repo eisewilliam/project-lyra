@@ -461,16 +461,11 @@ select:hover {
   transform: scale(0.96);
 }
 
-/* iOS/macOS Toggle Switch */
 .native-toggle {
-  /* appearance: none; */
   width: 44px;
   height: 24px;
-  /* background: var(--input-bg); */
   border-radius: 24px;
   position: relative;
-  /* cursor: pointer; */
-  /* outline: none; */
   transition: background 0.3s ease-in-out;
   box-shadow: inset 0 0 0 1px var(--border-color);
 }
@@ -481,10 +476,7 @@ select:hover {
   left: 2px;
   width: 20px;
   height: 20px;
-  /* background: #ffffff; */
   border-radius: 50%;
-  /* box-shadow: var(--knob-shadow); */
-  /* transition: transform 0.3s cubic-bezier(0.2, 0.85, 0.32, 1.2); */
 }
 .native-toggle:checked {
   background: var(--accent);
@@ -560,7 +552,6 @@ body[data-os="macos"] .nav-item {
 }
 body[data-os="macos"] .nav-item.active {
   box-shadow: none;
-  /* font-weight: 500; */
 }
 body[data-os="macos"] .nav-item.active .nav-icon {
   filter: none;

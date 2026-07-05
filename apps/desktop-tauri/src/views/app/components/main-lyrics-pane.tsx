@@ -1,4 +1,4 @@
-import type { RefObject } from 'react';
+import { memo, type RefObject } from 'react';
 import { LyricsPlaceholder } from '@/components/lyrics-placeholder';
 import type { LyricWord } from '@/types/tauri-contracts';
 import type { LyricsPlaceholderState, NotFoundReason } from '@/utils/lyrics-state';
@@ -6,7 +6,8 @@ import type { LineRef } from '../types';
 import { getLyricProximityClass } from '../utils';
 import { LyricLine } from './lyric-line';
 
-export function MainLyricsPane({
+export const MainLyricsPane = memo(function MainLyricsPane({
+
   activeLine,
   activeLineWords,
   karaokeMode,
@@ -73,4 +74,5 @@ export function MainLyricsPane({
       )}
     </section>
   );
-}
+});
+

@@ -4,13 +4,13 @@ export function DelayControl({
   onClose,
   onNudgeOffset,
   onResetOffset,
-}: {
+}: Readonly<{
   lyricOffsetMs: number;
   offsetLabel: string;
   onClose: () => void;
   onNudgeOffset: (deltaMs: number) => void;
   onResetOffset: () => void;
-}) {
+}>) {
   return (
     <div className="delay-control-inline">
       <div className="delay-control-meta">

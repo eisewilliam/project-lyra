@@ -65,14 +65,12 @@ export function syncSurfaceVisible(
 export function makeWindowReady(label: string): () => Promise<void> {
   let promise: Promise<void> | null = null;
   return () => {
-    if (!promise) {
-      promise = windowReady(label as SurfaceLabel)
-        .then(() => undefined)
-        .catch((err) => {
-          promise = null;
-          throw err;
-        });
-    }
+    promise ??= windowReady(label as SurfaceLabel)
+      .then(() => undefined)
+      .catch((err) => {
+        promise = null;
+        throw err;
+      });
     return promise;
   };
 }
@@ -113,7 +111,7 @@ export function runWordColouring(
         lastCls[i] = cls;
         el.className = cls;
       }
-      const progQ = (progress * 1000) | 0;
+      const progQ = Math.trunc(progress * 1000);
       if (progQ !== lastProgQ[i]) {
         lastProgQ[i] = progQ;
         el.style.setProperty('--word-progress', (progQ / 1000).toString());

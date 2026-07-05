@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { AmbientBackground } from './components/ambient-background';
 import { MainLyricsPane } from './components/main-lyrics-pane';
 import { PlayerSidebar } from './components/player-sidebar';
@@ -155,22 +155,26 @@ function App() {
     : null;
   const canRetry = isRetryableNotFound(lyricsStatus);
 
-  function retryLyrics() {
+  const handleArtworkError = useCallback(() => {
+    setArtworkError(true);
+  }, [setArtworkError]);
+
+  const retryLyrics = useCallback(() => {
     refreshedUriForRetry.current = '';
     forceRefreshLyrics().catch(noop);
-  }
+  }, []);
 
-  function nudgeOffset(deltaMs: number) {
+  const nudgeOffset = useCallback((deltaMs: number) => {
     nudgeLyricOffset(deltaMs)
       .then((ms) => setLyricOffsetMs(ms))
       .catch(noop);
-  }
+  }, [setLyricOffsetMs]);
 
-  function resetOffset() {
+  const resetOffset = useCallback(() => {
     setLyricOffset(0)
       .then((ms) => setLyricOffsetMs(ms))
       .catch(noop);
-  }
+  }, [setLyricOffsetMs]);
 
   const offsetLabel = `${lyricOffsetMs > 0 ? '+' : ''}${lyricOffsetMs} ms`;
 
@@ -180,7 +184,7 @@ function App() {
 
       <AmbientBackground
         artworkSrc={artworkSrc}
-        onArtworkError={() => setArtworkError(true)}
+        onArtworkError={handleArtworkError}
       />
 
       <PlayerSidebar
@@ -195,7 +199,7 @@ function App() {
         isPlaying={isPlaying}
         lyricOffsetMs={lyricOffsetMs}
         offsetLabel={offsetLabel}
-        onArtworkError={() => setArtworkError(true)}
+        onArtworkError={handleArtworkError}
         onNudgeOffset={nudgeOffset}
         onResetOffset={resetOffset}
         onRetryLyrics={retryLyrics}

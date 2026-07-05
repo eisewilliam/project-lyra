@@ -3,17 +3,19 @@ import { getCurrentWindow, currentMonitor, PhysicalPosition, PhysicalSize } from
 import { useSurfaceSettings } from '@/hooks/use-surface-settings';
 import type { UiState } from '@/types/tauri-contracts';
 
+function getPlaceholderAlignment(alignment: UiState['karaoke_alignment']) {
+  if (alignment === 'left') return 'flex-start';
+  if (alignment === 'right') return 'flex-end';
+  return 'center';
+}
+
 function applyStyle(s: UiState) {
   const root = document.documentElement.style;
   root.setProperty('--font-scale', String(s.karaoke_font_scale));
   root.setProperty('--karaoke-align', s.karaoke_alignment);
   root.setProperty(
     '--karaoke-placeholder-align',
-    s.karaoke_alignment === 'left'
-      ? 'flex-start'
-      : s.karaoke_alignment === 'right'
-        ? 'flex-end'
-        : 'center',
+    getPlaceholderAlignment(s.karaoke_alignment),
   );
   root.setProperty('--karaoke-bg', String(s.karaoke_bg_opacity));
   root.setProperty('--karaoke-weight', s.karaoke_bold ? '800' : '500');

@@ -3,10 +3,10 @@ import type { LyricsPlaceholderState } from './lyrics-state';
 export function LyricsPlaceholderIcon({
     state,
     className,
-}: {
+}: Readonly<{
     state: LyricsPlaceholderState;
     className?: string;
-}) {
+}>) {
     if (state === 'error') {
         return (
             <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">

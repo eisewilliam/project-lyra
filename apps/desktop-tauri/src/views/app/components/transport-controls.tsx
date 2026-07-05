@@ -4,10 +4,10 @@ import { noop } from '../utils';
 export function TransportControls({
   isPlaying,
   setIsPlaying,
-}: {
+}: Readonly<{
   isPlaying: boolean;
   setIsPlaying: React.Dispatch<React.SetStateAction<boolean>>;
-}) {
+}>) {
   return (
     <div className="transport-controls">
       <button

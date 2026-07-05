@@ -1,11 +1,17 @@
-import { useRef, useState, type CSSProperties } from 'react';
+import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { GlidingLine } from '@/components/gliding-line';
 import {
-  isLyricsError,
-  isLyricsNotFound,
   resolveLyricsSurfaceState,
+  type LyricsPlaceholderState,
 } from '@/utils/lyrics-state';
+import {
+  shouldShowTrackIntro,
+  getActiveContentKey,
+  getCurrentLineFallback,
+  getNextLineText,
+  renderLyricContent,
+} from '@/utils/lyric-renderer';
 import { PanelPlaceholder } from './components/placeholder';
 import { usePageVisible } from '@/utils/use-page-visible';
 import { useArtworkFallback } from '@/hooks/use-artwork-fallback';
@@ -27,6 +33,60 @@ const ensureIslandWindowReady = makeWindowReady(SURFACE_LABEL);
 const BAR_KEYS = ['bar-left-outer', 'bar-left-inner', 'bar-right-inner', 'bar-right-outer'] as const;
 
 applySurfaceVisible(false);
+
+
+
+function renderPanelContent({
+  panelState,
+  showTrackIntro,
+  activeContentKey,
+  hasActiveLyric,
+  activeLineProgress,
+  lineContent,
+  nextLine,
+  trackTitle,
+  trackArtist,
+}: Readonly<{
+  panelState: LyricsPlaceholderState;
+  showTrackIntro: boolean;
+  activeContentKey: string;
+  hasActiveLyric: boolean;
+  activeLineProgress: number;
+  lineContent: ReactNode;
+  nextLine: string | null;
+  trackTitle: string;
+  trackArtist: string;
+}>): ReactNode {
+  if (panelState === 'ready') {
+    return (
+      <>
+        <GlidingLine
+          key={activeContentKey}
+          className={`panel-lyric-active ${hasActiveLyric ? '' : 'is-preroll'}`}
+          contentClassName="panel-lyric-content"
+          contentKey={activeContentKey}
+          syncProgress={activeLineProgress}
+        >
+          {lineContent}
+        </GlidingLine>
+        <div className="panel-lyric-next" key={nextLine || 'none'}>
+          {getNextLineText(nextLine)}
+        </div>
+      </>
+    );
+  }
+
+  if (showTrackIntro) {
+    return (
+      <>
+        <div className="panel-lyric-active is-track-intro">{trackTitle}</div>
+        <div className="panel-lyric-next is-track-intro">{trackArtist}</div>
+      </>
+    );
+  }
+
+  return <PanelPlaceholder state={panelState} />;
+}
 
 export default function Island() {
   const [locked, setLocked] = useState(true);
@@ -139,76 +199,49 @@ export default function Island() {
     lyricsStatus,
     hasContent: hasVisibleLyrics,
   });
-  const showTrackIntro =
-    snapshotReady &&
-    hasTrack &&
-    !hasActiveLyric &&
-    trackTitle.length > 0 &&
-    !isLyricsError(lyricsStatus) &&
-    !isLyricsNotFound(lyricsStatus);
+  const showTrackIntro = shouldShowTrackIntro({
+    snapshotReady,
+    hasTrack,
+    hasActiveLyric,
+    trackTitle,
+    lyricsStatus,
+  });
   const barsActive = (panelState === 'ready' || showTrackIntro) && isPlaying;
 
-  const activeContentKey = activeLineWords.length > 0
-    ? activeLineWords.map((word) => `${word.start_ms}:${word.text}`).join('|')
-    : activeLine || '';
-
+  const activeContentKey = getActiveContentKey(activeLineWords, activeLine);
   const isCompactLayout = islandHeight <= 64;
-
-  const defaultText = activeLine || (nextLine === null ? '' : '♪');
-  const lineContent = activeLineWords.length > 0 ? (
-    activeLineWords.map((w, i) => (
-      <span
-        key={`${w.start_ms}-${w.text}`}
-        ref={(el) => {
-          if (wordRefs.current) {
-            wordRefs.current[i] = el;
-          }
-        }}
-        className="lyric-word upcoming"
-      >{w.text}</span>
-    ))
-  ) : defaultText;
-
-  let panelContent: React.ReactNode;
-  if (panelState === 'ready') {
-    panelContent = (
-      <>
-        <GlidingLine
-          key={activeContentKey}
-          className={`panel-lyric-active ${hasActiveLyric ? '' : 'is-preroll'}`}
-          contentClassName="panel-lyric-content"
-          contentKey={activeContentKey}
-          syncProgress={activeLineProgress}
-        >
-          {lineContent}
-        </GlidingLine>
-        <div className="panel-lyric-next" key={nextLine || 'none'}>
-          {nextLine === '' ? '♪' : (nextLine || '')}
-        </div>
-      </>
-    );
-  } else if (showTrackIntro) {
-    panelContent = (
-      <>
-        <div className="panel-lyric-active is-track-intro">{trackTitle}</div>
-        <div className="panel-lyric-next is-track-intro">{trackArtist}</div>
-      </>
-    );
-  } else {
-    panelContent = <PanelPlaceholder state={panelState} />;
-  }
+  const currentLineFallback = getCurrentLineFallback(activeLine, nextLine);
+  const lineContent = renderLyricContent(activeLineWords, wordRefs, currentLineFallback);
+  const panelContent = renderPanelContent({
+    panelState,
+    showTrackIntro,
+    activeContentKey,
+    hasActiveLyric,
+    activeLineProgress,
+    lineContent,
+    nextLine,
+    trackTitle,
+    trackArtist,
+  });
 
   return (
     <div
       className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${isDocked ? 'docked' : 'floating'} ${panelState !== 'ready' && !showTrackIntro ? 'has-placeholder' : ''} ${isCompactLayout ? 'is-compact' : ''}`}
-      onMouseDown={(e) => {
-        if (locked || e.button !== 0) return;
-        e.preventDefault();
-        getCurrentWindow().startDragging().catch(noop);
-      }}
       role="application"
       aria-label="Dynamic Island panel"
     >
+      {!locked && (
+        <button
+          type="button"
+          className="panel-drag-button"
+          aria-label="Drag Dynamic Island panel"
+          onMouseDown={(e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            getCurrentWindow().startDragging().catch(noop);
+          }}
+        />
+      )}
       <div className="island-background">
         <img src={artSrc} alt="" className="island-bg-img" decoding="async" onError={() => setArtworkError(true)} />
         <div className="island-bg-dimmer"></div>

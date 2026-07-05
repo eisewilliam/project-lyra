@@ -41,11 +41,12 @@ export function GlidingLine({
   }, [contentKey]);
 
   const isGliding = overflowPx > 0;
-  const normalizedReveal = syncProgress <= 0.06
-    ? 0
-    : syncProgress >= 0.78
-      ? 1
-      : (syncProgress - 0.06) / 0.72;
+  let normalizedReveal = 0;
+  if (syncProgress >= 0.78) {
+    normalizedReveal = 1;
+  } else if (syncProgress > 0.06) {
+    normalizedReveal = (syncProgress - 0.06) / 0.72;
+  }
   const revealProgress = normalizedReveal * normalizedReveal * (3 - 2 * normalizedReveal);
   const style = isGliding
     ? {
