@@ -402,6 +402,24 @@ body[data-os="windows"] .lyra-window {
   will-change: transform;
 }
 
+button.lyric-line {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  outline: none;
+}
+
+button.lyric-line:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.4);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
 .lyric-line {
   font-size: calc(2.6rem * var(--font-scale, 1));
   font-weight: 700;
