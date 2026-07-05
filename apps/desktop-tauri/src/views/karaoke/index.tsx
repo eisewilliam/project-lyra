@@ -5,13 +5,13 @@ import {
   isLyricsNotFound,
   resolveLyricsSurfaceState,
 } from '@/utils/lyrics-state';
-import { KaraokePlaceholder } from './components/karaoke-placeholder';
+import { KaraokePlaceholder } from './components/placeholder';
 import { usePageVisible } from '@/utils/use-page-visible';
 import { useSurfaceAutoHide } from '@/hooks/use-surface-auto-hide';
 import { useWordColouring } from '@/hooks/use-word-colouring';
 import { makeWindowReady, applySurfaceVisible } from '@/utils/playback-sync';
-import { useKaraokePlayback } from './hooks/use-karaoke-playback';
-import { useKaraokeLayout } from './hooks/use-karaoke-layout';
+import { useKaraokePlayback } from './hooks/use-playback';
+import { useKaraokeLayout } from './hooks/use-layout';
 import './karaoke.css';
 
 applySurfaceVisible(false);

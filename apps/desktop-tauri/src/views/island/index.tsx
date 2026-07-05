@@ -6,17 +6,17 @@ import {
   isLyricsNotFound,
   resolveLyricsSurfaceState,
 } from '@/utils/lyrics-state';
-import { PanelPlaceholder } from './components/panel-placeholder';
+import { PanelPlaceholder } from './components/placeholder';
 import { usePageVisible } from '@/utils/use-page-visible';
 import { useArtworkFallback } from '@/hooks/use-artwork-fallback';
 import { useSurfaceAutoHide } from '@/hooks/use-surface-auto-hide';
 import { useWordColouring } from '@/hooks/use-word-colouring';
 import { makeWindowReady, applySurfaceVisible } from '@/utils/playback-sync';
-import { useIslandMove } from './hooks/use-island-move';
+import { useIslandMove } from './hooks/use-move';
 import { useAudioVisualizer } from './hooks/use-audio-visualizer';
 import { useProgressRing } from './hooks/use-progress-ring';
-import { useIslandPlayback } from './hooks/use-island-playback';
-import { useIslandSettings } from './hooks/use-island-settings';
+import { useIslandPlayback } from './hooks/use-playback';
+import { useIslandSettings } from './hooks/use-settings';
 import { TRANSPARENT_FALLBACK_ART } from '@/utils/artwork';
 import './island.css';
 

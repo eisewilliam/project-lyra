@@ -2,7 +2,7 @@ import type { RefObject, Dispatch, SetStateAction } from 'react';
 import { getCurrentWindow, currentMonitor } from '@tauri-apps/api/window';
 import { LogicalSize } from '@tauri-apps/api/dpi';
 import { useSurfaceSettings } from '@/hooks/use-surface-settings';
-import { snapToTopEdge, setIslandPanelPosition } from './use-island-move';
+import { snapToTopEdge, setIslandPanelPosition } from './use-move';
 
 const noop = (...args: unknown[]) => { if (args) return; };
 

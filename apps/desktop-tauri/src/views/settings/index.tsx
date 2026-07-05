@@ -1,9 +1,9 @@
 import { SettingsSkeleton } from '@/components/settings-controls';
 import { TRANSPARENT_FALLBACK_ART } from '@/utils/artwork';
 import { detectHostOs } from '@/utils/os';
-import { Body } from './components/settings-body';
-import { SettingsNav } from './components/settings-nav';
-import { SettingsWinControls } from './components/settings-win-controls';
+import { Body } from './components/body';
+import { SettingsNav } from './components/nav';
+import { SettingsWinControls } from './components/win-controls';
 import { useSettings } from './hooks/use-settings';
 import { SETTINGS_SECTION_LABELS } from './settings-sections';
 import './settings.css';
