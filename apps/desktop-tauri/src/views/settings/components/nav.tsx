@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { motion } from 'motion/react';
 import { SETTINGS_SECTION_LABELS } from '../settings-sections';
 import type { Section } from '../types';
 
@@ -36,18 +37,28 @@ export function SettingsNav({
         {NAV_GROUPS.map((group) => (
           <div className="nav-group flex flex-col gap-1" key={group.header || 'general-group'}>
             {group.header && <div className="nav-section px-2.5 py-1">{group.header}</div>}
-            {group.items.map((item) => (
-              <button
-                key={item.id}
-                className={`nav-item flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left ${section === item.id ? 'active' : ''}`}
-                onClick={() => onSectionChange(item.id)}
-              >
-                <span className="nav-icon inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center">
-                  {item.icon}
-                </span>
-                <span className="nav-label">{item.label}</span>
-              </button>
-            ))}
+            {group.items.map((item) => {
+              const isActive = section === item.id;
+              return (
+                <button
+                  key={item.id}
+                  className={`nav-item relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left ${isActive ? 'active' : ''}`}
+                  onClick={() => onSectionChange(item.id)}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="active-nav-indicator"
+                      className="nav-item-indicator"
+                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                  <span className="nav-icon relative z-10 inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center">
+                    {item.icon}
+                  </span>
+                  <span className="nav-label relative z-10">{item.label}</span>
+                </button>
+              );
+            })}
           </div>
         ))}
       </nav>

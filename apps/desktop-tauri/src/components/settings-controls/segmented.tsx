@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { motion } from 'motion/react';
 import { runSettingsAction } from '@/utils/settings-action-runner';
 
@@ -12,6 +13,8 @@ export function Segmented({
   options: ReadonlyArray<Readonly<{ value: string; label: string }>>;
   onChange: (v: string) => MaybePromise<void>;
 }>) {
+  const layoutId = useId();
+
   return (
     <div className="segmented">
       {options.map((opt) => {
@@ -25,7 +28,7 @@ export function Segmented({
           >
             {isActive && (
               <motion.div
-                layoutId="settings-segmented-indicator"
+                layoutId={layoutId}
                 className="segmented-indicator"
                 transition={{ type: 'spring', stiffness: 380, damping: 30 }}
               />

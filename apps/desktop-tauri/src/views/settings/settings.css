@@ -80,9 +80,17 @@ body {
   font-size: 13px;
   font-weight: 600;
   transition:
-    background var(--motion-duration-base) var(--motion-ease-control),
-    color var(--motion-duration-base) var(--motion-ease-control),
-    box-shadow var(--motion-duration-base) var(--motion-ease-control);
+    color var(--duration-base) var(--ease-control);
+}
+
+.nav-item-indicator {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  background: var(--item-active-bg);
+  box-shadow: 0 1px 3px rgba(10, 132, 255, 0.25);
+  z-index: 0;
+  pointer-events: none;
 }
 
 .nav-item:hover:not(.active) {
@@ -94,9 +102,7 @@ body {
 }
 
 .nav-item.active {
-  background: var(--item-active-bg);
   color: var(--item-active-text);
-  box-shadow: 0 1px 3px rgba(10, 132, 255, 0.25);
 }
 
 .nav-item.active .nav-icon {
@@ -288,7 +294,7 @@ input[type="checkbox"]:focus-visible,
   opacity: 0.35;
   transform: translate(-50%, -50%);
   border-radius: 1px;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--duration-fast) var(--ease-standard);
 }
 
 .snap-slider-tick.active {
@@ -309,7 +315,7 @@ input[type="checkbox"]:focus-visible,
   font-size: 11px;
   color: var(--text-secondary);
   white-space: nowrap;
-  transition: color 0.15s ease, font-weight 0.15s ease;
+  transition: color var(--duration-fast) var(--ease-standard), font-weight var(--duration-fast) var(--ease-standard);
 }
 
 .snap-slider-label.active {
@@ -376,9 +382,9 @@ select {
   background-position: right 8px center;
   background-repeat: no-repeat;
   transition:
-    background-color var(--motion-duration-base) var(--motion-ease-control),
-    border-color var(--motion-duration-base) var(--motion-ease-control),
-    color var(--motion-duration-base) var(--motion-ease-control);
+    background-color var(--duration-base) var(--ease-control),
+    border-color var(--duration-base) var(--ease-control),
+    color var(--duration-base) var(--ease-control);
 }
 
 select:hover {
@@ -394,10 +400,10 @@ select:hover {
   font-weight: 500;
   cursor: pointer;
   transition:
-    background-color var(--motion-duration-base) var(--motion-ease-control),
-    border-color var(--motion-duration-base) var(--motion-ease-control),
-    color var(--motion-duration-base) var(--motion-ease-control),
-    transform var(--motion-duration-base) var(--motion-ease-control);
+    background-color var(--duration-base) var(--ease-control),
+    border-color var(--duration-base) var(--ease-control),
+    color var(--duration-base) var(--ease-control),
+    transform var(--duration-base) var(--ease-control);
 }
 .action-btn:hover {
   background: var(--input-hover);
@@ -831,7 +837,6 @@ body[data-os="windows"] .nav-item {
 }
 
 body[data-os="windows"] .nav-item.active {
-  background: var(--item-active-bg);
   box-shadow: none;
 }
 
