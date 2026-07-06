@@ -1,25 +1,49 @@
 import { memo, useEffect, useRef, useState, type RefObject } from 'react';
 import type { LyricWord } from '@/types/tauri-contracts';
+import type { ScreenEdgeMotion } from '../types';
 
 type LyricLineProps = Readonly<{
   index: number;
   text: string;
   proximityClass: string;
+  screenEdgeMotion: ScreenEdgeMotion | null;
   words: readonly LyricWord[] | null;
   isKeyboardFocused: boolean;
   isLastEmpty: boolean;
+  isPaintCulled: boolean;
   onSeek: (index: number, ts: number) => void;
   lyricsRef: RefObject<(HTMLButtonElement | null)[]>;
   wordRefs: RefObject<(HTMLSpanElement | null)[]>;
 }>;
 
+function splitLyricText(text: string) {
+  const tokens: string[] = [];
+  let token = '';
+
+  for (const char of text) {
+    token += char;
+    if (/\s/.test(char)) {
+      tokens.push(token);
+      token = '';
+    }
+  }
+
+  if (token) {
+    tokens.push(token);
+  }
+
+  return tokens;
+}
+
 export const LyricLine = memo(function LyricLine({
   index,
   text,
   proximityClass,
+  screenEdgeMotion,
   words,
   isKeyboardFocused,
   isLastEmpty,
+  isPaintCulled,
   onSeek,
   lyricsRef,
   wordRefs,
@@ -61,22 +85,37 @@ export const LyricLine = memo(function LyricLine({
     }
   };
 
-  const className = `lyric-line ${proximityClass} ${isArmed ? 'is-armed' : ''} ${isKeyboardFocused ? 'is-keyboard-focus' : ''}`;
+  const className = [
+    'lyric-line',
+    proximityClass,
+    screenEdgeMotion,
+    isArmed ? 'is-armed' : '',
+    isKeyboardFocused ? 'is-keyboard-focus' : '',
+    isPaintCulled ? 'is-paint-culled' : '',
+  ].filter(Boolean).join(' ');
 
   const defaultText = text || (isLastEmpty ? '' : '♪');
-  const lineContent = words ? (
-    words.map((w, wi) => (
+  const timedWords = words && words.length > 0 ? words : null;
+  const lineWords = timedWords ?? splitLyricText(defaultText).map((token) => ({
+    start_ms: 0,
+    end_ms: 0,
+    text: token,
+  }));
+  const lineContent = (
+    lineWords.map((w, wi) => (
       <span
-        key={`${w.start_ms}-${w.text}`}
-        ref={(el) => {
-          if (wordRefs.current) {
-            wordRefs.current[wi] = el;
-          }
-        }}
+        key={`word-${wi}-${w.text}`}
+        ref={timedWords
+          ? (el) => {
+              if (wordRefs.current) {
+                wordRefs.current[wi] = el;
+              }
+            }
+          : undefined}
         className="lyric-word upcoming"
       >{w.text}</span>
     ))
-  ) : defaultText;
+  );
 
   return (
     <button

@@ -3,6 +3,7 @@ import { AmbientBackground } from './components/ambient-background';
 import { MainLyricsPane } from './components/main-lyrics-pane';
 import { PlayerSidebar } from './components/player-sidebar';
 import { WindowControls } from './components/window-controls';
+import type { ScreenEdgeMotionMap } from './types';
 import { useLyricsPlayback } from './hooks/use-lyrics-playback';
 import { useMainLyricReel } from './hooks/use-main-lyric-reel';
 import { useMainProgressAndWordAnimation } from './hooks/use-main-progress-and-word-animation';
@@ -49,7 +50,7 @@ function App() {
     lyrics,
     activeLine,
     isPlaying,
-    setIsPlaying,
+    togglePlaying,
     track,
     lyricsStatus,
     snapshotReady,
@@ -66,6 +67,7 @@ function App() {
     positionLabelRef,
     handleMouseDown,
     seekToLine,
+    isDragging,
   } = useLyricsPlayback({ ensureWindowReady: ensureMainWindowReady });
 
   const [surfaceVisible, setSurfaceVisible] = useState(false);
@@ -74,6 +76,7 @@ function App() {
   const [karaokeMode, setKaraokeMode] = useState(false);
   const [showDelayControl, setShowDelayControl] = useState(false);
   const [selectValue, setSelectValue] = useState('');
+  const [screenEdgeMotion, setScreenEdgeMotion] = useState<ScreenEdgeMotionMap>({});
 
   const lyricsPaneRef = useRef<HTMLElement | null>(null);
   const lyricsContainerRef = useRef<HTMLDivElement | null>(null);
@@ -116,7 +119,7 @@ function App() {
     setSurfaceVisible,
   });
 
-  useMainLyricReel({
+  const { paintRange } = useMainLyricReel({
     activeLine,
     karaokeMode,
     lyricsCount: lyrics.length,
@@ -124,6 +127,7 @@ function App() {
     lyricsContainerRef,
     lyricsRef,
     reelUriRef,
+    setScreenEdgeMotion,
     trackUri,
   });
 
@@ -137,6 +141,7 @@ function App() {
     progressFillRef,
     surfaceVisible,
     wordRefs,
+    isDragging,
   });
 
   const hasTrack = Boolean(track);
@@ -208,7 +213,7 @@ function App() {
         progressPct={progressPct}
         progressTrackRef={progressTrackRef}
         selectValue={selectValue}
-        setIsPlaying={setIsPlaying}
+        togglePlaying={togglePlaying}
         setPositionMs={setPositionMs}
         setSelectValue={setSelectValue}
         setShowDelayControl={setShowDelayControl}
@@ -227,6 +232,8 @@ function App() {
         lyricsRef={lyricsRef}
         lyricsViewState={lyricsViewState}
         notFoundReason={notFoundReason}
+        paintRange={paintRange}
+        screenEdgeMotion={screenEdgeMotion}
         {...(canRetry ? { onRetryLyrics: retryLyrics } : {})}
         seekToLine={seekToLine}
         wordRefs={wordRefs}

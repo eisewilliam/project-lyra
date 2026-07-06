@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { unstable_batchedUpdates } from 'react-dom';
 import { listen } from '@tauri-apps/api/event';
 import type { RenderSnapshot } from '@/types/tauri-contracts';
 import { getRenderSnapshot } from '@/utils/tauri-commands';
@@ -27,7 +28,9 @@ export function usePlaybackSnapshot({
       try {
         const initial = await getRenderSnapshot();
         if (!cancelled) {
-          onSnapshotRef.current(initial);
+          unstable_batchedUpdates(() => {
+            onSnapshotRef.current(initial);
+          });
         }
       } catch {
         // The next playback-tick event will repair transient startup failures.
@@ -36,7 +39,9 @@ export function usePlaybackSnapshot({
       if (cancelled) return;
       unlisten = await listen<RenderSnapshot>('playback-tick', (event) => {
         if (!cancelled) {
-          onSnapshotRef.current(event.payload);
+          unstable_batchedUpdates(() => {
+            onSnapshotRef.current(event.payload);
+          });
         }
       });
       if (cancelled) {

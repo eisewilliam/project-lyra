@@ -62,7 +62,11 @@ export function ProgressBar({
         aria-valuenow={clampedPositionMs}
         aria-valuetext={`${formatMs(clampedPositionMs)} of ${formatMs(durationMs)}`}
       >
-        <div className="progress-fill" ref={progressFillRef} style={{ width: `${progressPct}%` }}></div>
+        <div
+          className="progress-fill"
+          ref={progressFillRef}
+          style={{ transform: `scaleX(${Math.max(0, Math.min(1, progressPct / 100))})` }}
+        ></div>
       </div>
       <span className="time-label">{formatMs(durationMs)}</span>
     </div>

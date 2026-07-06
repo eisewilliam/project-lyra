@@ -29,14 +29,14 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   progressFillRef,
   progressPct,
   progressTrackRef,
-  setIsPlaying,
   setPositionMs,
-  setShowDelayControl,
   setSelectValue,
+  setShowDelayControl,
   showDelayControl,
   snapshotReady,
   baselineRef,
   selectValue,
+  togglePlaying,
   track,
 }: Readonly<{
   artworkError: boolean;
@@ -57,7 +57,6 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   progressFillRef: RefObject<HTMLDivElement | null>;
   progressPct: number;
   progressTrackRef: RefObject<HTMLDivElement | null>;
-  setIsPlaying: React.Dispatch<React.SetStateAction<boolean>>;
   setPositionMs: React.Dispatch<React.SetStateAction<number>>;
   setShowDelayControl: React.Dispatch<React.SetStateAction<boolean>>;
   setSelectValue: React.Dispatch<React.SetStateAction<string>>;
@@ -65,6 +64,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   snapshotReady: boolean;
   baselineRef: RefObject<PositionBaseline>;
   selectValue: string;
+  togglePlaying: () => void;
   track: TrackRef | null;
 }>) {
   const prefersReducedMotion = useReducedMotion();
@@ -132,7 +132,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
 
         <TransportControls
           isPlaying={isPlaying}
-          setIsPlaying={setIsPlaying}
+          togglePlaying={togglePlaying}
         />
       </div>
     </section>

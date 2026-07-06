@@ -1,13 +1,12 @@
-import { AnimatePresence, motion } from 'motion/react';
 import { playbackNext, playbackPlayPause, playbackPrevious } from '@/utils/tauri-commands';
 import { noop } from '../utils';
 
 export function TransportControls({
   isPlaying,
-  setIsPlaying,
+  togglePlaying,
 }: Readonly<{
   isPlaying: boolean;
-  setIsPlaying: React.Dispatch<React.SetStateAction<boolean>>;
+  togglePlaying: () => void;
 }>) {
   return (
     <div className="transport-controls">
@@ -19,29 +18,16 @@ export function TransportControls({
         <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg>
       </button>
       <button
-        className="btn-icon play-pause relative inline-flex items-center justify-center overflow-hidden"
+        className="btn-icon play-pause"
         aria-label={isPlaying ? "Pause" : "Play"}
+        data-playing={isPlaying}
         onClick={() => {
-          setIsPlaying((p) => !p);
+          togglePlaying();
           playbackPlayPause().catch(noop);
         }}
       >
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={isPlaying ? 'pause' : 'play'}
-            initial={{ opacity: 0, scale: 0.7, rotate: isPlaying ? -90 : 90 }}
-            animate={{ opacity: 1, scale: 1, rotate: 0 }}
-            exit={{ opacity: 0, scale: 0.7, rotate: isPlaying ? 90 : -90 }}
-            transition={{ duration: 0.15, ease: 'easeOut' }}
-            className="flex items-center justify-center"
-          >
-            {isPlaying ? (
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
-            ) : (
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-            )}
-          </motion.div>
-        </AnimatePresence>
+        <svg className="icon-pause" width="36" height="36" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
+        <svg className="icon-play" width="36" height="36" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
       </button>
       <button
         className="btn-icon skip"

@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useState, type RefObject } from 
 import { LyricsPlaceholder } from '@/components/lyrics-placeholder';
 import type { LyricWord } from '@/types/tauri-contracts';
 import type { LyricsPlaceholderState, NotFoundReason } from '@/utils/lyrics-state';
-import type { LineRef } from '../types';
+import type { LineRef, PaintRange, ScreenEdgeMotionMap } from '../types';
 import { getLyricProximityClass } from '../utils';
 import { LyricLine } from './lyric-line';
 
@@ -18,6 +18,8 @@ export const MainLyricsPane = memo(function MainLyricsPane({
   lyricsViewState,
   notFoundReason,
   onRetryLyrics,
+  paintRange,
+  screenEdgeMotion,
   seekToLine,
   wordRefs,
 }: Readonly<{
@@ -31,6 +33,8 @@ export const MainLyricsPane = memo(function MainLyricsPane({
   lyricsViewState: LyricsPlaceholderState;
   notFoundReason: NotFoundReason | null;
   onRetryLyrics?: () => void;
+  paintRange: PaintRange | null;
+  screenEdgeMotion: ScreenEdgeMotionMap;
   seekToLine: (index: number, ts: number) => void;
   wordRefs: RefObject<(HTMLSpanElement | null)[]>;
 }>) {
@@ -118,6 +122,9 @@ export const MainLyricsPane = memo(function MainLyricsPane({
           {lyrics.map((line, index) => {
             const isActive = index === activeLine;
             const words = isActive && activeLineWords.length > 0 ? activeLineWords : null;
+            const isPaintCulled = paintRange !== null
+              && selectedLineIndex !== index
+              && (index < paintRange.start || index > paintRange.end);
 
             return (
               <LyricLine
@@ -125,9 +132,11 @@ export const MainLyricsPane = memo(function MainLyricsPane({
                 index={index}
                 text={line.text}
                 proximityClass={getLyricProximityClass(index, activeLine)}
+                screenEdgeMotion={screenEdgeMotion[index] ?? null}
                 words={words}
                 isKeyboardFocused={selectedLineIndex === index}
                 isLastEmpty={index === lyrics.length - 1}
+                isPaintCulled={isPaintCulled}
                 onSeek={seekToLine}
                 lyricsRef={lyricsRef}
                 wordRefs={wordRefs}

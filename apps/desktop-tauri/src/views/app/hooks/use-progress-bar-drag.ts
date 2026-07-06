@@ -32,7 +32,7 @@ export function useProgressBarDrag({
     const targetMs = Math.floor(pct * currentTrack.duration_ms);
 
     if (progressFillRef.current) {
-      progressFillRef.current.style.width = `${(pct * 100).toFixed(2)}%`;
+      progressFillRef.current.style.transform = `scaleX(${pct.toFixed(4)})`;
     }
     if (positionLabelRef.current) {
       positionLabelRef.current.textContent = formatMs(targetMs);
@@ -52,6 +52,7 @@ export function useProgressBarDrag({
 
     if (!isDraggingRef.current) return;
     isDraggingRef.current = false;
+    progressTrackRef.current?.classList.remove('is-dragging');
 
     const targetMs = dragPositionMsRef.current;
     setPositionMs(targetMs);
@@ -75,6 +76,7 @@ export function useProgressBarDrag({
     const currentTrack = trackRef.current;
     if (!currentTrack || currentTrack.duration_ms === 0) return;
     isDraggingRef.current = true;
+    progressTrackRef.current?.classList.add('is-dragging');
 
     updateDragPosition(event.clientX);
 

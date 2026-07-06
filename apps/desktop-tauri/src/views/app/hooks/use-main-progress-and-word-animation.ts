@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react';
+import { useLayoutEffect, type RefObject } from 'react';
 import type { LyricWord } from '@/types/tauri-contracts';
 import {
   interpolatePosition,
@@ -15,6 +15,7 @@ export function useMainProgressAndWordAnimation({
   progressFillRef,
   surfaceVisible,
   wordRefs,
+  isDragging,
 }: {
   activeLineWords: LyricWord[];
   baselineRef: RefObject<PositionBaseline>;
@@ -25,27 +26,36 @@ export function useMainProgressAndWordAnimation({
   progressFillRef: RefObject<HTMLDivElement | null>;
   surfaceVisible: boolean;
   wordRefs: RefObject<(HTMLSpanElement | null)[]>;
+  isDragging: RefObject<boolean>;
 }) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!pageVisible || !surfaceVisible) return;
     if (!isPlaying && activeLineWords.length === 0) {
       return;
     }
     let raf = 0;
-    let lastProgWidth = '';
-    let lastTimeLabel = '';
-    const lastWordCls: string[] = new Array(activeLineWords.length).fill('');
-    const lastWordProgQ: number[] = new Array(activeLineWords.length).fill(-1);
+    let lastProgressTransform = progressFillRef.current?.style.transform ?? '';
+    let lastTimeLabel = positionLabelRef.current?.textContent ?? '';
+    const lastWordCls: string[] = new Array(activeLineWords.length);
+    const lastWordProgQ: number[] = new Array(activeLineWords.length);
+
+    for (let i = 0; i < activeLineWords.length; i++) {
+      const el = wordRefs.current[i];
+      lastWordCls[i] = el?.className || 'lyric-word upcoming';
+      const progress = Number(el?.style.getPropertyValue('--word-progress') || '0');
+      lastWordProgQ[i] = Number.isFinite(progress) ? Math.trunc(progress * 1000) : 0;
+    }
 
     const updateProgressBar = (pos: number) => {
+      if (isDragging.current) return;
       const fill = progressFillRef.current;
       const label = positionLabelRef.current;
       if (isPlaying && durationMs > 0 && fill) {
-        const pct = Math.min(100, Math.max(0, (Math.min(pos, durationMs) / durationMs) * 100)).toFixed(2);
-        const nextWidth = `${pct}%`;
-        if (nextWidth !== lastProgWidth) {
-          lastProgWidth = nextWidth;
-          fill.style.width = nextWidth;
+        const scale = Math.min(1, Math.max(0, Math.min(pos, durationMs) / durationMs)).toFixed(4);
+        const nextTransform = `scaleX(${scale})`;
+        if (nextTransform !== lastProgressTransform) {
+          lastProgressTransform = nextTransform;
+          fill.style.transform = nextTransform;
         }
       }
       if (isPlaying && label) {
@@ -95,7 +105,7 @@ export function useMainProgressAndWordAnimation({
       updateWordColors(pos);
       if (isPlaying) raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
+    tick();
     return () => cancelAnimationFrame(raf);
   }, [
     activeLineWords,
@@ -107,5 +117,6 @@ export function useMainProgressAndWordAnimation({
     progressFillRef,
     surfaceVisible,
     wordRefs,
+    isDragging,
   ]);
 }

@@ -22,8 +22,10 @@ export function getLyricProximityClass(index: number, activeLine: number | null)
   if (activeLine === null) return 'is-future-2';
   if (index === activeLine) return 'is-active';
   if (index === activeLine - 1) return 'is-passed-1';
+  if (index === activeLine - 2) return 'is-passed-2';
   if (index < activeLine - 1) return 'is-passed-2';
   if (index === activeLine + 1) return 'is-future-1';
+  if (index === activeLine + 2) return 'is-future-2';
   if (index > activeLine + 1) return 'is-future-2';
   return '';
 }

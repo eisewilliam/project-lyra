@@ -42,6 +42,12 @@ export function useLyricsPlayback({
   const activeWordsKeyRef = useRef('');
   const offsetUriRef = useRef('');
 
+  // Guard: when the user toggles play/pause, ignore the snapshot's
+  // isPlaying state for a short window so stale polls don't cause the
+  // icon to "fidget" back to the pre-toggle state.
+  const playToggleAtRef = useRef(0);
+  const PLAY_TOGGLE_GUARD_MS = 800;
+
   const {
     progressTrackRef,
     progressFillRef,
@@ -97,7 +103,13 @@ export function useLyricsPlayback({
 
     setSnapshotReady(true);
     const playingNow = snap.playback.state === 'Playing';
-    setIsPlaying(playingNow);
+
+    // Only apply the snapshot's playing state if we're outside the
+    // optimistic guard window (user hasn't recently toggled).
+    const withinGuard = (performance.now() - playToggleAtRef.current) < PLAY_TOGGLE_GUARD_MS;
+    if (!withinGuard) {
+      setIsPlaying(playingNow);
+    }
     setTrack((prev) => sameTrack(prev, snap.playback.track) ? prev : snap.playback.track);
     setLyricsStatus(snap.lyrics_status);
 
@@ -145,11 +157,17 @@ export function useLyricsPlayback({
     onSnapshot: applyPlaybackSnapshot,
   });
 
+  const togglePlaying = useCallback(() => {
+    playToggleAtRef.current = performance.now();
+    setIsPlaying((p) => !p);
+  }, []);
+
   return {
     lyrics,
     activeLine,
     isPlaying,
     setIsPlaying,
+    togglePlaying,
     track,
     lyricsStatus,
     snapshotReady,
@@ -166,5 +184,6 @@ export function useLyricsPlayback({
     positionLabelRef,
     handleMouseDown,
     seekToLine,
+    isDragging,
   };
 }
