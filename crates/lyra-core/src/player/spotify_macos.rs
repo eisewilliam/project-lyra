@@ -1,4 +1,3 @@
-use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -120,6 +119,9 @@ unsafe impl Sync for CompiledScript {}
 
 static LITE_SCRIPT: OnceLock<CompiledScript> = OnceLock::new();
 static META_SCRIPT: OnceLock<CompiledScript> = OnceLock::new();
+static PLAY_PAUSE_SCRIPT: OnceLock<CompiledScript> = OnceLock::new();
+static NEXT_TRACK_SCRIPT: OnceLock<CompiledScript> = OnceLock::new();
+static PREVIOUS_TRACK_SCRIPT: OnceLock<CompiledScript> = OnceLock::new();
 
 /// Compile an AppleScript source string once into a retained NSAppleScript
 /// instance. The returned pointer is kept alive for the process lifetime via
@@ -207,34 +209,69 @@ impl Default for SpotifyMacOsAdapter {
     }
 }
 
-fn run_spotify_command(command: &str) -> bool {
-    let script = format!(
-        "if application \"Spotify\" is not running then return\ntell application \"Spotify\" to {}",
-        command
-    );
-    Command::new("osascript")
-        .arg("-e")
-        .arg(&script)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+fn run_command_compiled(slot: &OnceLock<CompiledScript>, source: &str) -> bool {
+    let script = slot.get_or_init(|| CompiledScript {
+        ptr: compile_script(source).unwrap_or(std::ptr::null_mut()),
+    });
+    if script.ptr.is_null() {
+        return false;
+    }
+    unsafe {
+        let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
+        let mut err_ptr: *mut Object = std::ptr::null_mut();
+        let desc: *mut Object = msg_send![script.ptr, executeAndReturnError: &mut err_ptr];
+        let success = !desc.is_null() && err_ptr.is_null();
+        let _: () = msg_send![pool, drain];
+        success
+    }
 }
 
 pub fn play_pause() -> bool {
-    run_spotify_command("playpause")
+    const SCRIPT: &str = r#"
+if application "Spotify" is not running then return "false"
+tell application "Spotify" to playpause
+return "true"
+"#;
+    run_command_compiled(&PLAY_PAUSE_SCRIPT, SCRIPT)
 }
 
 pub fn next_track() -> bool {
-    run_spotify_command("next track")
+    const SCRIPT: &str = r#"
+if application "Spotify" is not running then return "false"
+tell application "Spotify" to next track
+return "true"
+"#;
+    run_command_compiled(&NEXT_TRACK_SCRIPT, SCRIPT)
 }
 
 pub fn previous_track() -> bool {
-    run_spotify_command("previous track")
+    const SCRIPT: &str = r#"
+if application "Spotify" is not running then return "false"
+tell application "Spotify" to previous track
+return "true"
+"#;
+    run_command_compiled(&PREVIOUS_TRACK_SCRIPT, SCRIPT)
 }
 
 /// Seek to a position in seconds (Spotify's `player position` is seconds, double).
 pub fn seek_to_seconds(seconds: f64) -> bool {
-    run_spotify_command(&format!("set player position to {}", seconds))
+    let source = format!(
+        "if application \"Spotify\" is not running then return \"false\"\ntell application \"Spotify\" to set player position to {}\nreturn \"true\"",
+        seconds
+    );
+    if let Some(script_ptr) = compile_script(&source) {
+        unsafe {
+            let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
+            let mut err_ptr: *mut Object = std::ptr::null_mut();
+            let desc: *mut Object = msg_send![script_ptr, executeAndReturnError: &mut err_ptr];
+            let success = !desc.is_null() && err_ptr.is_null();
+            let _: () = msg_send![script_ptr, release];
+            let _: () = msg_send![pool, drain];
+            success
+        }
+    } else {
+        false
+    }
 }
 
 impl PlayerAdapter for SpotifyMacOsAdapter {

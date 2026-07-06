@@ -29,6 +29,7 @@ pub struct AppState {
 
 pub struct RuntimeSurfaceVisibility {
     hidden_surfaces: Mutex<HashSet<String>>,
+    ready_surfaces: Mutex<HashSet<String>>,
 }
 
 impl RuntimeSurfaceVisibility {
@@ -40,6 +41,7 @@ impl RuntimeSurfaceVisibility {
                     .map(String::from)
                     .collect(),
             ),
+            ready_surfaces: Mutex::new(HashSet::new()),
         }
     }
 
@@ -54,10 +56,30 @@ impl RuntimeSurfaceVisibility {
         }
     }
 
+    pub fn set_ready(&self, label: &str) {
+        let Ok(mut ready) = self.ready_surfaces.lock() else {
+            return;
+        };
+        ready.insert(label.to_string());
+    }
+
     pub fn is_visible(&self, label: &str, configured_visible: bool) -> bool {
         if !configured_visible {
             return false;
         }
+
+        let is_ready = self
+            .ready_surfaces
+            .lock()
+            .map(|ready| ready.contains(label))
+            .unwrap_or(false);
+
+        if !is_ready {
+            // During startup, if a surface is configured to be visible but has not yet
+            // called window_ready, we treat it as visible to allow early polling.
+            return true;
+        }
+
         self.hidden_surfaces
             .lock()
             .map(|hidden| !hidden.contains(label))
@@ -421,8 +443,6 @@ where
         // the polling driver runs for the process lifetime.
         let state: &State = unsafe { &*(raw_ctx as *const State) };
 
-        set_thread_qos_utility();
-
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
@@ -442,6 +462,13 @@ where
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let elapsed = now_ms.saturating_sub(last_poll);
+        let is_transition_wake = elapsed < poll_interval_ms;
+
+        if is_transition_wake {
+            set_thread_qos_user_initiated();
+        } else {
+            set_thread_qos_utility();
+        }
 
         // Skip the player poll entirely when no surface is visible — the
         // resulting snapshot would just be coalesced away inside process_tick
@@ -559,16 +586,33 @@ fn lyrics_status_disc(s: &lyra_core::domain::LyricsStatus) -> u8 {
 /// E-cores barely shows up in Activity Monitor's energy column.
 #[cfg(target_os = "macos")]
 fn set_thread_qos_utility() {
+    set_thread_qos(libc::qos_class_t::QOS_CLASS_UTILITY);
+}
+
+/// Raise the calling thread for on-screen lyric transition ticks on macOS.
+/// These ticks do not run AppleScript; they only compute and emit an already
+/// scheduled line change. Keeping them out of Utility QoS avoids visible
+/// transition latency when macOS Low Power Mode throttles utility work.
+#[cfg(target_os = "macos")]
+fn set_thread_qos_user_initiated() {
+    set_thread_qos(libc::qos_class_t::QOS_CLASS_USER_INITIATED);
+}
+
+#[cfg(target_os = "macos")]
+fn set_thread_qos(qos: libc::qos_class_t) {
     // SAFETY: `pthread_set_qos_class_self_np` only mutates the calling
     // thread's scheduling class. Both arguments are POD; second is a
     // relative-priority hint (0 = default within the class).
     unsafe {
-        let _ = libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_UTILITY, 0);
+        let _ = libc::pthread_set_qos_class_self_np(qos, 0);
     }
 }
 
 #[cfg(not(target_os = "macos"))]
 fn set_thread_qos_utility() {}
+
+#[cfg(not(target_os = "macos"))]
+fn set_thread_qos_user_initiated() {}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -691,7 +735,8 @@ pub fn run() {
                 // }
 
                 // GCD-driven poll loop with leeway timer. Runs on its own
-                // queue thread; QoS_UTILITY set inside each handler fire.
+                // queue thread; full Spotify polls use QoS_UTILITY, while
+                // transition-only lyric ticks temporarily use a higher QoS.
                 let handle = app.handle().clone();
                 use lyra_core::player::PlayerAdapter;
                 let adapter = lyra_core::player::spotify_macos::SpotifyMacOsAdapter::new();
@@ -822,6 +867,7 @@ mod tests {
     #[test]
     fn runtime_surfaces_start_hidden_until_marked_visible() {
         let visibility = RuntimeSurfaceVisibility::new_all_hidden();
+        visibility.set_ready("main");
 
         assert!(!visibility.is_visible("main", true));
         visibility.set_visible("main", true);
@@ -833,6 +879,7 @@ mod tests {
     #[test]
     fn persisted_hidden_surface_stays_hidden_even_if_runtime_visible() {
         let visibility = RuntimeSurfaceVisibility::new_all_hidden();
+        visibility.set_ready("island");
 
         visibility.set_visible("island", true);
 

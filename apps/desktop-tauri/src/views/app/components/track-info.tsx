@@ -1,4 +1,8 @@
+import { useEffect, useRef } from 'react';
 import type { TrackRef } from '@/types/tauri-contracts';
+import { toggleSurface } from '@/utils/tauri-commands';
+
+const noop = () => {};
 
 export function TrackInfo({
   hasTrack,
@@ -17,14 +21,29 @@ export function TrackInfo({
   snapshotReady: boolean;
   track: TrackRef | null;
 }>) {
+  const selectRef = useRef<HTMLSelectElement>(null);
+
+  useEffect(() => {
+    const handleDocumentClick = (e: MouseEvent) => {
+      if (selectRef.current && !selectRef.current.contains(e.target as Node)) {
+        selectRef.current.blur();
+      }
+    };
+    document.addEventListener('click', handleDocumentClick);
+    return () => document.removeEventListener('click', handleDocumentClick);
+  }, []);
+
   const handleTrackActionChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const val = event.target.value;
     if (val === 'delay') {
       setShowDelayControl(true);
     } else if (val === 'refresh') {
       onRetryLyrics();
+    } else if (val === 'settings') {
+      toggleSurface('settings').catch(noop);
     }
     setSelectValue('');
+    event.target.blur();
   };
 
   return (
@@ -46,6 +65,7 @@ export function TrackInfo({
         <div className="track-menu">
           {hasTrack && (
             <select
+              ref={selectRef}
               className="track-menu-select"
               value={selectValue}
               onChange={handleTrackActionChange}

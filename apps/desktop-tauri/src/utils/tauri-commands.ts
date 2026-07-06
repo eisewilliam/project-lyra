@@ -23,7 +23,7 @@ export function getUiState(): Promise<UiState> {
   return invoke('get_ui_state');
 }
 
-export type SurfaceLabel = 'main' | 'island' | 'karaoke';
+export type SurfaceLabel = 'main' | 'island' | 'karaoke' | 'settings';
 export type OverlayLabel = 'island' | 'karaoke';
 
 export function toggleSurface(label: SurfaceLabel): Promise<void> {
