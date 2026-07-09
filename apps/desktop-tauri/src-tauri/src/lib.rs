@@ -1,6 +1,6 @@
 mod commands;
-mod macos;
 mod linux;
+mod macos;
 mod runtime;
 mod tray;
 mod ui_state;
