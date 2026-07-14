@@ -1,9 +1,7 @@
-use crate::tray;
-use crate::ui_state::UiState;
-use crate::AppState;
+use crate::{tray, ui_state::UiState, AppState};
 use lyra_core::{
     domain::{NotFoundReason, RenderSnapshot, SettingsSnapshot},
-    lyrics::LyricSource,
+    lyrics::{LyricSource, LyricFetchResult},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::MutexGuard;
@@ -294,7 +292,7 @@ pub async fn refresh_lyrics(state: State<'_, AppState>) -> Result<(), String> {
         let track = rt.current_track();
         let (neg, cached) = track
             .as_ref()
-            .map(|t| (rt.is_negative(&t.uri), rt.get_cached(&t.uri).is_some()))
+            .map(|t| (rt.cache.get_negative_reason(&t.uri).is_some(), rt.get_cached(&t.uri).is_some()))
             .unwrap_or((false, false));
         (track, neg, cached)
     };
@@ -313,7 +311,22 @@ pub async fn refresh_lyrics(state: State<'_, AppState>) -> Result<(), String> {
     }
 
     // 3. Network call — no lock held.
-    let result = state.lrclib.fetch(&track).await;
+    let mut result = state.lrclib.fetch(&track).await;
+
+    // Fallback to Genius if LRCLIB has nothing
+    if let Ok(LyricFetchResult::NotFound) = &result {
+        let genius = lyra_core::lyrics::genius::GeniusClient::new();
+        if let Some(genius_song) = genius.search(&track).await {
+            if genius_song.instrumental {
+                result = Ok(LyricFetchResult::Instrumental);
+            } else if let Some(lyrics) = genius.fetch_lyrics(&genius_song.path).await {
+                let lrc_raw = lyra_core::lyrics::parser::plain_lyrics_to_lrc(&lyrics);
+                if let Ok(doc) = lyra_core::lyrics::parser::parse_lrc(&track.uri, &lrc_raw, lyra_core::domain::LyricSourceKind::Lrclib) {
+                    result = Ok(LyricFetchResult::Found(doc));
+                }
+            }
+        }
+    }
 
     // 4. Release in-flight claim.
     if let Ok(mut in_flight) = state.fetch_in_flight.lock() {
@@ -321,16 +334,15 @@ pub async fn refresh_lyrics(state: State<'_, AppState>) -> Result<(), String> {
     }
 
     // 5. Re-lock to persist result.
-    //
-    // A confirmed miss (`Ok(None)`) writes a `.nomatch` sentinel so we don't
-    // re-query forever. A network/transport error is recorded in-memory only
-    // — poisoning the cache for transient failures was the worst behaviour
-    // in the old code. Status flips to `NotFound { NetworkError }` until the
-    // user hits Retry or restarts the app.
     let mut rt = state.runtime.lock().map_err(|e| e.to_string())?;
     match result {
-        Ok(Some(doc)) => rt.store_lyrics(doc),
-        Ok(None) => rt.store_negative(&track.uri),
+        Ok(LyricFetchResult::Found(doc)) => rt.store_lyrics(doc),
+        Ok(LyricFetchResult::Instrumental) => rt.store_negative(&track.uri, NotFoundReason::Instrumental),
+        Ok(LyricFetchResult::NotFound) => {
+            let reason = lyra_core::lyrics::heuristics::detect_non_lyric_reason(&track)
+                .unwrap_or(NotFoundReason::Miss);
+            rt.store_negative(&track.uri, reason);
+        }
         Err(_) => rt.store_transient_error(&track.uri, NotFoundReason::NetworkError),
     }
     Ok(())

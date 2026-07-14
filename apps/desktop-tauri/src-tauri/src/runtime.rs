@@ -125,12 +125,12 @@ impl LyraRuntime {
         self.last_tick_result = None;
     }
 
-    pub fn store_negative(&mut self, track_key: &str) {
+    pub fn store_negative(&mut self, track_key: &str, reason: NotFoundReason) {
         self.transient_errors.remove(track_key);
         let cache = self.cache.clone();
         let track_key = track_key.to_string();
         spawn_cache_write(move || {
-            let _ = cache.mark_negative(&track_key);
+            let _ = cache.mark_negative(&track_key, reason);
         });
         self.last_tick_result = None;
     }
@@ -242,10 +242,8 @@ impl LyraRuntime {
             },
             (Some(_), Some(_)) => LyricsStatus::Ready,
             (Some(key), None) => {
-                if self.cache.is_negative(key) {
-                    LyricsStatus::NotFound {
-                        reason: NotFoundReason::Miss,
-                    }
+                if let Some(reason) = self.cache.get_negative_reason(key) {
+                    LyricsStatus::NotFound { reason }
                 } else if let Some(reason) = self.transient_errors.get(key).copied() {
                     LyricsStatus::NotFound { reason }
                 } else {

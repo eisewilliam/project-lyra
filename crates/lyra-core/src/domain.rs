@@ -84,6 +84,12 @@ pub enum NotFoundReason {
     NetworkError,
     /// Provider rate-limited the request. Retryable after backoff.
     RateLimit,
+    /// Track is detected as instrumental.
+    Instrumental,
+    /// Track is detected as classical music.
+    Classical,
+    /// Track is detected as a soundtrack / score.
+    Soundtrack,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

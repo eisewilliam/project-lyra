@@ -183,6 +183,19 @@ fn parse_timestamp(s: &str) -> Result<u64> {
     Ok(m * 60_000 + s * 1_000 + ms)
 }
 
+/// Helper to convert plain (non-timestamped) lyrics into a basic LRC-formatted string
+/// with synthetic timestamps, so they can be processed and rendered by the engine.
+pub fn plain_lyrics_to_lrc(plain: &str) -> String {
+    let mut lrc = String::new();
+    for (i, line) in plain.lines().enumerate() {
+        let seconds = i * 4;
+        let minutes = seconds / 60;
+        let remaining_seconds = seconds % 60;
+        lrc.push_str(&format!("[{:02}:{:02}.00]{}\n", minutes, remaining_seconds, line));
+    }
+    lrc
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

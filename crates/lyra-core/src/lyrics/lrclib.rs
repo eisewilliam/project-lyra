@@ -1,5 +1,5 @@
 use crate::domain::{LyricDocument, LyricSourceKind, TrackRef};
-use crate::lyrics::{parser, LyricSource};
+use crate::lyrics::{parser, LyricSource, LyricFetchResult};
 use anyhow::{anyhow, Result};
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -128,7 +128,7 @@ impl LyricSource for LrclibClient {
         "lrclib"
     }
 
-    async fn fetch(&self, track: &TrackRef) -> Result<Option<LyricDocument>> {
+    async fn fetch(&self, track: &TrackRef) -> Result<LyricFetchResult> {
         let duration_sec = if track.duration_ms > 0 {
             Some((track.duration_ms + 500) / 1000)
         } else {
@@ -145,8 +145,11 @@ impl LyricSource for LrclibClient {
             .get_signature(&track.title, &track.artist, album, duration_sec)
             .await?
         {
+            if record.instrumental {
+                return Ok(LyricFetchResult::Instrumental);
+            }
             if let Some(doc) = into_document(&track.uri, record) {
-                return Ok(Some(doc));
+                return Ok(LyricFetchResult::Found(doc));
             }
         }
 
@@ -157,8 +160,11 @@ impl LyricSource for LrclibClient {
                 .get_signature(&track.title, &track.artist, None, duration_sec)
                 .await?
             {
+                if record.instrumental {
+                    return Ok(LyricFetchResult::Instrumental);
+                }
                 if let Some(doc) = into_document(&track.uri, record) {
-                    return Ok(Some(doc));
+                    return Ok(LyricFetchResult::Found(doc));
                 }
             }
         }
@@ -172,8 +178,11 @@ impl LyricSource for LrclibClient {
                     .get_signature(&stripped, &track.artist, album, duration_sec)
                     .await?
                 {
+                    if record.instrumental {
+                        return Ok(LyricFetchResult::Instrumental);
+                    }
                     if let Some(doc) = into_document(&track.uri, record) {
-                        return Ok(Some(doc));
+                        return Ok(LyricFetchResult::Found(doc));
                     }
                 }
                 if album.is_some() {
@@ -181,8 +190,11 @@ impl LyricSource for LrclibClient {
                         .get_signature(&stripped, &track.artist, None, duration_sec)
                         .await?
                     {
+                        if record.instrumental {
+                            return Ok(LyricFetchResult::Instrumental);
+                        }
                         if let Some(doc) = into_document(&track.uri, record) {
-                            return Ok(Some(doc));
+                            return Ok(LyricFetchResult::Found(doc));
                         }
                     }
                 }
@@ -199,21 +211,27 @@ impl LyricSource for LrclibClient {
             .unwrap_or_default();
 
         if let Some(best) = pick_best_record(records, track, &track_variants, duration_sec) {
+            if best.instrumental {
+                return Ok(LyricFetchResult::Instrumental);
+            }
             if let Some(doc) = into_document(&track.uri, best) {
-                return Ok(Some(doc));
+                return Ok(LyricFetchResult::Found(doc));
             }
         }
 
-        Ok(None)
+        Ok(LyricFetchResult::NotFound)
     }
 }
 
 fn into_document(uri: &str, record: LrclibRecord) -> Option<LyricDocument> {
-    let synced = record.synced_lyrics.as_deref()?.trim();
-    if synced.is_empty() {
-        return None;
+    if let Some(synced) = record.synced_lyrics.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        parser::parse_lrc(uri, synced, LyricSourceKind::Lrclib).ok()
+    } else if let Some(plain) = record.plain_lyrics.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        let lrc = parser::plain_lyrics_to_lrc(plain);
+        parser::parse_lrc(uri, &lrc, LyricSourceKind::Lrclib).ok()
+    } else {
+        None
     }
-    parser::parse_lrc(uri, synced, LyricSourceKind::Lrclib).ok()
 }
 
 fn pick_best_record(
@@ -233,9 +251,9 @@ fn pick_best_record(
     let mut scored: Vec<(i32, LrclibRecord)> = records
         .into_iter()
         .filter(|r| {
-            r.synced_lyrics
-                .as_deref()
-                .is_some_and(|s| !s.trim().is_empty())
+            r.synced_lyrics.as_deref().is_some_and(|s| !s.trim().is_empty())
+                || r.plain_lyrics.as_deref().is_some_and(|s| !s.trim().is_empty())
+                || r.instrumental
         })
         .filter_map(|r| {
             let score = score_candidate(

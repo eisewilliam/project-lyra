@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::domain::{LyricDocument, LyricSourceKind};
+use crate::domain::{LyricDocument, LyricSourceKind, NotFoundReason};
 use crate::lyrics::parser;
 use anyhow::Result;
 
@@ -62,12 +62,20 @@ impl LyricCache {
     }
 
     /// Sentinel file marking a known-missing track so we skip LRCLIB retries.
-    pub fn mark_negative(&self, track_key: &str) -> Result<()> {
+    pub fn mark_negative(&self, track_key: &str, reason: NotFoundReason) -> Result<()> {
         std::fs::create_dir_all(&self.cache_dir)?;
         let path = self
             .cache_dir
             .join(format!("{}.nomatch", Self::stem(track_key)));
-        std::fs::write(path, NEGATIVE_CACHE_VERSION)?;
+        let content = match reason {
+            NotFoundReason::Miss => "miss",
+            NotFoundReason::NetworkError => "network_error",
+            NotFoundReason::RateLimit => "rate_limit",
+            NotFoundReason::Instrumental => "instrumental",
+            NotFoundReason::Classical => "classical",
+            NotFoundReason::Soundtrack => "soundtrack",
+        };
+        std::fs::write(path, content)?;
         Ok(())
     }
 
@@ -79,7 +87,20 @@ impl LyricCache {
             return false;
         };
         match std::fs::read_to_string(&path) {
-            Ok(version) if version.trim() == NEGATIVE_CACHE_VERSION => {}
+            Ok(content) => {
+                let trimmed = content.trim();
+                let valid = trimmed == NEGATIVE_CACHE_VERSION
+                    || trimmed == "miss"
+                    || trimmed == "network_error"
+                    || trimmed == "rate_limit"
+                    || trimmed == "instrumental"
+                    || trimmed == "classical"
+                    || trimmed == "soundtrack";
+                if !valid {
+                    let _ = std::fs::remove_file(&path);
+                    return false;
+                }
+            }
             _ => {
                 let _ = std::fs::remove_file(&path);
                 return false;
@@ -94,6 +115,37 @@ impl LyricCache {
                 let _ = std::fs::remove_file(&path);
                 false
             }
+        }
+    }
+
+    pub fn get_negative_reason(&self, track_key: &str) -> Option<NotFoundReason> {
+        let path = self
+            .cache_dir
+            .join(format!("{}.nomatch", Self::stem(track_key)));
+        let Ok(meta) = std::fs::metadata(&path) else {
+            return None;
+        };
+
+        // Check age first
+        if let Ok(modified) = meta.modified() {
+            if let Ok(age) = modified.elapsed() {
+                if age.as_secs() >= NEGATIVE_TTL_SECS {
+                    let _ = std::fs::remove_file(&path);
+                    return None;
+                }
+            }
+        }
+
+        match std::fs::read_to_string(&path) {
+            Ok(content) => match content.trim() {
+                "instrumental" => Some(NotFoundReason::Instrumental),
+                "classical" => Some(NotFoundReason::Classical),
+                "soundtrack" => Some(NotFoundReason::Soundtrack),
+                "network_error" => Some(NotFoundReason::NetworkError),
+                "rate_limit" => Some(NotFoundReason::RateLimit),
+                _ => Some(NotFoundReason::Miss),
+            },
+            _ => None,
         }
     }
 
@@ -142,15 +194,16 @@ mod tests {
     #[test]
     fn fresh_negative_marker_is_active() {
         let (cache, _t) = tmp_cache();
-        cache.mark_negative("spotify:track:abc").unwrap();
+        cache.mark_negative("spotify:track:abc", NotFoundReason::Miss).unwrap();
         assert!(cache.is_negative("spotify:track:abc"));
+        assert_eq!(cache.get_negative_reason("spotify:track:abc"), Some(NotFoundReason::Miss));
     }
 
     #[test]
     fn expired_negative_marker_is_purged() {
         let (cache, t) = tmp_cache();
         let key = "spotify:track:expired";
-        cache.mark_negative(key).unwrap();
+        cache.mark_negative(key, NotFoundReason::Miss).unwrap();
         let path = t
             .as_path()
             .join("lyrics_cache")
@@ -169,7 +222,7 @@ mod tests {
     #[test]
     fn clear_negative_removes_sentinel() {
         let (cache, _t) = tmp_cache();
-        cache.mark_negative("spotify:track:xyz").unwrap();
+        cache.mark_negative("spotify:track:xyz", NotFoundReason::Miss).unwrap();
         assert!(cache.is_negative("spotify:track:xyz"));
         cache.clear_negative("spotify:track:xyz").unwrap();
         assert!(!cache.is_negative("spotify:track:xyz"));
