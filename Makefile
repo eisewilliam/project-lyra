@@ -35,6 +35,9 @@ test:
 	cargo test -p lyra-core
 
 test-one:
+ifndef TEST_NAME
+	$(error TEST_NAME is required (e.g., make test-one TEST_NAME=<name>))
+endif
 	cargo test -p lyra-core $(TEST_NAME)
 
 fmt:
