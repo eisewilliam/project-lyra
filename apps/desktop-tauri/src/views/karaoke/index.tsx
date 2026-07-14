@@ -3,6 +3,8 @@ import { GlidingLine } from '@/components/gliding-line';
 import {
   resolveLyricsSurfaceState,
   type LyricsPlaceholderState,
+  type NotFoundReason,
+  getNotFoundReason,
 } from '@/utils/lyrics-state';
 import type { LyricWord } from '@/types/tauri-contracts';
 import {
@@ -30,6 +32,7 @@ const ensureKaraokeWindowReady = makeWindowReady(SURFACE_LABEL);
 
 function renderKaraokeContent({
   karaokeState,
+  notFoundReason,
   showTrackIntro,
   activeContentKey,
   activeLineWords,
@@ -41,6 +44,7 @@ function renderKaraokeContent({
   trackArtist,
 }: Readonly<{
   karaokeState: LyricsPlaceholderState;
+  notFoundReason: NotFoundReason | null;
   showTrackIntro: boolean;
   activeContentKey: string;
   activeLineWords: LyricWord[];
@@ -81,7 +85,7 @@ function renderKaraokeContent({
     );
   }
 
-  return <KaraokePlaceholder state={karaokeState} lines={lines} />;
+  return <KaraokePlaceholder state={karaokeState} lines={lines} notFoundReason={notFoundReason} />;
 }
 
 export default function Karaoke() {
@@ -157,8 +161,10 @@ export default function Karaoke() {
   const activeContentKey = getActiveContentKey(activeLineWords, activeLine);
   const currentLineFallback = getCurrentLineFallback(activeLine, nextLine);
   const lineContent = renderLyricContent(activeLineWords, wordRefs, currentLineFallback);
+  const notFoundReason = getNotFoundReason(lyricsStatus);
   const panelContent = renderKaraokeContent({
     karaokeState,
+    notFoundReason,
     showTrackIntro,
     activeContentKey,
     activeLineWords,

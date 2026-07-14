@@ -35,7 +35,7 @@ export type VisibleLine = {
   is_active: boolean;
 };
 
-export type NotFoundReason = 'Miss' | 'NetworkError' | 'RateLimit';
+export type NotFoundReason = 'Miss' | 'NetworkError' | 'RateLimit' | 'Instrumental' | 'Classical' | 'Soundtrack';
 
 export type LyricsStatus =
   | 'Loading'

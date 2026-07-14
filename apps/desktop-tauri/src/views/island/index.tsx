@@ -4,6 +4,8 @@ import { GlidingLine } from '@/components/gliding-line';
 import {
   resolveLyricsSurfaceState,
   type LyricsPlaceholderState,
+  type NotFoundReason,
+  getNotFoundReason,
 } from '@/utils/lyrics-state';
 import {
   shouldShowTrackIntro,
@@ -38,6 +40,7 @@ applySurfaceVisible(false);
 
 function renderPanelContent({
   panelState,
+  notFoundReason,
   showTrackIntro,
   activeContentKey,
   hasActiveLyric,
@@ -48,6 +51,7 @@ function renderPanelContent({
   trackArtist,
 }: Readonly<{
   panelState: LyricsPlaceholderState;
+  notFoundReason: NotFoundReason | null;
   showTrackIntro: boolean;
   activeContentKey: string;
   hasActiveLyric: boolean;
@@ -85,7 +89,7 @@ function renderPanelContent({
     );
   }
 
-  return <PanelPlaceholder state={panelState} />;
+  return <PanelPlaceholder state={panelState} notFoundReason={notFoundReason} />;
 }
 
 export default function Island() {
@@ -212,8 +216,10 @@ export default function Island() {
   const isCompactLayout = islandHeight <= 64;
   const currentLineFallback = getCurrentLineFallback(activeLine, nextLine);
   const lineContent = renderLyricContent(activeLineWords, wordRefs, currentLineFallback);
+  const notFoundReason = getNotFoundReason(lyricsStatus);
   const panelContent = renderPanelContent({
     panelState,
+    notFoundReason,
     showTrackIntro,
     activeContentKey,
     hasActiveLyric,

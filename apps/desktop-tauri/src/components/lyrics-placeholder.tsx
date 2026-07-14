@@ -10,7 +10,7 @@ export function LyricsPlaceholder({
   onRetry,
 }: Readonly<{
   state: LyricsPlaceholderState;
-  notFoundReason?: NotFoundReason | null;
+  notFoundReason?: NotFoundReason | null | undefined;
   onRetry?: () => void;
 }>) {
   const loading = state === 'booting' || state === 'loading';
@@ -22,7 +22,7 @@ export function LyricsPlaceholder({
         <div className="lyrics-placeholder-orb" aria-hidden="true">
           <span className="lyrics-placeholder-ring" />
           <span className="lyrics-placeholder-core">
-            <LyricsPlaceholderIcon state={state} className="lyrics-placeholder-icon" />
+            <LyricsPlaceholderIcon state={state} notFoundReason={notFoundReason} className="lyrics-placeholder-icon" />
           </span>
         </div>
 
@@ -58,7 +58,16 @@ function getPlaceholderLabel(
     case 'loading':
       return 'Loading lyrics';
     case 'empty':
-      return 'No synced lyrics for this track';
+      switch (notFoundReason) {
+        case 'Instrumental':
+          return 'Instrumental';
+        case 'Classical':
+          return 'Classical Music';
+        case 'Soundtrack':
+          return 'Soundtrack / Score';
+        default:
+          return 'No synced lyrics for this track';
+      }
     case 'error':
       switch (notFoundReason) {
         case 'NetworkError':

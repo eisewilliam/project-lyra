@@ -1,6 +1,9 @@
-import type { LyricsPlaceholderState } from '@/utils/lyrics-state';
+import type { LyricsPlaceholderState, NotFoundReason } from '@/utils/lyrics-state';
 
-export function getCompactPlaceholderLabel(state: LyricsPlaceholderState) {
+export function getCompactPlaceholderLabel(
+  state: LyricsPlaceholderState,
+  notFoundReason: NotFoundReason | null = null,
+) {
   switch (state) {
     case 'booting':
       return 'Connecting to Spotify';
@@ -9,7 +12,16 @@ export function getCompactPlaceholderLabel(state: LyricsPlaceholderState) {
     case 'loading':
       return 'Loading lyrics';
     case 'empty':
-      return 'No synced lyrics';
+      switch (notFoundReason) {
+        case 'Instrumental':
+          return 'Instrumental';
+        case 'Classical':
+          return 'Classical Music';
+        case 'Soundtrack':
+          return 'Soundtrack / Score';
+        default:
+          return 'No synced lyrics';
+      }
     case 'error':
       return 'Lyrics unavailable';
     default:

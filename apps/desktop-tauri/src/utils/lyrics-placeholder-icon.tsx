@@ -1,10 +1,12 @@
-import type { LyricsPlaceholderState } from './lyrics-state';
+import type { LyricsPlaceholderState, NotFoundReason } from './lyrics-state';
 
 export function LyricsPlaceholderIcon({
     state,
+    notFoundReason,
     className,
 }: Readonly<{
     state: LyricsPlaceholderState;
+    notFoundReason?: NotFoundReason | null | undefined;
     className?: string;
 }>) {
     if (state === 'error') {
@@ -18,6 +20,30 @@ export function LyricsPlaceholderIcon({
     }
 
     if (state === 'empty') {
+        if (notFoundReason === 'Instrumental') {
+            return (
+                <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                    <path d="M3 18v-6a9 9 0 0 1 18 0v6" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+            );
+        }
+        if (notFoundReason === 'Classical') {
+            return (
+                <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                    <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M6 6h10M6 10h10M6 14h10" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+            );
+        }
+        if (notFoundReason === 'Soundtrack') {
+            return (
+                <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                    <rect x="3" y="3" width="18" height="18" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M9 3v18M15 3v18M3 9h6M3 15h6M15 9h6M15 15h6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+            );
+        }
         return (
             <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
                 <path d="M9 18V5l12-2v13" strokeLinecap="round" strokeLinejoin="round" />
