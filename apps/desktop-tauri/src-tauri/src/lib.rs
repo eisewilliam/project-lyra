@@ -807,10 +807,10 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error building Lyra")
-        .run(|app, event| {
+        .run(|_app, _event| {
             #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Reopen { .. } = event {
-                crate::tray::open_lyra(app);
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                crate::tray::open_lyra(_app);
             }
         });
 }
