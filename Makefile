@@ -3,12 +3,13 @@ CARGO_FLAGS := --manifest-path $(APP_DIR)/src-tauri/Cargo.toml
 
 .DEFAULT_GOAL := help
 
-.PHONY: help dev build check lint test test-one fmt clippy clean
+.PHONY: help install dev build check lint test test-one fmt clippy clean
 
 help:
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "Targets:"
+	@printf "  %-20s %s\n" "install" "Install frontend dependencies with pnpm"
 	@printf "  %-20s %s\n" "dev" "Run Tauri dev (hot reload)"
 	@printf "  %-20s %s\n" "build" "Production build"
 	@printf "  %-20s %s\n" "check" "Type-check Rust without full compile"
@@ -19,17 +20,20 @@ help:
 	@printf "  %-20s %s\n" "clippy" "Run clippy on all targets"
 	@printf "  %-20s %s\n" "clean" "Clean cargo build artifacts"
 
+install:
+	pnpm --prefix $(APP_DIR) install
+
 dev:
-	npm --prefix $(APP_DIR) run tauri dev
+	pnpm --prefix $(APP_DIR) run tauri dev
 
 build:
-	npm --prefix $(APP_DIR) run tauri build
+	pnpm --prefix $(APP_DIR) run tauri build
 
 check:
 	cargo check $(CARGO_FLAGS)
 
 lint:
-	npm --prefix $(APP_DIR) run lint
+	pnpm --prefix $(APP_DIR) run lint
 
 test:
 	cargo test -p lyra-core
