@@ -37,25 +37,70 @@ Apple Music support, signing and distribution polish, and additional native plat
 |---|---|
 | Rust stable | Install with [rustup](https://rustup.rs) |
 | Node.js 18 or newer | Used by the React/Vite frontend and Tauri CLI |
-| npm | Bundled with Node.js |
-| Platform build tools | Xcode Command Line Tools on macOS; Tauri prerequisites for Windows and Linux |
+| pnpm | Fast npm-compatible package manager — `corepack enable && corepack prepare pnpm --activate` |
+| Platform build tools | See platform-specific instructions below |
 | Spotify desktop app | Lyra follows Spotify playback state from the host OS |
+
+#### Linux (Arch)
+
+```bash
+sudo pacman -Syu
+sudo pacman -S --needed \
+  webkit2gtk-4.1 \
+  base-devel \
+  curl \
+  wget \
+  file \
+  openssl \
+  appmenu-gtk-module \
+  libappindicator-gtk3 \
+  librsvg \
+  xdotool \
+  gtk3
+```
+
+For Debian/Ubuntu, Fedora, or other distributions, see the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/#linux).
+
+#### macOS
+
+Install Xcode Command Line Tools:
+
+```bash
+xcode-select --install
+```
+
+#### Windows
+
+Install [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section) (pre-installed on Windows 10 1803+).
 
 ### Run locally
 
 From the repository root:
 
 ```bash
+make install
+make dev
+```
+
+Or manually:
+
+```bash
 cd apps/desktop-tauri
-npm install
-npm run tauri dev
+pnpm install
+pnpm run tauri dev
 ```
 
 ### Build a desktop bundle
 
 ```bash
+make build
+```
+
+Or manually:
+
+```bash
 cd apps/desktop-tauri
-npm run tauri build
+pnpm run tauri build
 ```
 
 ### Verify the workspace
@@ -63,15 +108,14 @@ npm run tauri build
 Run Rust commands from the repository root:
 
 ```bash
-cargo test -p lyra-core
-cargo check --manifest-path apps/desktop-tauri/src-tauri/Cargo.toml
+make test
+make check
 ```
 
-Run frontend lint from the desktop app directory:
+Run frontend lint:
 
 ```bash
-cd apps/desktop-tauri
-npm run lint
+make lint
 ```
 
 ## Architecture
