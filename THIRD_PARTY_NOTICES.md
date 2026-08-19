@@ -18,7 +18,7 @@ cargo install cargo-license && cargo license
 For the frontend, license metadata can be summarized with:
 
 ```bash
-cd apps/desktop-tauri && npx license-checker --summary
+cd apps/desktop-tauri && pnpm dlx license-checker --summary
 ```
 
 ## Principal direct dependencies

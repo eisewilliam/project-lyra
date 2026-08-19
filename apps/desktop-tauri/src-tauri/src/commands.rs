@@ -27,7 +27,11 @@ pub fn get_ui_state(state: State<'_, AppState>) -> UiState {
 
 #[tauri::command]
 pub fn toggle_surface(label: String, app: AppHandle) {
-    tray::toggle_surface(&app, &label);
+    if label == "settings" {
+        tray::open_settings(&app);
+    } else {
+        tray::toggle_surface(&app, &label);
+    }
 }
 
 #[tauri::command]
@@ -458,6 +462,8 @@ pub fn set_preferred_monitor(name: Option<String>, state: State<'_, AppState>, a
 /// having to wait for the next poll cycle or heartbeat.
 #[tauri::command]
 pub fn window_ready(label: String, state: State<'_, AppState>, app: AppHandle) {
+    state.surface_visibility.set_ready(&label);
+
     let ui = state.ui.snapshot();
     let configured_visible = match label.as_str() {
         "main" => ui.floating_visible,

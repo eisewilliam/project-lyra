@@ -7,7 +7,7 @@
   background: rgb(22, 22, 26);
   color: white;
   position: relative;
-  transition: background 0.15s ease;
+  transition: background var(--motion-duration-base) var(--motion-ease-control);
 }
 
 body[data-resizing="true"] .lyra-window {
@@ -60,9 +60,9 @@ body[data-os="windows"] .lyra-window {
  *     toggle — not wired yet).
  *
  * Disables the most GPU-expensive effects: full-window backdrop blur, 120 px
- * ambient Gaussian, per-lyric `filter: blur()` layers + `will-change` hints,
- * and smooth-scroll animation. Visual identity preserved via opacity + color
- * fall-backs so it doesn't look broken — just flat.
+ * ambient Gaussian, active compositing hints, and smooth-scroll animation.
+ * Visual identity preserved via opacity + color fall-backs so it doesn't look
+ * broken — just flat.
  *
  * macOS Activity Monitor reports "Significant energy" largely because of the
  * compositor work these rules generate; opting out drops the app from
@@ -71,23 +71,19 @@ body[data-os="windows"] .lyra-window {
 @media (prefers-reduced-motion: reduce) {
   .lyra-window { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(18, 18, 22, 0.82); }
   .ambient-bg img { filter: none; transform: translate(-50%, -50%) scale(20); opacity: 0.2; }
-  /* Respect reduced motion: keep only colour/opacity fades — no scale, no
-     translate, no blur transition, and no enter animation. */
+  /* Respect reduced motion: keep only colour/opacity fades — no scale,
+     translate, or enter animation. */
   .lyric-line { filter: none !important; will-change: auto !important; transform: none !important; animation: none !important; transition: color 0.25s ease, opacity 0.25s ease !important; }
   .lyric-line.is-active { filter: none !important; transform: none !important; }
-  .lyric-line.is-passed-1,
-  .lyric-line.is-passed-2 { filter: none !important; }
-  .lyric-line:not(.is-active):hover { filter: none !important; }
+  .lyric-line.is-leaving-edge { animation: none !important; transform: none !important; }
   .lyrics-container { transition: none !important; }
   .lyrics-pane { scroll-behavior: auto; }
 }
 :root[data-low-power="true"] .lyra-window { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(18, 18, 22, 0.82); }
 :root[data-low-power="true"] .ambient-bg img { filter: blur(2px) saturate(160%); transform: translate(-50%, -50%) scale(20); opacity: 0.5; }
 :root[data-low-power="true"] .lyric-line { filter: none !important; will-change: auto !important; }
-:root[data-low-power="true"] .lyric-line.is-active { filter: none !important; will-change: transform !important; }
-:root[data-low-power="true"] .lyric-line.is-passed-1,
-:root[data-low-power="true"] .lyric-line.is-passed-2 { filter: none !important; }
-:root[data-low-power="true"] .lyric-line:not(.is-active):hover { filter: none !important; }
+:root[data-low-power="true"] .lyric-line.is-active { filter: none !important; will-change: auto !important; }
+:root[data-low-power="true"] .lyric-line.is-leaving-edge { animation: none !important; transform: none !important; }
 :root[data-low-power="true"] .lyrics-pane { scroll-behavior: auto; }
 
 /* Invisible full-width drag strip at top — allows window dragging over all content */
@@ -273,11 +269,23 @@ body[data-os="windows"] .lyra-window {
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: color 0.2s;
+  transition: color var(--duration-fast) var(--ease-standard);
 }
 
 .track-action-btn:hover {
   color: #fff;
+}
+
+.btn-icon:focus-visible,
+.track-action-btn:focus-visible,
+.track-menu-select:focus-visible ~ .track-action-btn,
+.delay-control-btn:focus-visible,
+.delay-control-reset:focus-visible,
+.delay-control-close:focus-visible,
+.track-menu-select:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.48);
+  outline-offset: 4px;
+  border-radius: 8px;
 }
 
 .track-action-btn:disabled {
@@ -306,6 +314,18 @@ body[data-os="windows"] .lyra-window {
   border-radius: 4px;
   position: relative;
   cursor: pointer;
+  transition: height var(--duration-fast) var(--ease-standard);
+}
+
+.progress-track::before {
+  content: '';
+  position: absolute;
+  inset: -8px 0;
+}
+
+.progress-track:hover,
+.progress-track:active {
+  height: 6px;
 }
 
 .progress-track.is-placeholder {
@@ -313,13 +333,46 @@ body[data-os="windows"] .lyra-window {
   background: rgba(255, 255, 255, 0.09);
 }
 
+.progress-track.is-placeholder:hover,
+.progress-track.is-placeholder:active {
+  height: 4px;
+}
+
 .progress-fill {
+  width: 100%;
   height: 100%;
   background: #fff;
   border-radius: 4px;
   position: absolute;
   top: 0;
   left: 0;
+  transform: scaleX(0);
+  transform-origin: left center;
+  will-change: transform;
+}
+
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  transform: translateY(-50%) scale(0);
+  transition: transform var(--duration-fast) var(--ease-standard);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+}
+
+.progress-track:hover .progress-fill::after,
+.progress-track:active .progress-fill::after,
+.progress-track.is-dragging .progress-fill::after {
+  transform: translateY(-50%) scale(1);
+}
+
+.progress-track.is-dragging {
+  height: 6px;
 }
 
 .transport-controls {
@@ -342,7 +395,9 @@ body[data-os="windows"] .lyra-window {
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: color 0.2s, transform 0.2s;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
 }
 
 .btn-icon:hover {
@@ -357,6 +412,45 @@ body[data-os="windows"] .lyra-window {
   color: #fff;
 }
 
+/* Play/Pause icon crossfade — both SVGs always rendered and stacked.
+   The data-playing attribute drives which is visible. Runs entirely
+   on the compositor thread (opacity + transform only). */
+.btn-icon.play-pause {
+  position: relative;
+  width: 36px;
+  height: 36px;
+}
+
+.btn-icon.play-pause .icon-play,
+.btn-icon.play-pause .icon-pause {
+  position: absolute;
+  inset: 0;
+  transition:
+    opacity 160ms var(--ease-standard),
+    transform 160ms var(--ease-standard);
+  will-change: opacity, transform;
+}
+
+/* Playing state: pause icon visible, play icon hidden */
+.btn-icon.play-pause[data-playing="true"] .icon-pause {
+  opacity: 1;
+  transform: scale(1);
+}
+.btn-icon.play-pause[data-playing="true"] .icon-play {
+  opacity: 0;
+  transform: scale(0.6);
+}
+
+/* Paused state: play icon visible, pause icon hidden */
+.btn-icon.play-pause[data-playing="false"] .icon-play {
+  opacity: 1;
+  transform: scale(1);
+}
+.btn-icon.play-pause[data-playing="false"] .icon-pause {
+  opacity: 0;
+  transform: scale(0.6);
+}
+
 
 /* 
   Right Pane: Lyrics Scene
@@ -369,8 +463,8 @@ body[data-os="windows"] .lyra-window {
   position: relative;
   padding: 80px 64px 64px 24px;
   z-index: 1;
-  mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+  /* mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%); */
   /* The active line is centred by translating .lyrics-container (the "reel"),
      not by native scrolling — gives a long, eased glide instead of the abrupt
      jump that scrollIntoView({behavior:'smooth'}) produces. */
@@ -389,37 +483,61 @@ body[data-os="windows"] .lyra-window {
   display: none;
 }
 
+.lyrics-pane:focus {
+  outline: none;
+}
+
+.lyrics-pane:focus-visible .lyric-line.is-keyboard-focus {
+  outline: 2px solid rgba(255, 255, 255, 0.48);
+  outline-offset: 6px;
+  border-radius: 6px;
+}
+
 .lyrics-container {
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 20px;
   width: 100%;
   margin: auto 0;
   padding: 50vh 0;
   position: relative;
   /* The reel glide. JS sets `transform: translateY(...)` per active line. */
-  transition: transform 0.62s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform var(--duration-reel) cubic-bezier(0.4, 0, 0.2, 1);
   will-change: transform;
+}
+
+button.lyric-line {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  outline: none;
+}
+
+button.lyric-line:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.4);
+  outline-offset: 4px;
+  border-radius: 4px;
 }
 
 .lyric-line {
   font-size: calc(2.6rem * var(--font-scale, 1));
   font-weight: 700;
-  line-height: 1.35;
+  line-height: 1.25;
   letter-spacing: -0.03em;
   color: rgba(255, 255, 255, 0.4);
-  filter: blur(4px);
+  filter: blur(3.5px);
   opacity: 0.85;
-  transform: scale(1);
-  transform-origin: left center;
   transition:
-    color 0.5s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
-    filter 0.5s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-  /* will-change intentionally omitted at base level — promoting every line
-     to its own compositing layer is expensive (GPU memory + paint cost).
-     Only the active line gets layer-promotion via .lyric-line.is-active below. */
+    color var(--duration-base) var(--ease-standard),
+    opacity var(--duration-base) var(--ease-standard);
+  /* Blur remains a rest-state visual, but filter is not transitioned. The
+     active handoff stays on opacity/color while the DOM keeps a stable word
+     span structure, avoiding the fullscreen hitch before the word wipe. */
   scroll-margin-top: 50vh;
   scroll-margin-bottom: 50vh;
   cursor: default;
@@ -436,40 +554,58 @@ body[data-os="windows"] .lyra-window {
   color: var(--lyric-color, rgba(255, 255, 255, 1));
   filter: blur(0px);
   opacity: 1;
-  transform: scale(1.03);
   text-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
-  will-change: transform, filter, opacity;
-  /* Enter animation: replays each time a line gains `.is-active` (no remount
-     needed). Ends exactly at the resting active state above so it settles
-     without a snap. The 0.5s transitions still handle the outgoing line. */
-  animation: lyric-active-in 460ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: filter, opacity;
 }
 
-@keyframes lyric-active-in {
-  from {
-    opacity: 0.5;
-    transform: scale(0.99) translateY(0.14em);
-    filter: blur(4px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1.03) translateY(0);
-    filter: blur(0);
-  }
+.lyric-line.is-passed-1 {
+  filter: blur(1.2px);
+  opacity: 0.52;
+  will-change: filter, opacity;
 }
 
-.lyric-line.is-passed-1,
 .lyric-line.is-future-1 {
-  filter: blur(1px);
-  opacity: 0.60;
-  transform: scale(1);
+  filter: blur(0.8px);
+  opacity: 0.64;
+  will-change: filter, opacity;
 }
 
-.lyric-line.is-passed-2,
-.lyric-line.is-future-2 {
+.lyric-line.is-passed-2 {
   filter: blur(3.5px);
   opacity: 0.28;
-  transform: scale(1);
+}
+
+.lyric-line.is-future-2 {
+  filter: blur(3px);
+  opacity: 0.34;
+}
+
+.lyric-line.is-paint-culled {
+  contain: layout style paint;
+  visibility: hidden;
+  filter: none;
+  text-shadow: none;
+  pointer-events: none;
+}
+
+.lyric-line.is-leaving-edge {
+  animation: lyric-edge-leave 560ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform, opacity;
+}
+
+@keyframes lyric-edge-leave {
+  0% {
+    opacity: 0.24;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  55% {
+    opacity: 0.13;
+    transform: translate3d(0, -9px, 0) scale(0.992);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -18px, 0) scale(0.985);
+  }
 }
 
 .lyric-line.passed {
@@ -496,7 +632,6 @@ body[data-os="windows"] .lyra-window {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  will-change: background-image;
 }
 
 .lyrics-placeholder {
@@ -780,7 +915,6 @@ body[data-os="windows"] .lyra-window {
   align-items: center;
   width: 100%;
   height: 40px;
-  animation: track-menu-in-bottom 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .delay-control-meta {
@@ -822,7 +956,10 @@ body[data-os="windows"] .lyra-window {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition:
+    background-color var(--motion-duration-base) var(--motion-ease-control),
+    border-color var(--motion-duration-base) var(--motion-ease-control),
+    color var(--motion-duration-base) var(--motion-ease-control);
   padding: 0;
 }
 
@@ -842,7 +979,10 @@ body[data-os="windows"] .lyra-window {
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition:
+    background-color var(--motion-duration-base) var(--motion-ease-control),
+    color var(--motion-duration-base) var(--motion-ease-control),
+    opacity var(--motion-duration-base) var(--motion-ease-control);
 }
 
 .delay-control-reset:hover:not(:disabled) {
@@ -853,28 +993,6 @@ body[data-os="windows"] .lyra-window {
 .delay-control-reset:disabled {
   opacity: 0.35;
   cursor: default;
-}
-
-@keyframes track-menu-in-bottom {
-  from {
-    opacity: 0;
-    transform: scale(0.96) translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-@keyframes track-menu-in-top {
-  from {
-    opacity: 0;
-    transform: scale(0.96) translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
 }
 
 /* ── Karaoke mode (main window): show only active + next line, centered ────── */
@@ -894,6 +1012,7 @@ body[data-os="windows"] .lyra-window {
 
 .lyrics-container.is-karaoke .lyric-line.is-active {
   text-align: center;
+  animation: none;
 }
 
 .lyrics-container.is-karaoke .lyric-line.is-active + .lyric-line {
@@ -910,10 +1029,17 @@ body[data-os="windows"] .lyra-window {
   height: 12px;
   opacity: 0;
   overflow: hidden;
-  transition: width 0.25s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s cubic-bezier(0.22, 1, 0.36, 1), margin-right 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  transition:
+    width var(--duration-base) var(--ease-standard),
+    opacity var(--duration-base) var(--ease-standard),
+    margin-right var(--duration-base) var(--ease-standard);
   margin-right: 0;
   vertical-align: middle;
   color: inherit;
+}
+
+.lyric-line.is-armed {
+  cursor: pointer;
 }
 
 .lyric-line.is-armed .seek-indicator {
@@ -921,5 +1047,3 @@ body[data-os="windows"] .lyra-window {
   opacity: 0.8;
   margin-right: 8px;
 }
-
-

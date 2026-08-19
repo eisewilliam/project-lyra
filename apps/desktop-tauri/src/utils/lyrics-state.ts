@@ -1,10 +1,6 @@
-export type NotFoundReason = 'Miss' | 'NetworkError' | 'RateLimit';
+import type { LyricsStatus, NotFoundReason } from '@/types/tauri-contracts';
 
-export type LyricsStatus =
-  | 'Loading'
-  | 'Ready'
-  | { NotFound: { reason: NotFoundReason } }
-  | { Error: string };
+export type { LyricsStatus, NotFoundReason };
 
 export type LyricsPlaceholderState =
   | 'booting'

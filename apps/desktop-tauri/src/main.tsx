@@ -1,3 +1,4 @@
+import '@/utils/browser-mock';
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
@@ -6,18 +7,25 @@ import Island from './views/island'
 import Karaoke from './views/karaoke'
 import Settings from './views/settings'
 
-const path = window.location.pathname;
-const surface =
-  path === '/island' ? 'island' :
-  path === '/karaoke' ? 'karaoke' :
-  path === '/settings' ? 'settings' :
-  'main';
+const path = globalThis.location.pathname;
 
-const view =
-  surface === 'island' ? <Island /> :
-  surface === 'karaoke' ? <Karaoke /> :
-  surface === 'settings' ? <Settings /> :
-  <App />;
+let surface = 'main';
+if (path === '/island') {
+  surface = 'island';
+} else if (path === '/karaoke') {
+  surface = 'karaoke';
+} else if (path === '/settings') {
+  surface = 'settings';
+}
+
+let view = <App />;
+if (surface === 'island') {
+  view = <Island />;
+} else if (surface === 'karaoke') {
+  view = <Karaoke />;
+} else if (surface === 'settings') {
+  view = <Settings />;
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>{view}</StrictMode>,

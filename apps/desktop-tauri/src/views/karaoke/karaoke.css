@@ -32,7 +32,7 @@
   overflow: hidden;
   line-height: 1.1;
   /* Re-keyed per line in the view → enter animation replays on each change. */
-  animation: karaoke-line-enter 400ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: karaoke-line-enter var(--duration-enter) var(--ease-standard);
 }
 
 .karaoke-lyric-content {
@@ -40,7 +40,7 @@
   min-width: max-content;
   max-width: none;
   will-change: transform;
-  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform var(--duration-base) var(--ease-standard);
 }
 
 .karaoke-current.has-word-sync {
@@ -83,7 +83,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  animation: karaoke-line-enter 400ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: karaoke-line-enter var(--duration-enter) var(--ease-standard);
 }
 
 /* Line-change enter: fade up. em-based so the rise scales with font size. */

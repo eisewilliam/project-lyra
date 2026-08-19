@@ -3,32 +3,9 @@
 // CSS custom properties. Used by every lyric surface so font/colour/darkness
 // settings take effect uniformly.
 
-export type AppearanceSettings = {
-  font_family: string;
-  font_size: number;
-  text_color: string;
-  background_opacity: number;
-  context_lines_above: number;
-  context_lines_below: number;
-};
+import type { AppearanceSettings } from '@/types/tauri-contracts';
 
-export type WindowSettings = {
-  click_through: boolean;
-  hide_when_idle: boolean;
-  always_on_top: boolean;
-};
-
-export type BehaviorSettings = {
-  karaoke_mode: boolean;
-  poll_interval_ms: number;
-  hide_when_paused: boolean;
-};
-
-export type AppSettings = {
-  window: WindowSettings;
-  appearance: AppearanceSettings;
-  behavior: BehaviorSettings;
-};
+export type { AppSettings, AppearanceSettings, BehaviorSettings, WindowSettings } from '@/types/tauri-contracts';
 
 const SYSTEM_FONT_STACK =
   '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';

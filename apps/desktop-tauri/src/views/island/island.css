@@ -45,6 +45,22 @@ html, body {
   cursor: grabbing;
 }
 
+.panel-drag-button {
+  all: unset;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  cursor: grab;
+}
+
+.panel-drag-button:active {
+  cursor: grabbing;
+}
+
+.floating-panel.locked {
+  cursor: default;
+}
+
 .island-background {
   position: absolute;
   inset: 0;

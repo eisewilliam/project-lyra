@@ -1,3 +1,27 @@
+@import "tailwindcss/theme.css";
+@import "tailwindcss/utilities.css";
+
+:root {
+  /* Durations */
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-enter: 460ms;
+  --duration-reel: 620ms;
+
+  /* Easing Curves */
+  --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-control: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-enter: 0ms;
+    --duration-reel: 0ms;
+  }
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
 }

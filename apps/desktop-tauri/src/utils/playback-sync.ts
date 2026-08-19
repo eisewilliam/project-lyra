@@ -1,11 +1,12 @@
 // Shared playback-sync primitives used by all three lyric surfaces (main,
 // island, karaoke). These were previously copy-pasted into each view; keeping
 // one definition means a sync/interpolation fix lands everywhere at once.
-import { invoke } from '@tauri-apps/api/core';
+import type { LyricWord } from '@/types/tauri-contracts';
+import { windowReady, type SurfaceLabel } from '@/utils/tauri-commands';
 
 export const BLEND_MS = 500;
 
-export type LyricWord = { start_ms: number; end_ms: number; text: string };
+export type { LyricWord };
 
 export type PositionBaseline = {
   ms: number;
@@ -64,14 +65,12 @@ export function syncSurfaceVisible(
 export function makeWindowReady(label: string): () => Promise<void> {
   let promise: Promise<void> | null = null;
   return () => {
-    if (!promise) {
-      promise = invoke('window_ready', { label })
-        .then(() => undefined)
-        .catch((err) => {
-          promise = null;
-          throw err;
-        });
-    }
+    promise ??= windowReady(label as SurfaceLabel)
+      .then(() => undefined)
+      .catch((err) => {
+        promise = null;
+        throw err;
+      });
     return promise;
   };
 }
@@ -95,7 +94,7 @@ export function runWordColouring(
     for (let i = 0; i < words.length; i++) {
       const w = words[i];
       const el = wordRefs.current[i];
-      if (!el) continue;
+      if (!w || !el) continue;
       let cls: string;
       let progress: number;
       if (pos >= w.end_ms) {
@@ -112,7 +111,7 @@ export function runWordColouring(
         lastCls[i] = cls;
         el.className = cls;
       }
-      const progQ = (progress * 1000) | 0;
+      const progQ = Math.trunc(progress * 1000);
       if (progQ !== lastProgQ[i]) {
         lastProgQ[i] = progQ;
         el.style.setProperty('--word-progress', (progQ / 1000).toString());
