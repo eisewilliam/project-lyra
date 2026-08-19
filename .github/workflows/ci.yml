@@ -30,20 +30,25 @@ jobs:
             - name: Restore Rust cache
               uses: swatinem/rust-cache@v2
 
+            - name: Set up pnpm
+              uses: pnpm/action-setup@v4
+              with:
+                  version: 10
+
             - name: Set up Node.js
               uses: actions/setup-node@v4
               with:
                   node-version: lts/*
-                  cache: npm
-                  cache-dependency-path: apps/desktop-tauri/package-lock.json
+                  cache: pnpm
+                  cache-dependency-path: apps/desktop-tauri/pnpm-lock.yaml
 
             # The Tauri bridge embeds the frontend via `generate_context!`, so
             # `frontendDist` (../dist) must exist before the bridge will compile.
             - name: Build frontend (provides dist/ for the bridge)
               working-directory: ${{ env.APP_DIR }}
               run: |
-                  npm ci
-                  npm run build
+                  pnpm install --frozen-lockfile
+                  pnpm run build
 
             - name: Check formatting
               run: cargo fmt --all -- --check
@@ -66,21 +71,26 @@ jobs:
             - name: Check out repository
               uses: actions/checkout@v4
 
+            - name: Set up pnpm
+              uses: pnpm/action-setup@v4
+              with:
+                  version: 10
+
             - name: Set up Node.js
               uses: actions/setup-node@v4
               with:
                   node-version: lts/*
-                  cache: npm
-                  cache-dependency-path: apps/desktop-tauri/package-lock.json
+                  cache: pnpm
+                  cache-dependency-path: apps/desktop-tauri/pnpm-lock.yaml
 
             - name: Install frontend dependencies
               working-directory: ${{ env.APP_DIR }}
-              run: npm ci
+              run: pnpm install --frozen-lockfile
 
             - name: Lint
               working-directory: ${{ env.APP_DIR }}
-              run: npm run lint
+              run: pnpm run lint
 
             - name: Type-check and build
               working-directory: ${{ env.APP_DIR }}
-              run: npm run build
+              run: pnpm run build
