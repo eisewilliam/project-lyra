@@ -481,18 +481,18 @@ pub fn window_ready(label: String, state: State<'_, AppState>, app: AppHandle) {
     // runs before that's guaranteed; `window_ready` fires only after the
     // frontend has mounted, by which point the window has been shown.
     match label.as_str() {
-    "karaoke" => {
-        if let Some(win) = app.get_webview_window(&label) {
-            crate::linux::apply_ignore_cursor_events_when_ready(&win, true);
+        "karaoke" => {
+            if let Some(win) = app.get_webview_window(&label) {
+                crate::linux::apply_ignore_cursor_events_when_ready(&win, true);
+            }
         }
-    }
-    "island" => {
-        if let Some(win) = app.get_webview_window(&label) {
-            crate::linux::apply_ignore_cursor_events_when_ready(&win, ui.island_locked);
+        "island" => {
+            if let Some(win) = app.get_webview_window(&label) {
+                crate::linux::apply_ignore_cursor_events_when_ready(&win, ui.island_locked);
+            }
         }
+        _ => {}
     }
-    _ => {}
-}
 
     // Push the current snapshot immediately so the frontend doesn't spend
     // up to 10 s in the booting/loading state waiting for the first
