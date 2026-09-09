@@ -1,4 +1,4 @@
-use lyra_core::{
+use crate::{
     config::ConfigStore,
     domain::{
         LyricDocument, LyricsStatus, NotFoundReason, PlaybackSnapshot, PlaybackState,
@@ -32,8 +32,6 @@ pub struct LyraRuntime {
     settings: SettingsSnapshot,
     current_doc: Option<LyricDocument>,
     last_track_key: Option<String>,
-    last_tick_ms: u64,
-    last_tick_result: Option<RenderSnapshot>,
     /// In-memory map of URIs whose last fetch failed with a *transient* error
     /// (network, rate limit). Not persisted: a restart clears them, which is
     /// the right behaviour — transient by definition.
@@ -41,10 +39,6 @@ pub struct LyraRuntime {
 }
 
 impl LyraRuntime {
-    pub fn new() -> Self {
-        Self::new_in(app_support_dir())
-    }
-
     pub fn new_in(app_dir: PathBuf) -> Self {
         let config = ConfigStore::new(&app_dir);
         let settings = config.load();
@@ -60,8 +54,6 @@ impl LyraRuntime {
             settings,
             current_doc: None,
             last_track_key: None,
-            last_tick_ms: 0,
-            last_tick_result: None,
             transient_errors: HashMap::new(),
         }
     }
@@ -90,12 +82,10 @@ impl LyraRuntime {
             .unwrap_or(0)
     }
 
-    /// Persist a new offset for the current track and invalidate the cached
-    /// tick so the next render reflects it immediately.
+    /// Persist a new offset for the current track; the next render reflects it.
     pub fn set_current_offset(&mut self, offset_ms: i64) {
         if let Some(key) = self.last_track_key.clone() {
             self.offsets.set(&key, offset_ms);
-            self.last_tick_result = None;
         }
     }
 
@@ -114,15 +104,13 @@ impl LyraRuntime {
     pub fn store_lyrics(&mut self, doc: LyricDocument) {
         self.transient_errors.remove(&doc.track_key);
         let cache = self.cache.clone();
-        let track_key = doc.track_key.clone();
-        let raw_lrc = doc.raw_lrc.clone();
+        let cached_doc = doc.clone();
         spawn_cache_write(move || {
-            let _ = cache.put(&track_key, &raw_lrc);
+            let _ = cache.put_document(&cached_doc);
         });
         if self.last_track_key.as_deref() == Some(&doc.track_key) {
             self.current_doc = Some(doc);
         }
-        self.last_tick_result = None;
     }
 
     pub fn store_negative(&mut self, track_key: &str) {
@@ -132,7 +120,6 @@ impl LyraRuntime {
         spawn_cache_write(move || {
             let _ = cache.mark_negative(&track_key);
         });
-        self.last_tick_result = None;
     }
 
     /// Record a transient (network/rate-limit) failure so the UI can render a
@@ -140,16 +127,14 @@ impl LyraRuntime {
     /// the next successful fetch or on a manual force-refresh.
     pub fn store_transient_error(&mut self, track_key: &str, reason: NotFoundReason) {
         self.transient_errors.insert(track_key.to_string(), reason);
-        self.last_tick_result = None;
     }
 
     pub fn clear_transient_error(&mut self, track_key: &str) {
         self.transient_errors.remove(track_key);
-        self.last_tick_result = None;
     }
 
-    /// Drop the negative sentinel and any cached doc so the next refresh
-    /// re-queries the upstream provider. Used by the manual-retry command.
+    /// Clear the negative sentinel, transient failure, and active document.
+    /// Cached lyric files remain intact. Used by the manual-retry coordinator.
     pub fn forget_track(&mut self, track_key: &str) {
         let cache = self.cache.clone();
         let track_key_owned = track_key.to_string();
@@ -164,7 +149,13 @@ impl LyraRuntime {
         {
             self.current_doc = None;
         }
-        self.last_tick_result = None;
+    }
+
+    /// Plain lyrics have no timestamps and are displayed only by the main pane.
+    pub fn all_plain_lyrics(&self) -> Option<String> {
+        self.current_doc
+            .as_ref()
+            .and_then(|doc| doc.plain_lyrics.clone())
     }
 
     /// Return every lyric line text for the currently loaded document.
@@ -193,15 +184,13 @@ impl LyraRuntime {
             .unwrap_or_default()
     }
 
-    /// Poll + compute render snapshot. Debounced: if called again within 150 ms
-    /// returns the cached result without re-running AppleScript.
+    /// Compute a fresh render snapshot from the last adapter observation.
+    /// Playing positions are extrapolated without mutating that observation.
     pub fn tick(&mut self) -> RenderSnapshot {
         let now_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
-
-        self.last_tick_ms = now_ms;
 
         let mut snapshot = self
             .last_playback_snapshot
@@ -259,16 +248,14 @@ impl LyraRuntime {
             .map(|k| self.offsets.get(k))
             .unwrap_or(0);
 
-        let result = compute_render(
+        compute_render(
             snapshot,
             self.current_doc.as_ref(),
             status,
             above,
             below,
             offset_ms,
-        );
-        self.last_tick_result = Some(result.clone());
-        result
+        )
     }
 
     /// Find the next lyric transition timestamp (in playback time) relative to `current_pos_ms`.
@@ -284,7 +271,7 @@ impl LyraRuntime {
         // Convert current playback position to lyric-space position
         let lyric_pos = (current_pos_ms as i64 - offset_ms).max(0) as u64;
 
-        let active_idx = lyra_core::sync::find_active_line(&doc.lines, lyric_pos);
+        let active_idx = crate::sync::find_active_line(&doc.lines, lyric_pos);
 
         let next_lyric_ms = match active_idx {
             None => {
@@ -305,12 +292,6 @@ impl LyraRuntime {
     }
 }
 
-fn app_support_dir() -> PathBuf {
-    dirs_next::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("lyra")
-}
-
 fn spawn_cache_write<F>(write: F)
 where
     F: FnOnce() + Send + 'static,
@@ -327,7 +308,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lyra_core::domain::{LyricLine, LyricSourceKind};
+    use crate::domain::{LyricLine, LyricSourceKind};
 
     fn make_test_doc(timestamps: &[u64]) -> LyricDocument {
         let mut lines = Vec::new();
@@ -351,7 +332,52 @@ mod tests {
             source: LyricSourceKind::Lrclib,
             lines,
             raw_lrc: "".to_string(),
+            plain_lyrics: None,
         }
+    }
+
+    #[test]
+    fn plain_document_roundtrips_without_timed_overlay_lines() {
+        let dir = std::env::temp_dir().join(format!("lyra-plain-runtime-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut rt = LyraRuntime::new_in(dir.clone());
+        let playback = PlaybackSnapshot {
+            track: Some(TrackRef {
+                source: crate::domain::PlayerSource::SpotifyMacOs,
+                uri: "test_key".into(),
+                title: "title".into(),
+                artist: "artist".into(),
+                album: None,
+                artwork_url: None,
+                duration_ms: 10000,
+            }),
+            state: PlaybackState::Paused,
+            position_ms: Some(2000),
+            observed_at_ms: 0,
+        };
+        rt.set_playback_snapshot(playback.clone());
+        rt.tick();
+        let mut doc = make_test_doc(&[]);
+        doc.plain_lyrics = Some("First line\nSecond line".into());
+        rt.store_lyrics(doc);
+        let render = rt.tick();
+        assert!(matches!(render.lyrics_status, LyricsStatus::Unsynced));
+        assert!(render.visible_lines.is_empty());
+        assert!(render.active_line_index.is_none());
+        assert!(rt.all_lines_slim().is_empty());
+        assert_eq!(rt.next_transition_playback_ms(2000), None);
+        assert_eq!(
+            rt.all_plain_lyrics().as_deref(),
+            Some("First line\nSecond line")
+        );
+        let mut restored = LyraRuntime::new_in(dir.clone());
+        restored.set_playback_snapshot(playback);
+        assert!(matches!(
+            restored.tick().lyrics_status,
+            LyricsStatus::Unsynced
+        ));
+        assert_eq!(restored.all_plain_lyrics(), rt.all_plain_lyrics());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -361,7 +387,7 @@ mod tests {
         let mut rt = LyraRuntime::new_in(temp_dir);
         let original_snap = PlaybackSnapshot {
             track: Some(TrackRef {
-                source: lyra_core::domain::PlayerSource::SpotifyMacOs,
+                source: crate::domain::PlayerSource::SpotifyMacOs,
                 uri: "spotify:track:1".to_string(),
                 title: "Title".to_string(),
                 artist: "Artist".to_string(),

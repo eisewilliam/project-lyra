@@ -12,6 +12,7 @@ export const MainLyricsPane = memo(function MainLyricsPane({
   activeLineWords,
   karaokeMode,
   lyrics,
+  plainLyrics,
   lyricsContainerRef,
   lyricsPaneRef,
   lyricsRef,
@@ -27,6 +28,7 @@ export const MainLyricsPane = memo(function MainLyricsPane({
   activeLineWords: ReadonlyArray<LyricWord>;
   karaokeMode: boolean;
   lyrics: ReadonlyArray<LineRef>;
+  plainLyrics: string | null;
   lyricsContainerRef: RefObject<HTMLDivElement | null>;
   lyricsPaneRef: RefObject<HTMLElement | null>;
   lyricsRef: RefObject<(HTMLButtonElement | null)[]>;
@@ -107,14 +109,19 @@ export const MainLyricsPane = memo(function MainLyricsPane({
 
   return (
     <section
-      className={`lyrics-pane ${lyricsViewState === 'ready' ? '' : 'is-placeholder'}`}
+      className={`lyrics-pane ${lyricsViewState === 'unsynced' ? 'is-unsynced' : ''} ${lyricsViewState === 'ready' || lyricsViewState === 'unsynced' ? '' : 'is-placeholder'}`}
       aria-label="Lyrics"
       onFocus={handleLyricsPaneFocus}
       onKeyDown={handleLyricsPaneKeyDown}
       ref={lyricsPaneRef}
-      tabIndex={lyricsViewState === 'ready' && hasLyrics ? 0 : undefined}
+      tabIndex={(lyricsViewState === 'ready' && hasLyrics) || lyricsViewState === 'unsynced' ? 0 : undefined}
     >
-      {lyricsViewState === 'ready' ? (
+      {lyricsViewState === 'unsynced' ? (
+        <div className="plain-lyrics">
+          <p className="plain-lyrics-label">Unsynchronized lyrics</p>
+          <p className="plain-lyrics-text">{plainLyrics ?? 'Loading lyrics text…'}</p>
+        </div>
+      ) : lyricsViewState === 'ready' ? (
         <div
           className={`lyrics-container ${karaokeMode ? 'is-karaoke' : ''}`}
           ref={lyricsContainerRef}

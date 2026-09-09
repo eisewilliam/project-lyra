@@ -10,6 +10,7 @@ export function PanelPlaceholder({ state }: Readonly<{ state: LyricsPlaceholderS
       <span className="panel-placeholder-indicator" aria-hidden="true">
         <LyricsPlaceholderIcon state={state} className="panel-placeholder-icon" />
       </span>
+      {state === 'unsynced' && <span>No synced lyrics</span>}
       <span className="panel-placeholder-lines" aria-hidden="true">
         <span className="panel-placeholder-line primary" />
         <span className="panel-placeholder-line secondary" />

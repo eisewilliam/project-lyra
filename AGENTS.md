@@ -13,7 +13,7 @@ cd apps/desktop-tauri && pnpm tauri dev
 # Production build
 cd apps/desktop-tauri && pnpm tauri build
 
-# Rust tests (lyra-core only — no integration tests exist yet)
+# Rust core tests (including runtime and lyric refresh coordination)
 cargo test -p lyra-core
 
 # Single test
@@ -61,37 +61,33 @@ All windows are served from one Vite SPA. `main.tsx` routes by `window.location.
 
 ```rust
 AppState {
-    runtime: Mutex<LyraRuntime>,   // playback snapshot, lyric doc, settings
-    lrclib: LrclibClient,          // HTTP client (lives outside Mutex so network calls don't block)
-    ui: UiStateStore,              // window visibility, island position, font scales
-    fetch_in_flight: Mutex<HashSet<String>>,  // prevents duplicate lyric fetches
+    runtime: Mutex<LyraRuntime>,   // core playback, lyrics, settings, offsets
+    lyrics: LyricsRefresh,        // core HTTP client + in-flight fetch claims
+    ui: UiStateStore,              // host window preferences
+    surface_visibility: RuntimeSurfaceVisibility, // transient host visibility
 }
 ```
 
-`LyraRuntime` holds the single `last_playback_snapshot`, the current `LyricDocument`, and the `LyricCache`. It never holds the lock across any blocking call.
+`LyraRuntime` lives in `crates/lyra-core/src/runtime.rs`. The host injects its application-support directory through `new_in`; core does not select an OS directory or depend on Tauri. `LyricsRefresh` owns cache eligibility, request deduplication, and result classification. Its runtime lock never spans the network await. Disk cache reads and settings/offset writes can still happen under the runtime lock; cache-result writes are scheduled separately.
 
-### Polling architecture
+### Playback delivery
 
-A background poller (spawned at startup in `lib.rs`) owns the platform Spotify adapter. macOS uses a GCD leeway timer; Windows and Linux use the generic sleep-based loop. Each loop calls `rt.set_playback_snapshot(snapshot)` under the runtime Mutex — a fast write. The Mutex is never held while AppleScript, SMTC, or D-Bus work runs.
+The host poll driver owns the platform Spotify adapter. macOS uses a GCD leeway timer; Windows and Linux use the generic sleep loop. Adapter calls run outside the runtime Mutex. Cadence follows the configured interval (clamped to 100–2000 ms), backs off for paused/stopped/missing-lyrics states, and skips adapter calls while all playback surfaces are hidden. Earlier wakeups can target the next lyric transition without polling the adapter again.
 
-All three UI windows poll `get_render_snapshot` (a Tauri command) every 300ms. `LyraRuntime::tick()` has a 150ms debounce so at most one real computation fires per burst of calls from multiple windows.
+`usePlaybackSnapshot` requests an initial `get_render_snapshot`, then listens for `playback-tick` events. It does not poll every 300 ms. The host sends events to visible playback surfaces, coalesces unchanged paused/stopped state, and provides a 10-second heartbeat. `LyraRuntime::tick()` computes a fresh render from the latest observation, extrapolating playing position without mutating the adapter snapshot; it has no debounce.
 
 ### Lyrics pipeline
 
-`refresh_lyrics` command:
-1. Lock → read `current_track()` + check negative/cached → release lock
-2. Check `fetch_in_flight` → insert URI or return early (dedup)
-3. HTTP call to lrclib (no lock held)
-4. Release in-flight claim
-5. Lock → `store_lyrics(doc)` or `store_negative(uri)` → release lock
+Tauri's `refresh_lyrics` and `force_refresh_lyrics` delegate to `lyrics::refresh::LyricsRefresh`:
 
-Status transitions in `tick()`:
-- No track → `NotFound`
-- Track + `current_doc` loaded → `Ready`
-- Track + negative cache entry → `NotFound`
-- Track + no doc and no negative → `Loading`
+1. Read current track and cache eligibility under the runtime lock.
+2. Claim the URI to deduplicate simultaneous requests.
+3. Fetch from the provider without holding the runtime lock.
+4. Store the result under the runtime lock, then release the claim (also released on cancellation).
 
-The frontend only calls `refresh_lyrics` once per URI (guarded by `refreshedUriRef`). A failed HTTP fetch stores a negative so status transitions out of `Loading`.
+Confirmed misses (`Ok(None)`) persist a `.nomatch` sentinel. Provider errors are recorded only in memory as `NotFound { reason: NetworkError }`; they do not poison the negative cache. Manual retry bypasses the negative-cache eligibility check and clears transient failure state. Existing cached documents still win.
+
+Render states are `Loading`, `Ready`, `Unsynced`, structured `NotFound` with a reason, or `Error`. No track and confirmed misses use `Miss`; pending uncached tracks use `Loading`. Timed documents use `Ready`; plain text uses `Unsynced` and is exposed only to the main pane through `get_plain_lyrics`. The frontend guards automatic refresh by track URI; manual retry is explicit.
 
 ### Persistence stores
 
@@ -102,12 +98,12 @@ The frontend only calls `refresh_lyrics` once per URI (guarded by `refreshedUriR
 | Settings (lyra-core) | `ConfigStore` in `lyra-core` | `~/Library/Application Support/lyra/config.json` |
 | Lyric offsets (per track) | `OffsetStore` in `lyra-core` | `~/Library/Application Support/lyra/lyric_offsets.json` |
 
-Both `app_support_dir()` helpers (`lib.rs` and `runtime.rs`) spell the directory
-`lyra` — keep them identical so case-sensitive volumes don't split the stores.
+The host’s single `app_support_dir()` helper chooses `dirs_next::data_dir()/lyra` and passes that directory to core and UI stores. The paths above show macOS; Windows and Linux use their platform data directory. Keep the directory lowercase so case-sensitive volumes do not split stores.
 
 Cache filenames are percent-encoded track URIs:
 - Fetched: `lyrics_cache/spotify%3Atrack%3Aabc123.lrc`
 - User override (wins over cache): `lyrics_overrides/spotify%3Atrack%3Aabc123.lrc`
+- Plain text: `lyrics_cache/spotify%3Atrack%3Aabc123.txt`
 - Negative (no lyrics found): `lyrics_cache/spotify%3Atrack%3Aabc123.nomatch`
 
 ### Key lyra-core modules
@@ -115,11 +111,13 @@ Cache filenames are percent-encoded track URIs:
 | File | Role |
 |---|---|
 | `domain.rs` | All shared types: `TrackRef`, `RenderSnapshot`, `LyricsStatus`, `LyricDocument`, `VisibleLine` |
+| `runtime.rs` | Playback observations, lyric state/cache coordination, settings, offsets, and next-transition calculation |
+| `lyrics/refresh.rs` | Async provider fetching, in-flight claims, cache eligibility and failure classification |
 | `sync.rs` | `compute_render()` — deterministic line selection and visible window computation |
 | `player/spotify_macos.rs` | AppleScript polling; running check is **outside** the `tell` block to avoid launching Spotify |
 | `player/spotify_windows.rs` | Windows SMTC polling and playback controls |
 | `player/spotify_linux.rs` | Linux MPRIS polling over the user's D-Bus session bus |
-| `lyrics/lrclib.rs` | LRCLIB HTTP client; returns `Ok(None)` when no synced lyrics (not `Err`) |
+| `lyrics/lrclib.rs` | LRCLIB HTTP client; prefers synced lyrics, falls back to plain lyrics; returns `Ok(None)` only for confirmed misses |
 | `lyrics/cache.rs` | Flat-file cache + negative cache + manual override resolution |
 | `lyrics/parser.rs` | LRC parser; `parse_lrc(track_key, raw, source)` |
 
@@ -136,10 +134,10 @@ Important Linux behavior:
 
 ### Frontend patterns
 
-`LyricsStatus` from Rust serializes as `"Loading" | "Ready" | "NotFound"` (plain strings) or `{"Error": "..."}` (object). Compare with `=== 'Loading'` etc.
+`LyricsStatus` serializes as `"Loading" | "Ready" | "Unsynced"`, `{"NotFound": {"reason": "Miss" | "NetworkError" | "RateLimit"}}`, or `{"Error": "..."}`. Use the shared frontend status helpers for structured variants; plain string comparisons still work for `Loading`, `Ready`, and `Unsynced`.
 
 `RenderSnapshot` contains both `active_line_index` (used by the `app` view via `get_all_lyrics`) and `visible_lines` (used by `island` and `karaoke`). The `app` view fetches the full lyric array separately via `get_all_lyrics` and highlights by index; the other views use the pre-windowed `visible_lines` directly.
 
-UI-layer state (window lock, position, font scale) flows through `ui-settings-changed` Tauri events. Playback state is only available by calling `get_render_snapshot`.
+UI-layer state (window lock, position, font scale) flows through `ui-settings-changed` Tauri events. Playback state arrives through the initial `get_render_snapshot` call and `playback-tick` events.
 
 Frontend OS styling is selected through `body[data-os]`. Linux must be detected as `linux` instead of falling through to macOS styles; shared playback UI should stay platform-neutral and consume `RenderSnapshot`.

@@ -6,6 +6,7 @@ const noop = () => {};
 
 export function TrackInfo({
   hasTrack,
+  hasSyncedLyrics,
   onRetryLyrics,
   selectValue,
   setSelectValue,
@@ -14,6 +15,7 @@ export function TrackInfo({
   track,
 }: Readonly<{
   hasTrack: boolean;
+  hasSyncedLyrics: boolean;
   onRetryLyrics: () => void;
   selectValue: string;
   setSelectValue: React.Dispatch<React.SetStateAction<string>>;
@@ -72,7 +74,7 @@ export function TrackInfo({
               aria-label="Track actions"
             >
               <option value="" disabled hidden>Actions</option>
-              <option value="delay">☰ Lyrics delay</option>
+              <option value="delay" disabled={!hasSyncedLyrics}>☰ Lyrics delay</option>
               <option value="refresh">↻ Refresh lyrics</option>
               <option value="settings">⛭ Settings</option>
             </select>

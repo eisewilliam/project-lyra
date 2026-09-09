@@ -1,6 +1,6 @@
 use crate::domain::{LyricDocument, LyricSourceKind, TrackRef};
 use crate::lyrics::{parser, LyricSource};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use reqwest::StatusCode;
 use serde::Deserialize;
 
@@ -20,8 +20,25 @@ const SEARCH_DURATION_TOLERANCE_SEC: i64 = 5;
 /// pure title+artist match without duration agreement is rejected.
 const MIN_SEARCH_SCORE: i32 = 50;
 
+#[derive(Debug)]
+pub struct LrclibHttpError {
+    pub status: u16,
+}
+impl LrclibHttpError {
+    pub fn is_rate_limit(&self) -> bool {
+        self.status == 429
+    }
+}
+impl std::fmt::Display for LrclibHttpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "LRCLIB returned HTTP {}", self.status)
+    }
+}
+impl std::error::Error for LrclibHttpError {}
+
 pub struct LrclibClient {
     http: reqwest::Client,
+    base_url: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -57,7 +74,10 @@ impl LrclibClient {
             .user_agent(USER_AGENT)
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
-        Self { http }
+        Self {
+            http,
+            base_url: BASE_URL.to_owned(),
+        }
     }
 
     /// `/api/get` — exact-signature lookup. Server enforces ±2s duration
@@ -72,7 +92,7 @@ impl LrclibClient {
     ) -> Result<Option<LrclibRecord>> {
         let mut url = format!(
             "{}/get?track_name={}&artist_name={}",
-            BASE_URL,
+            self.base_url,
             urlencoding::encode(track_name),
             urlencoding::encode(artist_name),
         );
@@ -91,7 +111,7 @@ impl LrclibClient {
                 let record: LrclibRecord = resp.json().await?;
                 Ok(Some(record))
             }
-            s => Err(anyhow!("lrclib get returned status {s}")),
+            s => Err(LrclibHttpError { status: s.as_u16() }.into()),
         }
     }
 
@@ -103,14 +123,17 @@ impl LrclibClient {
     ) -> Result<Vec<LrclibRecord>> {
         let url = format!(
             "{}/search?track_name={}&artist_name={}",
-            BASE_URL,
+            self.base_url,
             urlencoding::encode(track_name),
             urlencoding::encode(artist_name),
         );
 
         let resp = self.http.get(&url).send().await?;
         if !resp.status().is_success() {
-            return Ok(Vec::new());
+            return Err(LrclibHttpError {
+                status: resp.status().as_u16(),
+            }
+            .into());
         }
         let records: Vec<LrclibRecord> = resp.json().await?;
         Ok(records)
@@ -136,6 +159,7 @@ impl LyricSource for LrclibClient {
         };
         let album = track.album.as_deref();
         let track_variants = extract_variant_tags(&track.title);
+        let mut plain_fallback = None;
 
         // Tier 1: full signature (track + artist + album + duration).
         // lrclib enforces ±2s and exact normalized album match server-side —
@@ -145,8 +169,11 @@ impl LyricSource for LrclibClient {
             .get_signature(&track.title, &track.artist, album, duration_sec)
             .await?
         {
-            if let Some(doc) = into_document(&track.uri, record) {
-                return Ok(Some(doc));
+            if let Some(doc) = into_document(&track.uri, record)? {
+                if !doc.lines.is_empty() {
+                    return Ok(Some(doc));
+                }
+                plain_fallback.get_or_insert(doc);
             }
         }
 
@@ -157,8 +184,11 @@ impl LyricSource for LrclibClient {
                 .get_signature(&track.title, &track.artist, None, duration_sec)
                 .await?
             {
-                if let Some(doc) = into_document(&track.uri, record) {
-                    return Ok(Some(doc));
+                if let Some(doc) = into_document(&track.uri, record)? {
+                    if !doc.lines.is_empty() {
+                        return Ok(Some(doc));
+                    }
+                    plain_fallback.get_or_insert(doc);
                 }
             }
         }
@@ -172,8 +202,11 @@ impl LyricSource for LrclibClient {
                     .get_signature(&stripped, &track.artist, album, duration_sec)
                     .await?
                 {
-                    if let Some(doc) = into_document(&track.uri, record) {
-                        return Ok(Some(doc));
+                    if let Some(doc) = into_document(&track.uri, record)? {
+                        if !doc.lines.is_empty() {
+                            return Ok(Some(doc));
+                        }
+                        plain_fallback.get_or_insert(doc);
                     }
                 }
                 if album.is_some() {
@@ -181,8 +214,11 @@ impl LyricSource for LrclibClient {
                         .get_signature(&stripped, &track.artist, None, duration_sec)
                         .await?
                     {
-                        if let Some(doc) = into_document(&track.uri, record) {
-                            return Ok(Some(doc));
+                        if let Some(doc) = into_document(&track.uri, record)? {
+                            if !doc.lines.is_empty() {
+                                return Ok(Some(doc));
+                            }
+                            plain_fallback.get_or_insert(doc);
                         }
                     }
                 }
@@ -193,27 +229,50 @@ impl LyricSource for LrclibClient {
         // The base-name search broadens recall; scoring re-tightens precision.
         let search_title =
             strip_feature_annotations(&track.title).unwrap_or_else(|| track.title.clone());
-        let records = self
-            .search_records(&search_title, &track.artist)
-            .await
-            .unwrap_or_default();
+        let records = self.search_records(&search_title, &track.artist).await?;
 
         if let Some(best) = pick_best_record(records, track, &track_variants, duration_sec) {
-            if let Some(doc) = into_document(&track.uri, best) {
-                return Ok(Some(doc));
+            if let Some(doc) = into_document(&track.uri, best)? {
+                if !doc.lines.is_empty() {
+                    return Ok(Some(doc));
+                }
+                plain_fallback.get_or_insert(doc);
             }
         }
 
-        Ok(None)
+        Ok(plain_fallback)
     }
 }
 
-fn into_document(uri: &str, record: LrclibRecord) -> Option<LyricDocument> {
-    let synced = record.synced_lyrics.as_deref()?.trim();
-    if synced.is_empty() {
-        return None;
+fn into_document(uri: &str, record: LrclibRecord) -> Result<Option<LyricDocument>> {
+    if let Some(synced) = record
+        .synced_lyrics
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+    {
+        if let Ok(doc) = parser::parse_lrc(uri, synced, LyricSourceKind::Lrclib) {
+            if !doc.lines.is_empty() {
+                return Ok(Some(doc));
+            }
+        }
     }
-    parser::parse_lrc(uri, synced, LyricSourceKind::Lrclib).ok()
+    let Some(plain) = record.plain_lyrics.filter(|s| !s.trim().is_empty()) else {
+        if record
+            .synced_lyrics
+            .as_deref()
+            .is_some_and(|s| !s.trim().is_empty())
+        {
+            anyhow::bail!("LRCLIB returned invalid synchronized lyrics");
+        }
+        return Ok(None);
+    };
+    Ok(Some(LyricDocument {
+        track_key: uri.to_owned(),
+        source: LyricSourceKind::Lrclib,
+        lines: vec![],
+        raw_lrc: String::new(),
+        plain_lyrics: Some(plain),
+    }))
 }
 
 fn pick_best_record(
@@ -236,6 +295,9 @@ fn pick_best_record(
             r.synced_lyrics
                 .as_deref()
                 .is_some_and(|s| !s.trim().is_empty())
+                || r.plain_lyrics
+                    .as_deref()
+                    .is_some_and(|s| !s.trim().is_empty())
         })
         .filter_map(|r| {
             let score = score_candidate(
@@ -251,7 +313,17 @@ fn pick_best_record(
         })
         .collect();
 
-    scored.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
+    scored.retain(|(score, _)| *score >= MIN_SEARCH_SCORE);
+    scored.sort_by_key(|(score, record)| {
+        std::cmp::Reverse((
+            record
+                .synced_lyrics
+                .as_deref()
+                .and_then(|raw| parser::parse_lrc("", raw, LyricSourceKind::Lrclib).ok())
+                .is_some_and(|doc| !doc.lines.is_empty()),
+            *score,
+        ))
+    });
     scored
         .into_iter()
         .next()
@@ -614,6 +686,93 @@ const VARIANT_KEYWORDS: &[(&str, VariantTag)] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn track() -> TrackRef {
+        TrackRef {
+            source: crate::domain::PlayerSource::SpotifyMacOs,
+            uri: "test".into(),
+            title: "Song".into(),
+            artist: "Artist".into(),
+            album: None,
+            duration_ms: 180_000,
+            artwork_url: None,
+        }
+    }
+
+    fn server(responses: Vec<(u16, &'static str)>) -> LrclibClient {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for (status, body) in responses {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0; 8192];
+                stream.read(&mut request).unwrap();
+                write!(stream, "HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+            }
+        });
+        LrclibClient {
+            http: reqwest::Client::new(),
+            base_url,
+        }
+    }
+
+    #[tokio::test]
+    async fn only_confirmed_empty_lookup_is_a_miss() {
+        let client = server(vec![(404, "{}"), (200, "[]")]);
+        assert!(client.fetch(&track()).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn search_failures_are_retryable_errors_not_misses() {
+        for (status, body) in [(429, "{}"), (503, "{}"), (200, "broken json")] {
+            let client = server(vec![(404, "{}"), (status, body)]);
+            let error = client.fetch(&track()).await.unwrap_err();
+            if status == 429 {
+                assert!(error
+                    .downcast_ref::<LrclibHttpError>()
+                    .unwrap()
+                    .is_rate_limit());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn disconnected_search_is_an_error() {
+        let client = server(vec![(404, "{}")]);
+        assert!(client.fetch(&track()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn plain_signature_is_retained_when_no_synced_match_exists() {
+        let client = server(vec![
+            (200, r#"{"plainLyrics":"First line\nSecond line"}"#),
+            (200, "[]"),
+        ]);
+        let doc = client.fetch(&track()).await.unwrap().unwrap();
+        assert_eq!(doc.plain_lyrics.as_deref(), Some("First line\nSecond line"));
+        assert!(doc.lines.is_empty());
+    }
+
+    #[tokio::test]
+    async fn synced_search_wins_over_plain_signature_and_plain_search() {
+        let client = server(vec![
+            (200, r#"{"plainLyrics":"Untimed"}"#),
+            (
+                200,
+                r#"[{"trackName":"Song","artistName":"Artist","duration":180,"plainLyrics":"Untimed"},{"trackName":"Song","artistName":"Artist","duration":180,"syncedLyrics":"[00:01.00]Timed"}]"#,
+            ),
+        ]);
+        let doc = client.fetch(&track()).await.unwrap().unwrap();
+        assert_eq!(doc.lines[0].text, "Timed");
+        assert!(doc.plain_lyrics.is_none());
+    }
+
+    #[test]
+    fn malformed_synced_text_is_not_a_miss() {
+        let record = serde_json::from_str(r#"{"syncedLyrics":"broken timing"}"#).unwrap();
+        assert!(into_document("test", record).is_err());
+    }
 
     #[test]
     fn strips_parenthesized_feature_suffix() {

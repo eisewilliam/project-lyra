@@ -1,15 +1,12 @@
 use crate::tray;
 use crate::ui_state::UiState;
 use crate::AppState;
-use lyra_core::{
-    domain::{NotFoundReason, RenderSnapshot, SettingsSnapshot},
-    lyrics::LyricSource,
-};
+use lyra_core::domain::{RenderSnapshot, SettingsSnapshot};
 use serde::{Deserialize, Serialize};
 use std::sync::MutexGuard;
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::runtime::LyraRuntime;
+use lyra_core::runtime::LyraRuntime;
 
 /// Lock the runtime mutex, recovering the guard if a previous holder panicked.
 /// A poisoned lock should degrade gracefully (stale-but-usable state) rather
@@ -185,7 +182,12 @@ pub fn get_all_lyrics(state: State<'_, AppState>) -> Vec<String> {
 }
 
 #[tauri::command]
-pub fn get_all_lines(state: State<'_, AppState>) -> Vec<crate::runtime::LyricLineSlim> {
+pub fn get_plain_lyrics(state: State<'_, AppState>) -> Option<String> {
+    lock_runtime(&state).all_plain_lyrics()
+}
+
+#[tauri::command]
+pub fn get_all_lines(state: State<'_, AppState>) -> Vec<lyra_core::runtime::LyricLineSlim> {
     lock_runtime(&state).all_lines_slim()
 }
 
@@ -288,70 +290,13 @@ pub async fn clear_lyrics_cache(state: tauri::State<'_, AppState>) -> Result<(),
 
 #[tauri::command]
 pub async fn refresh_lyrics(state: State<'_, AppState>) -> Result<(), String> {
-    // 1. Grab track + cache state without holding the lock across await.
-    let (track, is_neg, already_cached) = {
-        let rt = state.runtime.lock().map_err(|e| e.to_string())?;
-        let track = rt.current_track();
-        let (neg, cached) = track
-            .as_ref()
-            .map(|t| (rt.is_negative(&t.uri), rt.get_cached(&t.uri).is_some()))
-            .unwrap_or((false, false));
-        (track, neg, cached)
-    };
-
-    let Some(track) = track else { return Ok(()) };
-    if is_neg || already_cached {
-        return Ok(());
-    }
-
-    // 2. Claim the URI so concurrent callers skip the fetch.
-    {
-        let mut in_flight = state.fetch_in_flight.lock().map_err(|e| e.to_string())?;
-        if !in_flight.insert(track.uri.clone()) {
-            return Ok(());
-        }
-    }
-
-    // 3. Network call — no lock held.
-    let result = state.lrclib.fetch(&track).await;
-
-    // 4. Release in-flight claim.
-    if let Ok(mut in_flight) = state.fetch_in_flight.lock() {
-        in_flight.remove(&track.uri);
-    }
-
-    // 5. Re-lock to persist result.
-    //
-    // A confirmed miss (`Ok(None)`) writes a `.nomatch` sentinel so we don't
-    // re-query forever. A network/transport error is recorded in-memory only
-    // — poisoning the cache for transient failures was the worst behaviour
-    // in the old code. Status flips to `NotFound { NetworkError }` until the
-    // user hits Retry or restarts the app.
-    let mut rt = state.runtime.lock().map_err(|e| e.to_string())?;
-    match result {
-        Ok(Some(doc)) => rt.store_lyrics(doc),
-        Ok(None) => rt.store_negative(&track.uri),
-        Err(_) => rt.store_transient_error(&track.uri, NotFoundReason::NetworkError),
-    }
-    Ok(())
+    state.lyrics.refresh(&state.runtime).await
 }
 
-/// Force a re-fetch for the currently playing track, ignoring any negative
-/// or transient cache entries. Used by the UI Retry button.
+/// Retry the currently playing track through the core lyric coordinator.
 #[tauri::command]
 pub async fn force_refresh_lyrics(state: State<'_, AppState>) -> Result<(), String> {
-    let uri = {
-        let rt = state.runtime.lock().map_err(|e| e.to_string())?;
-        rt.current_track().map(|t| t.uri)
-    };
-    let Some(uri) = uri else { return Ok(()) };
-
-    {
-        let mut rt = state.runtime.lock().map_err(|e| e.to_string())?;
-        rt.forget_track(&uri);
-    }
-
-    refresh_lyrics(state).await
+    state.lyrics.force_refresh(&state.runtime).await
 }
 use lyra_core::domain::SettingsPatch;
 

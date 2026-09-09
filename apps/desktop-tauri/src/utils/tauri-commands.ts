@@ -152,3 +152,7 @@ export function clearMainVibrancy(): Promise<void> {
 export function applyMainVibrancy(): Promise<void> {
   return invoke('apply_main_vibrancy');
 }
+
+export function getPlainLyrics(): Promise<string | null> {
+  return invoke<string | null>('get_plain_lyrics');
+}
