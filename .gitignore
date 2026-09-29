@@ -34,3 +34,17 @@ apps/desktop-tauri/src-tauri/licenses.html
 # SonarQube
 .scannerwork/
 .sonar/
+
+# Playwright output
+test-results/
+playwright-report/
+
+# Local design working files: brand docs, mockups, exploration output, external designer briefs
+docs/brand-explorations/
+docs/BRAND.md
+docs/mockups/
+docs/BRAND_DESIGNER_BRIEF*.md
+
+# Python
+__pycache__/
+*.pyc
