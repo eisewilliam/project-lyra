@@ -707,7 +707,7 @@ mod tests {
             for (status, body) in responses {
                 let (mut stream, _) = listener.accept().unwrap();
                 let mut request = [0; 8192];
-                stream.read(&mut request).unwrap();
+                let _bytes_read = stream.read(&mut request).unwrap();
                 write!(stream, "HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
             }
         });
