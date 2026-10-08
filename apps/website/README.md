@@ -4,7 +4,7 @@ The Lyra marketing site, built on the accepted Direction 3 (Resonance): a landin
 
 ## Run and verify
 
-From `apps/landing`:
+From `apps/website`:
 
 ```sh
 npm install
