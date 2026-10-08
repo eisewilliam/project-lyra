@@ -44,6 +44,9 @@ docs/brand-explorations/
 docs/BRAND.md
 docs/mockups/
 docs/BRAND_DESIGNER_BRIEF*.md
+docs/landing-explorations/
+apps/website/design/
+apps/website/design-qa.md
 
 # Python
 __pycache__/
