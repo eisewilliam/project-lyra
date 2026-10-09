@@ -43,6 +43,17 @@ pub fn compute_render(
         };
     };
 
+    if doc.plain_lyrics.is_some() && doc.lines.is_empty() {
+        return RenderSnapshot {
+            playback,
+            lyrics_status: LyricsStatus::Unsynced,
+            active_line_index: None,
+            line_progress: None,
+            visible_lines: vec![],
+            active_line_words: None,
+        };
+    }
+
     let raw_pos = playback.position_ms.unwrap_or(0);
     // Offset-corrected position used for *line selection*: a positive offset
     // delays lyrics, so a line at lyric-time T becomes active at playback-time
@@ -234,6 +245,7 @@ mod tests {
         }
 
         LyricDocument {
+            plain_lyrics: None,
             track_key: "test".into(),
             source: LyricSourceKind::Lrclib,
             lines,

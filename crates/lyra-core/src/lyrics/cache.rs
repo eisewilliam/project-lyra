@@ -8,7 +8,7 @@ use anyhow::Result;
 /// `.nomatch` will be re-fetched once the sentinel file is older than this —
 /// covers the case where LRCLib gains lyrics for a track after a first miss.
 const NEGATIVE_TTL_SECS: u64 = 14 * 24 * 60 * 60;
-const NEGATIVE_CACHE_VERSION: &str = "v2";
+const NEGATIVE_CACHE_VERSION: &str = "v3";
 
 #[derive(Clone)]
 pub struct LyricCache {
@@ -51,7 +51,45 @@ impl LyricCache {
             }
         }
 
-        None
+        let plain_path = self
+            .cache_dir
+            .join(format!("{}.txt", Self::stem(track_key)));
+        let plain = std::fs::read_to_string(plain_path).ok()?;
+        if plain.trim().is_empty() {
+            return None;
+        }
+        Some(LyricDocument {
+            track_key: track_key.to_owned(),
+            source: LyricSourceKind::Lrclib,
+            lines: vec![],
+            raw_lrc: String::new(),
+            plain_lyrics: Some(plain),
+        })
+    }
+
+    pub fn put_document(&self, doc: &LyricDocument) -> Result<()> {
+        if let Some(plain) = doc.plain_lyrics.as_ref().filter(|_| doc.lines.is_empty()) {
+            std::fs::create_dir_all(&self.cache_dir)?;
+            std::fs::write(
+                self.cache_dir
+                    .join(format!("{}.txt", Self::stem(&doc.track_key))),
+                plain,
+            )?;
+            let timed_path = self.cache_dir.join(Self::filename(&doc.track_key));
+            if timed_path.exists() {
+                std::fs::remove_file(timed_path)?;
+            }
+        } else {
+            self.put(&doc.track_key, &doc.raw_lrc)?;
+            let plain_path = self
+                .cache_dir
+                .join(format!("{}.txt", Self::stem(&doc.track_key)));
+            if plain_path.exists() {
+                std::fs::remove_file(plain_path)?;
+            }
+        }
+        self.clear_negative(&doc.track_key)?;
+        Ok(())
     }
 
     pub fn put(&self, track_key: &str, raw_lrc: &str) -> Result<()> {
@@ -137,6 +175,35 @@ mod tests {
         let cache = LyricCache::new(path.as_path());
         cache.ensure_dirs().unwrap();
         (cache, path)
+    }
+
+    #[test]
+    fn plain_cache_roundtrips_without_timing_and_manual_override_wins() {
+        let (cache, path) = tmp_cache();
+        let key = "spotify:track:plain";
+        let doc = LyricDocument {
+            track_key: key.into(),
+            source: LyricSourceKind::Lrclib,
+            lines: vec![],
+            raw_lrc: String::new(),
+            plain_lyrics: Some("First\n\nLast".into()),
+        };
+        cache.mark_negative(key).unwrap();
+        cache.put_document(&doc).unwrap();
+        assert!(!cache.is_negative(key));
+        let read = cache.get(key).unwrap();
+        assert_eq!(read.plain_lyrics, doc.plain_lyrics);
+        assert!(read.lines.is_empty());
+        std::fs::write(
+            path.as_path()
+                .join("lyrics_overrides")
+                .join(LyricCache::filename(key)),
+            "[00:01.00]Override",
+        )
+        .unwrap();
+        let read = cache.get(key).unwrap();
+        assert_eq!(read.lines[0].text, "Override");
+        assert!(read.plain_lyrics.is_none());
     }
 
     #[test]

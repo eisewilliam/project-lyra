@@ -18,6 +18,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   handleMouseDown,
   hasArtwork,
   hasTrack,
+  hasSyncedLyrics,
   isPlaying,
   lyricOffsetMs,
   offsetLabel,
@@ -46,6 +47,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   handleMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
   hasArtwork: boolean;
   hasTrack: boolean;
+  hasSyncedLyrics: boolean;
   isPlaying: boolean;
   lyricOffsetMs: number;
   offsetLabel: string;
@@ -105,6 +107,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
             ) : (
               <TrackInfo
                 hasTrack={hasTrack}
+                hasSyncedLyrics={hasSyncedLyrics}
                 onRetryLyrics={onRetryLyrics}
                 selectValue={selectValue}
                 setSelectValue={setSelectValue}

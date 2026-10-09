@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:macos-universal": "tauri build --target universal-apple-darwin",
     "lint": "eslint .",
     "preview": "vite preview",
     "tauri": "tauri",

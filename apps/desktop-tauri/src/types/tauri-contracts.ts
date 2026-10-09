@@ -40,6 +40,7 @@ export type NotFoundReason = 'Miss' | 'NetworkError' | 'RateLimit';
 export type LyricsStatus =
   | 'Loading'
   | 'Ready'
+  | 'Unsynced'
   | { NotFound: { reason: NotFoundReason } }
   | { Error: string };
 

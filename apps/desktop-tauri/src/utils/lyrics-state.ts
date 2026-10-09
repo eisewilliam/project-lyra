@@ -8,7 +8,8 @@ export type LyricsPlaceholderState =
   | 'loading'
   | 'empty'
   | 'error'
-  | 'ready';
+  | 'ready'
+  | 'unsynced';
 
 export function isLyricsError(status: LyricsStatus): status is { Error: string } {
   return typeof status === 'object' && status !== null && 'Error' in status;
@@ -63,6 +64,8 @@ export function resolveLyricsSurfaceState({
   if (isLyricsNotFound(lyricsStatus)) {
     return isRetryableNotFound(lyricsStatus) ? 'error' : 'empty';
   }
+
+  if (lyricsStatus === 'Unsynced') return 'unsynced';
 
   if (!hasContent) {
     return 'loading';

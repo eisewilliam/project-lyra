@@ -2,6 +2,7 @@ pub mod cache;
 pub mod lrclib;
 pub mod offsets;
 pub mod parser;
+pub mod refresh;
 
 use crate::domain::{LyricDocument, TrackRef};
 use anyhow::Result;

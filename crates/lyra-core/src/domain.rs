@@ -67,6 +67,9 @@ pub struct LyricDocument {
     pub source: LyricSourceKind,
     pub lines: Vec<LyricLine>,
     pub raw_lrc: String,
+    /// Untimed provider text; never converted into synthetic timestamps.
+    #[serde(default)]
+    pub plain_lyrics: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,6 +93,7 @@ pub enum NotFoundReason {
 pub enum LyricsStatus {
     Loading,
     Ready,
+    Unsynced,
     NotFound { reason: NotFoundReason },
     Error(String),
 }

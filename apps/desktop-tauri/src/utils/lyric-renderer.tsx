@@ -20,6 +20,7 @@ export function shouldShowTrackIntro({
     hasTrack &&
     !hasActiveLyric &&
     trackTitle.length > 0 &&
+    lyricsStatus !== 'Unsynced' &&
     !isLyricsError(lyricsStatus) &&
     !isLyricsNotFound(lyricsStatus)
   );

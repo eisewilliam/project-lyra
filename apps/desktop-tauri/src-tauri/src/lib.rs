@@ -1,13 +1,12 @@
 mod commands;
 mod linux;
 mod macos;
-mod runtime;
 mod tray;
 mod ui_state;
 
 use lyra_core::domain::PlaybackState;
-use lyra_core::lyrics::lrclib::LrclibClient;
-use runtime::LyraRuntime;
+use lyra_core::lyrics::refresh::LyricsRefresh;
+use lyra_core::runtime::LyraRuntime;
 use std::collections::HashSet;
 use std::sync::Mutex;
 use tauri::{Emitter, EventTarget, Manager};
@@ -15,12 +14,9 @@ use ui_state::{UiState, UiStateStore};
 
 pub struct AppState {
     pub runtime: Mutex<LyraRuntime>,
-    /// Shared HTTP client — lives outside the Mutex so commands can
-    /// release `runtime` before awaiting network calls.
-    pub lrclib: LrclibClient,
+    /// Core provider coordinator; network requests run outside the runtime lock.
+    pub lyrics: LyricsRefresh,
     pub ui: UiStateStore,
-    /// URIs currently being fetched — prevents concurrent duplicate requests.
-    pub fetch_in_flight: Mutex<HashSet<String>>,
     /// Transient, non-persisted visibility. Windows start hidden in
     /// tauri.conf.json, and auto-hide can hide a surface without changing the
     /// user's persisted "show this surface" preference.
@@ -88,8 +84,7 @@ impl RuntimeSurfaceVisibility {
 }
 
 fn app_support_dir() -> std::path::PathBuf {
-    // Must match `runtime::app_support_dir` exactly. Keep the application
-    // support directory lowercase so all persisted stores share one path.
+    // One host-owned path is injected into every persistence store.
     dirs_next::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("lyra")
@@ -574,6 +569,7 @@ fn lyrics_status_disc(s: &lyra_core::domain::LyricsStatus) -> u8 {
     match s {
         Loading => 0,
         Ready => 1,
+        Unsynced => 4,
         NotFound { .. } => 2,
         Error(_) => 3,
     }
@@ -640,10 +636,9 @@ pub fn run() {
             let initial = ui.snapshot();
 
             app.manage(AppState {
-                runtime: Mutex::new(LyraRuntime::new()),
-                lrclib: LrclibClient::new(),
+                runtime: Mutex::new(LyraRuntime::new_in(dir.clone())),
+                lyrics: LyricsRefresh::default(),
                 ui,
-                fetch_in_flight: Mutex::new(HashSet::new()),
                 surface_visibility: RuntimeSurfaceVisibility::new_all_hidden(),
             });
 
@@ -803,6 +798,7 @@ pub fn run() {
             commands::get_render_snapshot,
             commands::get_all_lyrics,
             commands::get_all_lines,
+            commands::get_plain_lyrics,
             commands::get_settings,
             commands::get_lyric_offset,
             commands::set_lyric_offset,

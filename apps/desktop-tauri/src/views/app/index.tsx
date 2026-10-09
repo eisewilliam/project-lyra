@@ -48,6 +48,7 @@ const ensureMainWindowReady = makeWindowReady(SURFACE_LABEL);
 function App() {
   const {
     lyrics,
+    plainLyrics,
     activeLine,
     isPlaying,
     togglePlaying,
@@ -193,6 +194,7 @@ function App() {
       />
 
       <PlayerSidebar
+        hasSyncedLyrics={lyricsStatus === 'Ready'}
         artworkError={artworkError}
         artworkSrc={artworkSrc}
         baselineRef={baselineRef}
@@ -217,7 +219,7 @@ function App() {
         setPositionMs={setPositionMs}
         setSelectValue={setSelectValue}
         setShowDelayControl={setShowDelayControl}
-        showDelayControl={showDelayControl}
+        showDelayControl={showDelayControl && lyricsStatus === 'Ready'}
         snapshotReady={snapshotReady}
         track={track}
       />
@@ -226,7 +228,8 @@ function App() {
         activeLine={activeLine}
         activeLineWords={activeLineWords}
         karaokeMode={karaokeMode}
-        lyrics={lyrics}
+        lyrics={lyricsStatus === 'Ready' ? lyrics : []}
+        plainLyrics={plainLyrics}
         lyricsContainerRef={lyricsContainerRef}
         lyricsPaneRef={lyricsPaneRef}
         lyricsRef={lyricsRef}

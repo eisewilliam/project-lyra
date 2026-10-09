@@ -81,6 +81,14 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
             _ => {}
         });
 
+    // macOS templates use only alpha, so keep the app icon's tile out of the tray.
+    #[cfg(target_os = "macos")]
+    {
+        tray = tray.icon(tauri::image::Image::from_bytes(include_bytes!(
+            "../icons/tray-template.png"
+        ))?);
+    }
+    #[cfg(not(target_os = "macos"))]
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
     }

@@ -8,6 +8,8 @@ export function getCompactPlaceholderLabel(state: LyricsPlaceholderState) {
       return 'Waiting for playback';
     case 'loading':
       return 'Loading lyrics';
+    case 'unsynced':
+      return 'No synced lyrics · Plain lyrics in main window';
     case 'empty':
       return 'No synced lyrics';
     case 'error':

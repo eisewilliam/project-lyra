@@ -9,6 +9,7 @@ import {
 } from '@/utils/playback-sync';
 import {
   getAllLines,
+  getPlainLyrics,
   getLyricOffset,
   playbackSeekMs,
   refreshLyrics,
@@ -22,6 +23,7 @@ export function useLyricsPlayback({
 }: {
   ensureWindowReady: () => Promise<void>;
 }) {
+  const [plainLyrics, setPlainLyrics] = useState<string | null>(null);
   const [lyrics, setLyrics] = useState<LineRef[]>([]);
   const [activeLine, setActiveLine] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -83,6 +85,7 @@ export function useLyricsPlayback({
     if (uriChanged) {
       lastUriRef.current = uri;
       setLyrics([]);
+      setPlainLyrics(null);
       setActiveLine(null);
       activeWordsKeyRef.current = '';
       setActiveLineWords([]);
@@ -144,12 +147,28 @@ export function useLyricsPlayback({
       refreshLyrics().catch(noop);
     }
 
-    if (uri && snap.lyrics_status === 'Ready' && lyricsLoadedUriRef.current !== uri) {
-      lyricsLoadedUriRef.current = uri;
-      getAllLines()
-        .then((lines) => setLyrics(lines.map((l) => ({ start_ms: l.start_ms, text: l.text }))))
-        .catch(noop);
+    const contentKey = `${uri}:${snap.lyrics_status}`;
+    if (uri && (snap.lyrics_status === 'Ready' || snap.lyrics_status === 'Unsynced')
+      && lyricsLoadedUriRef.current !== contentKey) {
+      lyricsLoadedUriRef.current = contentKey;
+      const request = snap.lyrics_status === 'Unsynced'
+        ? getPlainLyrics().then((plain) => {
+          if (lastUriRef.current !== uri || lyricsLoadedUriRef.current !== contentKey) return;
+          setPlainLyrics(plain);
+          setLyrics([]);
+        })
+        : getAllLines().then((lines) => {
+          if (lastUriRef.current !== uri || lyricsLoadedUriRef.current !== contentKey) return;
+          setPlainLyrics(null);
+          setLyrics(lines.map((l) => ({ start_ms: l.start_ms, text: l.text })));
+        });
+      request.catch(() => {
+        if (lyricsLoadedUriRef.current === contentKey) lyricsLoadedUriRef.current = '';
+      });
+    } else if (snap.lyrics_status === 'Loading') {
+      lyricsLoadedUriRef.current = '';
     }
+
   }, [isDragging]);
 
   usePlaybackSnapshot({
@@ -164,6 +183,7 @@ export function useLyricsPlayback({
 
   return {
     lyrics,
+    plainLyrics,
     activeLine,
     isPlaying,
     setIsPlaying,

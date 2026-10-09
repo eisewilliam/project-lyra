@@ -31,6 +31,7 @@ export function KaraokePlaceholder({
           <LyricsPlaceholderIcon state={state} className="karaoke-placeholder-icon" />
         </span>
       </span>
+      {state === 'unsynced' && <span>No synced lyrics</span>}
       {secondaryCue}
     </output>
   );
