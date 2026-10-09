@@ -60,6 +60,13 @@ function staffLines(layout, { center, spread = () => 1, from = -0.04, to = 1.04,
 }
 
 // Frame for a symbol sitting on the staff at normalised x.
+// Every figure sits in the music column to the right of the copy. On phones
+// the copy sits below the light, so the figures simply favour the right half.
+function rightColumn(layout, leftReach) {
+  const start = layout.compact ? 0.32 : layout.copyRight + 0.04;
+  return start + (leftReach * layout.unit) / layout.width;
+}
+
 function frameAt(layout, staff, xn, scale = 1) {
   const { width, cy, unit } = layout;
   const spread = staff.spread ? staff.spread(xn) : 1;
@@ -112,7 +119,7 @@ function bassClef(layout) {
     center: xn => 0.7 - 2.8 * smooth(0.42, 1.08, xn) + 0.45 * Math.sin(xn * Math.PI * 1.25),
     spread: xn => 1 + 0.3 * xn,
   };
-  const frame = frameAt(layout, staff, layout.compact ? 0.2 : 0.15, 1.9);
+  const frame = frameAt(layout, staff, rightColumn(layout, 1.4), 1.9);
   const curve = bezierPath(frame, [0.12, -1.28], [
     [0.05, -2.3, 1.95, -2.55, 2.12, -1.15],
     [2.3, 0.45, 1.0, 1.95, -0.55, 2.8],
@@ -129,7 +136,7 @@ function bassClef(layout) {
 
 function trebleClef(layout) {
   const staff = { center: () => 0 };
-  const frame = frameAt(layout, staff, layout.compact ? 0.17 : 0.12, 1.2);
+  const frame = frameAt(layout, staff, rightColumn(layout, 1.8), 1.2);
   const curve = bezierPath(frame, [0.28, 1.02], [
     [-0.3, 1.0, -0.38, 0.2, 0.2, 0.12],
     [1.12, 0.08, 1.2, 1.78, 0.15, 1.88],
@@ -150,7 +157,9 @@ function trebleClef(layout) {
 function beamedNotes(layout) {
   const staff = { center: xn => -0.7 * Math.sin(Math.PI * xn) };
   const { unit, width } = layout;
-  const groupX = layout.compact ? 0.6 : 0.64;
+  // Clear of the copy on wide screens, where the staff runs behind it.
+  const start = rightColumn(layout, 4.6);
+  const groupX = Math.max(start, Math.min(1 - (5.6 * unit) / width, (start + 1) / 2));
   const offsets = [-3.9, -1.3, 1.3, 3.9];
   const pitches = [1.5, 0.5, -0.5, 0];
   const notes = offsets.map((offset, index) => {
@@ -189,7 +198,7 @@ function beamedNotes(layout) {
 function fermata(layout) {
   const staff = { center: xn => 1.5 * Math.sin(Math.PI * 3 * xn + 0.4) * Math.exp(-2.2 * xn) };
   const { unit, width } = layout;
-  const bar = layout.compact ? 0.8 : 0.84;
+  const bar = Math.max(layout.compact ? 0.82 : 0.86, rightColumn(layout, 2.8));
   const lines = staffLines(layout, { ...staff, to: bar, dur: 2.8 });
   const barFrame = frameAt(layout, staff, bar, 1);
   const thinFrame = frameAt(layout, staff, bar - (0.62 * unit) / width, 1);

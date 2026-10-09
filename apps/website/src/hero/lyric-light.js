@@ -66,7 +66,7 @@ float protect(vec2 p) {
   vec2 half_size = (uProtect.zw - uProtect.xy) * 0.5;
   vec2 d = abs(p - center) - half_size;
   float dist = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
-  return mix(0.1, 1.0, smoothstep(-12.0 * uDpr, 72.0 * uDpr, dist));
+  return mix(0.06, 1.0, smoothstep(8.0 * uDpr, 120.0 * uDpr, dist));
 }
 
 void main() {
@@ -248,19 +248,33 @@ export class LyricLight {
     return texture;
   }
 
-  // Layout comes from the DOM: the hero size and the copy block the light avoids.
-  resize(width, height, copyRect) {
+  // Layout comes from the DOM: the hero size, the copy block the light dims
+  // behind, and the headline's centre line.
+  // Wide screens set the headline into the staff: the staff runs through it
+  // and the symbols sit either side of the copy. Phones put the light above.
+  resize(width, height, copyRect, headlineY) {
     const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR) * this.quality;
-    const compact = width < 700;
-    const stageTop = copyRect.bottom + (compact ? 28 : 40);
-    const stageBottom = height - (compact ? 40 : 56);
-    const stageHeight = Math.max(160, stageBottom - stageTop);
-    const unit = compact ? Math.min(32, Math.max(28, stageHeight / 8.2)) : Math.max(26, Math.min(46, width * 0.024 + 10, stageHeight / 8.2));
+    // Phones and portrait tablets (matching the CSS aspect query) stack light over copy.
+    const compact = width < 720 || height > width * 1.1;
+    let unit;
+    let cy;
+    if (compact) {
+      const stageTop = 72;
+      const stageHeight = Math.max(160, copyRect.top - 24 - stageTop);
+      unit = Math.max(24, Math.min(48, width * 0.07, stageHeight / 8.4));
+      cy = stageTop + stageHeight * 0.5;
+    } else {
+      unit = Math.max(30, Math.min(62, width * 0.03 + 14, (height - 72) / 9.5));
+      // Centre the staff on the whole copy block, nudged towards the headline.
+      cy = (copyRect.top + copyRect.bottom) / 2 * 0.7 + headlineY * 0.3;
+    }
     const pitch = unit / 2;
-    let cy = stageTop + stageHeight * (compact ? 0.52 : 0.5);
     cy = (Math.round(cy / pitch - 0.5) + 0.5) * pitch;
     this.size = { width, height, dpr };
-    this.layout = { width, height, unit, pitch, cy, compact };
+    this.layout = {
+      width, height, unit, pitch, cy, compact,
+      copyLeft: copyRect.left / width, copyRight: copyRect.right / width,
+    };
     this.protectRect = [copyRect.left, copyRect.top, copyRect.right, copyRect.bottom];
     this.canvas.width = Math.round(width * dpr);
     this.canvas.height = Math.round(height * dpr);

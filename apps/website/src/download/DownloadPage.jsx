@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion } from 'motion/react';
 import { Check, Copy } from '@phosphor-icons/react';
 import { PlatformIcon } from '../components/DownloadButton.jsx';
 import { ExternalLink } from '../components/router.jsx';
@@ -6,11 +7,13 @@ import { StaffLines } from '../components/StaffLines.jsx';
 import { platformDetails, platformNames, playerApps, playersPlanned, siteConfig } from '../site-config.js';
 
 const ORDER = ['macos', 'windows', 'linux'];
+const ease = [0.2, 0.8, 0.2, 1];
+const rowIn = { hidden: { opacity: 0, y: 18 }, shown: { opacity: 1, y: 0, transition: { duration: 0.55, ease } } };
 
 function PlatformRow({ id, detected, featured }) {
   const url = siteConfig.downloads[id];
   const details = platformDetails[id];
-  return <article className={'platform-row' + (featured ? ' is-featured' : '')} aria-labelledby={id + '-name'}>
+  return <motion.article className={'platform-row' + (featured ? ' is-featured' : '')} aria-labelledby={id + '-name'} variants={rowIn}>
     <div className="platform-name">
       <PlatformIcon platform={id} className="platform-icon" />
       <div>
@@ -28,7 +31,7 @@ function PlatformRow({ id, detected, featured }) {
         ? <a className="button button-primary button-medium" href={url}>Download for {platformNames[id]}</a>
         : <p className="pending-release">Coming soon</p>}
     </div>
-  </article>;
+  </motion.article>;
 }
 
 const buildSteps = [
@@ -77,9 +80,10 @@ export function DownloadPage({ platform: detected }) {
       {!detected && <p className="device-note">Lyra is a desktop app. Open this page on your Mac, Windows or Linux computer to download it.</p>}
     </section>
 
-    <section className="platform-list" aria-label="Downloads by platform">
+    <motion.section className="platform-list" aria-label="Downloads by platform" initial="hidden" animate="shown"
+      variants={{ shown: { transition: { staggerChildren: 0.08, delayChildren: 0.15 } } }}>
       {order.map(id => <PlatformRow key={id} id={id} detected={id === detected} featured={id === highlight} />)}
-    </section>
+    </motion.section>
 
     <section className="build-source" id="build-from-source" aria-labelledby="build-title">
       <div className="build-copy">

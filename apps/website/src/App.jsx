@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { MotionConfig } from 'motion/react';
 import '@fontsource-variable/geist';
 import '@fontsource-variable/geist/wght-italic.css';
 import { RouterProvider, useRouter } from './components/router.jsx';
@@ -24,5 +25,6 @@ function Routes() {
 }
 
 export function App() {
-  return <RouterProvider><Routes /></RouterProvider>;
+  // Motion follows the visitor's reduced-motion setting: transforms are skipped.
+  return <MotionConfig reducedMotion="user"><RouterProvider><Routes /></RouterProvider></MotionConfig>;
 }

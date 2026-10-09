@@ -1,19 +1,9 @@
-// Original demo song written for this page. Timings mimic a synced LRC file:
-// each line starts at `time`, and words are spread across most of the line.
-const LINES = [
-  [0.0, 'Let the quiet fill the room'],
-  [3.6, 'Leave the windows open wide'],
-  [7.2, 'Carry a little light with you'],
-  [10.8, 'Keep a little song inside'],
-  [14.4, 'When the city settles down'],
-  [18.0, 'And the day begins to fade'],
-  [21.6, 'Hum it back to me slowly'],
-  [25.2, 'Every word a lantern'],
-  [28.8, 'We keep a light between us'],
-  [32.4, 'And still the melody stays'],
-];
-
-export const DURATION = 36;
+// Public-domain songs used as demos. Timings mimic a synced LRC file: each
+// line starts at `time`, and words are spread across most of the line.
+// Only use lyrics whose copyright has expired (traditional, or published
+// long enough ago); never add lyrics from copyrighted recordings or arrangements.
+// Each song has its own artwork palette: the surfaces take their colour
+// from the music, as Lyra does from album artwork. Brand teal stays Lyra's.
 
 function timeWords(text, start, end) {
   const words = text.split(' ');
@@ -29,17 +19,70 @@ function timeWords(text, start, end) {
   });
 }
 
-export const demoSong = {
-  title: 'Carry a Little Light',
-  artist: 'Lyra demo',
-  lines: LINES.map(([time, text], index) => {
-    const end = index + 1 < LINES.length ? LINES[index + 1][0] : DURATION;
-    return { time, end, text, words: timeWords(text, time, end) };
-  }),
-};
+function song({ id, title, credit, art, palette, step, lines }) {
+  const duration = lines.length * step;
+  return {
+    id, title, art, palette, duration,
+    artist: credit,
+    lines: lines.map((text, index) => {
+      const time = index * step;
+      return { time, end: time + step, text, words: timeWords(text, time, time + step) };
+    }),
+  };
+}
 
-export function lineIndexAt(time) {
+export const songs = [
+  song({
+    id: 'shenandoah', title: 'Shenandoah', credit: 'Traditional', art: 'sun', step: 3.8,
+    palette: { deep: '#1f0d05', a: '#f2a33a', b: '#c8441f', c: '#ffd9a1' },
+    lines: [
+      'Oh Shenandoah, I long to see you',
+      'Away, you rolling river',
+      'Oh Shenandoah, I long to see you',
+      'Away, I’m bound away',
+      'Across the wide Missouri',
+      'Oh Shenandoah, I love your daughter',
+      'Away, you rolling river',
+      'For her I’d cross your roaming waters',
+    ],
+  }),
+  song({
+    id: 'greensleeves', title: 'Greensleeves', credit: 'Traditional, 16th century', art: 'bloom', step: 3.6,
+    palette: { deep: '#170926', a: '#e0479e', b: '#7140e6', c: '#ffc2e4' },
+    lines: [
+      'Alas, my love, you do me wrong',
+      'To cast me off discourteously',
+      'For I have loved you well and long',
+      'Delighting in your company',
+      'Greensleeves was all my joy',
+      'Greensleeves was my delight',
+      'Greensleeves was my heart of gold',
+      'And who but my lady Greensleeves',
+    ],
+  }),
+  song({
+    id: 'dannyboy', title: 'Danny Boy', credit: 'Words by Frederic Weatherly, 1913', art: 'night', step: 4.2,
+    palette: { deep: '#050f27', a: '#3a6dff', b: '#1b2f8f', c: '#cfe4ff' },
+    lines: [
+      'Oh Danny boy, the pipes, the pipes are calling',
+      'From glen to glen, and down the mountain side',
+      'The summer’s gone, and all the roses falling',
+      'It’s you, it’s you must go and I must bide',
+      'But come ye back when summer’s in the meadow',
+      'Or when the valley’s hushed and white with snow',
+      'It’s I’ll be here in sunshine or in shadow',
+      'Oh Danny boy, oh Danny boy, I love you so',
+    ],
+  }),
+];
+
+export function lineIndexAt(song, time) {
   let index = 0;
-  demoSong.lines.forEach((line, i) => { if (line.time <= time) index = i; });
+  song.lines.forEach((line, i) => { if (line.time <= time) index = i; });
   return index;
 }
+
+// Palette as CSS custom properties for a scene.
+export const paletteStyle = ({ palette }) => ({
+  '--song-deep': palette.deep, '--song-a': palette.a, '--song-b': palette.b, '--song-c': palette.c,
+});

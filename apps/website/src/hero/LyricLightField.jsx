@@ -28,12 +28,13 @@ export function LyricLightField({ playing, heroRef, copyRef, startTime, onUnsupp
         range.selectNodeContents(node);
         return node.matches('h1, p') ? range.getBoundingClientRect() : node.getBoundingClientRect();
       });
+      const headline = rects[0];
       engine.resize(box.width, box.height, {
         left: Math.min(...rects.map(r => r.left)) - box.left,
         top: Math.min(...rects.map(r => r.top)) - box.top,
         right: Math.max(...rects.map(r => r.right)) - box.left,
         bottom: Math.max(...rects.map(r => r.bottom)) - box.top,
-      });
+      }, headline.top + headline.height / 2 - box.top);
     };
     let pending = 0;
     const queueMeasure = () => {
@@ -66,9 +67,12 @@ export function LyricLightField({ playing, heroRef, copyRef, startTime, onUnsupp
     hero.addEventListener('pointerleave', onPointerLeave);
 
     measure();
+    // The hero copy rises in on load; measure again once it has settled.
+    const settled = window.setTimeout(queueMeasure, 1500);
     engine.setPlaying(playing);
     return () => {
       cancelAnimationFrame(pending);
+      window.clearTimeout(settled);
       resizeObserver.disconnect();
       intersectionObserver.disconnect();
       document.removeEventListener('visibilitychange', updateVisibility);
