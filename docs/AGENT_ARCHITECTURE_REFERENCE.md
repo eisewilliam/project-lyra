@@ -14,7 +14,7 @@ Rust bridge  (apps/desktop-tauri/src-tauri/src/)
     ↕  function calls
 lyra-core  (crates/lyra-core/src/)
     ↕  OS / network
-SpotifyMacOsAdapter / SpotifyWindowsAdapter / SpotifyLinuxAdapter  +  LrclibClient
+PlayerHub (registry + adapters: AppleScript / SMTC / MPRIS)  +  LrclibClient
 ```
 
 **Rule**: All business logic lives in `lyra-core`. The Tauri bridge only delegates to it. UI surfaces render state, never compute it.
@@ -40,6 +40,7 @@ All windows are served from one Vite SPA. `main.tsx` routes by `window.location.
 AppState {
     runtime: Mutex<LyraRuntime>,   // core playback, lyrics, settings, offsets
     lyrics: LyricsRefresh,        // core HTTP client + in-flight fetch claims
+    players: Arc<PlayerHub>,       // core player adapters + session registry
     ui: UiStateStore,              // host window preferences
     surface_visibility: RuntimeSurfaceVisibility, // transient host visibility
 }
@@ -49,7 +50,7 @@ AppState {
 
 ### Playback delivery
 
-The host poll driver owns the platform Spotify adapter. macOS uses a GCD leeway timer; Windows and Linux use the generic sleep loop. Adapter calls run outside the runtime Mutex. Cadence follows the configured interval (clamped to 100–2000 ms), backs off for paused/stopped/missing-lyrics states, and skips adapter calls while all playback surfaces are hidden. Earlier wakeups can target the next lyric transition without polling the adapter again.
+The host poll driver calls `PlayerHub::poll()`, which queries every platform adapter and lets the session registry choose the followed session. macOS uses a GCD leeway timer; Windows and Linux use the generic sleep loop. Adapter calls run outside the runtime Mutex. Playback commands (`playback_*`) are async and call `PlayerHub::control()` on the blocking pool; they return an error when no session is followed or the session does not support the control. Cadence follows the configured interval (clamped to 100–2000 ms), backs off for paused/stopped/missing-lyrics states, and skips adapter calls while all playback surfaces are hidden. Earlier wakeups can target the next lyric transition without polling the adapter again.
 
 `usePlaybackSnapshot` requests an initial `get_render_snapshot`, then listens for `playback-tick` events. It does not poll every 300 ms. The host sends events to visible playback surfaces, coalesces unchanged paused/stopped state, and provides a 10-second heartbeat. `LyraRuntime::tick()` computes a fresh render from the latest observation, extrapolating playing position without mutating the adapter snapshot; it has no debounce.
 
@@ -74,6 +75,8 @@ Render states are `Loading`, `Ready`, `Unsynced`, structured `NotFound` with a r
 | Lyrics cache | `LyricCache` in `lyra-core` | `~/Library/Application Support/lyra/lyrics_cache/` |
 | Settings (lyra-core) | `ConfigStore` in `lyra-core` | `~/Library/Application Support/lyra/config.json` |
 | Lyric offsets (per track) | `OffsetStore` in `lyra-core` | `~/Library/Application Support/lyra/lyric_offsets.json` |
+| Media following rules | `MediaPolicyStore` in `lyra-core` (owned by `PlayerHub`) | `~/Library/Application Support/lyra/media_policy.json` |
+| Players seen before | `KnownPlayers` in `lyra-core` (owned by `PlayerHub`) | `~/Library/Application Support/lyra/known_players.json` |
 
 The host’s single `app_support_dir()` helper chooses `dirs_next::data_dir()/lyra` and passes that directory to core and UI stores. The paths above show macOS; Windows and Linux use their platform data directory. Keep the directory lowercase so case-sensitive volumes do not split stores.
 
@@ -91,27 +94,41 @@ Cache filenames are percent-encoded track URIs:
 | `runtime.rs` | Playback observations, lyric state/cache coordination, settings, offsets, and next-transition calculation |
 | `lyrics/refresh.rs` | Async provider fetching, in-flight claims, cache eligibility and failure classification |
 | `sync.rs` | `compute_render()` — deterministic line selection and visible window computation |
-| `player/spotify_macos.rs` | AppleScript polling; running check is **outside** the `tell` block to avoid launching Spotify |
-| `player/spotify_windows.rs` | Windows SMTC polling and playback controls |
-| `player/spotify_linux.rs` | Linux MPRIS polling over the user's D-Bus session bus |
+| `player/mod.rs` | `PlayerAdapter` trait, `SessionObservation`, `PlayerCommand`, `ControlError` |
+| `player/hub.rs` | `PlayerHub`: polls adapters, publishes artwork bytes, routes commands to the followed session |
+| `player/registry.rs` | Pure session selection (recency + 1.5 s hysteresis, sticky pause, OS hint) and metadata settling |
+| `player/artwork.rs` | Bounded in-memory artwork store served by the host's `lyra-art` URI scheme |
+| `player/metadata.rs` | Metadata cache keys (`meta::artist::title::seconds`), browser detection, app display names, video-title cleanup, ad detection |
+| `player/classify.rs` | Music / not music / unsure scoring; service recognition from page URLs, web-app IDs and YouTube conventions; image size parsing |
+| `player/known.rs` | Players seen across runs (app identity, transport, last seen; no track data), bounded and lazily persisted |
+| `player/policy.rs` | `MediaPolicy` (only-music switch, per-app rules, per-track overrides), `decide()` precedence, `media_policy.json` store |
+| `player/applescript.rs` | Shared in-process AppleScript execution (macOS); every compile/execute/release serializes on one lock |
+| `player/spotify_macos.rs` | Spotify via AppleScript; running check is **outside** the `tell` block to avoid launching Spotify |
+| `player/apple_music_macos.rs` | Music.app via AppleScript: Apple Music streams and local files (persistent ID, file path, raw artwork) |
+| `player/mediaremote_macos.rs` | macOS Now Playing (browsers, other apps) through the vendored mediaremote-adapter running in `/usr/bin/perl` |
+| `player/smtc_windows.rs` | Windows SMTC: every media session, per-session control flags and playback controls |
+| `player/mpris_linux.rs` | Linux MPRIS: every player on the user's D-Bus session bus |
 | `lyrics/lrclib.rs` | LRCLIB HTTP client; prefers synced lyrics, falls back to plain lyrics; returns `Ok(None)` only for confirmed misses |
 | `lyrics/cache.rs` | Flat-file cache + negative cache + manual override resolution |
 | `lyrics/parser.rs` | LRC parser; `parse_lrc(track_key, raw, source)` |
 
-### Linux Spotify integration
+### Linux MPRIS integration
 
-Linux uses MPRIS over the D-Bus session bus, not distro-specific process or package checks. The adapter discovers Spotify by scanning session bus names that start with `org.mpris.MediaPlayer2.spotify`, then reads `org.mpris.MediaPlayer2.Player` properties from `/org/mpris/MediaPlayer2`.
+Linux uses MPRIS over the D-Bus session bus, not distro-specific process or package checks. The adapter lists every session bus name that starts with `org.mpris.MediaPlayer2.` (except `playerctld`, which mirrors another player), reads `org.mpris.MediaPlayer2.Player` properties with one `GetAll` plus `Metadata`, and caches each player's `Identity` as its display name.
 
 Important Linux behavior:
-- Missing D-Bus session, missing Spotify MPRIS service, stopped playback, ads, loading gaps, or incomplete metadata should become a stopped `PlaybackSnapshot`, not a UI error.
-- `PlayerSource::LinuxMpris` is the source for Linux tracks.
-- Track cache keys prefer Spotify identifiers from `mpris:trackid` or `xesam:url`; when Spotify does not expose a usable URI, fall back to a stable synthetic `mpris::<artist>::<title>` key.
-- Playback controls (`PlayPause`, `Next`, `Previous`, `SetPosition`) are sent through MPRIS. `SetPosition` must use the current `mpris:trackid` object path plus a microsecond offset.
-- Keep all Linux playback logic in `crates/lyra-core/src/player/spotify_linux.rs`. Tauri commands and startup code should only delegate to that adapter.
+- Missing D-Bus session, no players, stopped playback, ads, loading gaps, or incomplete metadata mean no session, which becomes a stopped `PlaybackSnapshot`, not a UI error.
+- Linux tracks use `Transport::Mpris`; sessions are keyed `mpris:<bus name>`.
+- Spotify cache keys prefer identifiers from `mpris:trackid` or `xesam:url`, falling back to the legacy `mpris::<artist>::<title>` key; other players use `meta::` metadata keys.
+- Controls follow `CanControl`, `CanPlay`/`CanPause`, `CanGoNext`, `CanGoPrevious` and `CanSeek`. Seeking uses `SetPosition` with the current `mpris:trackid` object path and a microsecond offset, or a relative `Seek` when the player has no usable track ID.
+- `file://` artwork is read (≤10 MiB) and served through `lyra-art`; KDE's `plasma-browser-integration` duplicates of a browser's own session are dropped.
+- Keep all Linux playback logic in `crates/lyra-core/src/player/mpris_linux.rs`. Tauri commands and startup code reach it only through `PlayerHub`.
 
 ### Frontend patterns
 
 `LyricsStatus` serializes as `"Loading" | "Ready" | "Unsynced"`, `{"NotFound": {"reason": "Miss" | "NetworkError" | "RateLimit"}}`, or `{"Error": "..."}`. Use the shared frontend status helpers for structured variants; plain string comparisons still work for `Loading`, `Ready`, and `Unsynced`.
+
+`RenderSnapshot.playback.caps` lists the controls the followed player accepts; disable the rest and do not apply optimistic seeks when `caps.seek` is false. `PlaybackSnapshot.rate` is the playback speed; core extrapolation already applies it.
 
 `RenderSnapshot` contains both `active_line_index` (used by the `app` view via `get_all_lyrics`) and `visible_lines` (used by `island` and `karaoke`). The `app` view fetches the full lyric array separately via `get_all_lyrics` and highlights by index; the other views use the pre-windowed `visible_lines` directly.
 

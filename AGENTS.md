@@ -37,6 +37,11 @@ cd apps/desktop-tauri && pnpm lint
   frontend playback polling loop or assume every lyrics status is a plain string.
 - Linux playback belongs in the MPRIS adapter; unavailable playback becomes a
   stopped snapshot. Detect Linux styling explicitly, not as a macOS fallback.
+- Player access goes through `PlayerHub`: adapters report sessions, the
+  registry picks the followed one, and commands route back through
+  `PlayerHub::control`. Do not call adapters from Tauri commands directly.
+- Keep `docs/PLAYER_SUPPORT.md` current in the same change whenever player,
+  transport, or feature support changes or is verified on an OS.
 
 ## Read relevant reference sections before changing behavior
 
@@ -44,7 +49,8 @@ cd apps/desktop-tauri && pnpm lint
 - Tauri bridge, window behavior: Layer separation, The 4 Tauri windows, Rust state.
 - Playback timing/events: Playback delivery and Frontend patterns.
 - Fetch/cache/retry/persistence: Lyrics pipeline and Persistence stores.
-- Platform adapters: Key lyra-core modules and Linux Spotify integration.
+- Platform adapters: Key lyra-core modules and Linux MPRIS integration.
+- Player and feature support per OS: `docs/PLAYER_SUPPORT.md`.
 
 Read only the relevant sections and their code, not the entire reference by default.
 `docs/ARCHITECTURE.md` is the broader implementation map; product plans describe
