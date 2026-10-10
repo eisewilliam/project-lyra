@@ -4,18 +4,29 @@ mod macos;
 mod tray;
 mod ui_state;
 
-use lyra_core::domain::PlaybackState;
+use lyra_core::domain::{BrowserLyrics, PlaybackState};
 use lyra_core::lyrics::refresh::LyricsRefresh;
+use lyra_core::player::hub::PlayerHub;
+use lyra_core::player::PlayerAdapter;
 use lyra_core::runtime::LyraRuntime;
 use std::collections::HashSet;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{Emitter, EventTarget, Manager};
 use ui_state::{UiState, UiStateStore};
+
+/// Custom URI scheme serving artwork that players expose only as bytes.
+const ARTWORK_SCHEME: &str = "lyra-art";
+
+/// Re-poll interval while a track change waits for stable metadata.
+const SETTLE_REPOLL_MS: u64 = 100;
 
 pub struct AppState {
     pub runtime: Mutex<LyraRuntime>,
     /// Core provider coordinator; network requests run outside the runtime lock.
     pub lyrics: LyricsRefresh,
+    /// Platform player adapters and session selection. Polled and controlled
+    /// outside the runtime lock.
+    pub players: Arc<PlayerHub>,
     pub ui: UiStateStore,
     /// Transient, non-persisted visibility. Windows start hidden in
     /// tauri.conf.json, and auto-hide can hide a surface without changing the
@@ -81,6 +92,140 @@ impl RuntimeSurfaceVisibility {
             .map(|hidden| !hidden.contains(label))
             .unwrap_or(configured_visible)
     }
+}
+
+/// Player adapters available on this OS. See `docs/PLAYER_SUPPORT.md`.
+fn platform_adapters() -> Vec<Box<dyn PlayerAdapter>> {
+    #[cfg(target_os = "macos")]
+    {
+        use lyra_core::player::{apple_music_macos, mediaremote_macos, spotify_macos};
+        let mut adapters: Vec<Box<dyn PlayerAdapter>> = vec![
+            Box::new(spotify_macos::SpotifyMacOsAdapter::new()),
+            Box::new(apple_music_macos::AppleMusicMacOsAdapter::new()),
+        ];
+        match mediaremote_framework() {
+            Some(framework) => adapters.push(Box::new(mediaremote_macos::MediaRemoteAdapter::new(
+                framework,
+            ))),
+            None => {
+                log::warn!("MediaRemoteAdapter.framework not found; Now Playing apps unavailable")
+            }
+        }
+        adapters
+    }
+    #[cfg(target_os = "windows")]
+    {
+        vec![Box::new(lyra_core::player::smtc_windows::SmtcAdapter::new())]
+    }
+    #[cfg(target_os = "linux")]
+    {
+        vec![Box::new(lyra_core::player::mpris_linux::MprisAdapter::new())]
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        Vec::new()
+    }
+}
+
+/// The MediaRemote adapter framework sits in `../Frameworks` relative to the
+/// executable both in the app bundle and in development, where
+/// `tauri-build` copies it to `target/Frameworks`.
+#[cfg(target_os = "macos")]
+fn mediaremote_framework() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let framework = exe
+        .parent()?
+        .parent()?
+        .join("Frameworks/MediaRemoteAdapter.framework");
+    framework.exists().then_some(framework)
+}
+
+/// URL prefix the webview uses for `ARTWORK_SCHEME`. WebView2 serves custom
+/// schemes as `http://<scheme>.localhost/`; WKWebView and WebKitGTK use the
+/// scheme directly.
+fn artwork_base_url() -> String {
+    if cfg!(target_os = "windows") {
+        format!("http://{ARTWORK_SCHEME}.localhost/")
+    } else {
+        format!("{ARTWORK_SCHEME}://localhost/")
+    }
+}
+
+fn artwork_response(
+    app: &tauri::AppHandle,
+    request: &tauri::http::Request<Vec<u8>>,
+) -> tauri::http::Response<Vec<u8>> {
+    use tauri::http::{header, Response, StatusCode};
+    let id = request.uri().path().trim_start_matches('/');
+    let blob = app
+        .try_state::<AppState>()
+        .and_then(|state| state.players.artwork(id));
+    match blob {
+        Some(blob) => Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, blob.mime)
+            .header(header::CACHE_CONTROL, "no-store")
+            .body(blob.data.to_vec()),
+        None => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Vec::new()),
+    }
+    .unwrap_or_else(|_| Response::new(Vec::new()))
+}
+
+/// Poll the hub and start any background lyric lookups it asked for. The
+/// lookups settle whether unsure browser media is music; results land in
+/// the lyric cache and apply on a later poll.
+fn poll_players(
+    app: &tauri::AppHandle,
+    players: &PlayerHub,
+) -> lyra_core::domain::PlaybackSnapshot {
+    let snapshot = players.poll();
+    for track in players.take_probes() {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Some(state) = app.try_state::<AppState>() {
+                let _ = state.lyrics.probe(&state.runtime, &track).await;
+            }
+        });
+    }
+    snapshot
+}
+
+/// Poll players now and broadcast a fresh snapshot, so rule, override and
+/// consent changes apply without waiting for the next scheduled poll.
+/// Adapter calls run on the blocking pool.
+pub(crate) async fn refresh_playback(app: tauri::AppHandle) {
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        let Some(state) = app.try_state::<AppState>() else {
+            return;
+        };
+        let snapshot = poll_players(&app, &state.players);
+        let render = {
+            let mut rt = state.runtime.lock().unwrap_or_else(|e| e.into_inner());
+            rt.set_playback_snapshot(snapshot);
+            rt.tick()
+        };
+        let _ = app.emit("playback-tick", render);
+    })
+    .await;
+}
+
+/// Fire-and-forget `refresh_playback` for synchronous commands.
+pub(crate) fn refresh_playback_now(app: &tauri::AppHandle) {
+    tauri::async_runtime::spawn(refresh_playback(app.clone()));
+}
+
+/// True when the player adapters should be polled on this wakeup: the
+/// configured interval elapsed, or a track change is waiting to settle and
+/// the settle re-poll interval elapsed. Lyric-transition wakeups in between
+/// never reach the adapters.
+fn player_poll_due(handle: &tauri::AppHandle, elapsed_ms: u64, interval_ms: u64) -> bool {
+    elapsed_ms >= interval_ms
+        || (elapsed_ms >= SETTLE_REPOLL_MS
+            && handle
+                .try_state::<AppState>()
+                .is_some_and(|state| state.players.is_settling()))
 }
 
 fn app_support_dir() -> std::path::PathBuf {
@@ -214,7 +359,15 @@ pub(crate) fn apply_main_window_settings(
     }
 }
 
-type PollSignature = (Option<String>, PlaybackState, u8, Option<usize>);
+/// Track key, state, lyric status, active line, and the ignored media shown
+/// when idle.
+type PollSignature = (
+    Option<String>,
+    PlaybackState,
+    u8,
+    Option<usize>,
+    Option<String>,
+);
 
 struct PollContext {
     last_signature: std::sync::Mutex<Option<PollSignature>>,
@@ -319,6 +472,11 @@ fn process_tick(
             render.playback.state.clone(),
             lyrics_status_disc(&render.lyrics_status),
             render.active_line_index,
+            render
+                .playback
+                .ignored
+                .as_ref()
+                .map(|i| format!("{}:{:?}", i.track_key, i.reason)),
         );
         let changed =
             ctx.last_signature.lock().ok().and_then(|g| g.clone()) != Some(signature.clone());
@@ -385,16 +543,21 @@ fn process_tick(
     let mut sleep_ms = base_sleep;
     if any_visible && current_state == Some(PlaybackState::Playing) && lyrics_ready {
         if let Some(render) = &render_opt {
-            if let Some(trans_pos) = next_transition_playback {
+            let rate = render.playback.rate;
+            if let (Some(trans_pos), true) = (next_transition_playback, rate > 0.0) {
                 let current_pos = render.playback.position_ms.unwrap_or(0);
                 if trans_pos > current_pos {
-                    let time_to_trans = trans_pos - current_pos;
+                    // Playback-time distance to wall-clock delay.
+                    let time_to_trans = ((trans_pos - current_pos) as f64 / rate).ceil() as u64;
                     if time_to_trans < base_sleep {
                         sleep_ms = time_to_trans.max(10);
                     }
                 }
             }
         }
+    }
+    if any_visible && app_state.players.is_settling() {
+        sleep_ms = sleep_ms.min(SETTLE_REPOLL_MS);
     }
     sleep_ms
 }
@@ -426,7 +589,7 @@ where
         >,
         ctx: PollContext,
         timer: std::sync::Mutex<Option<dispatch2::DispatchRetained<DispatchSource>>>,
-        last_spotify_poll_ms: std::sync::Mutex<u64>,
+        last_player_poll_ms: std::sync::Mutex<u64>,
     }
 
     extern "C" fn handler(raw_ctx: *mut c_void) {
@@ -453,24 +616,24 @@ where
         };
 
         let last_poll = *state
-            .last_spotify_poll_ms
+            .last_player_poll_ms
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let elapsed = now_ms.saturating_sub(last_poll);
-        let is_transition_wake = elapsed < poll_interval_ms;
+        let poll_due = player_poll_due(&state.handle, elapsed, poll_interval_ms);
 
-        if is_transition_wake {
-            set_thread_qos_user_initiated();
-        } else {
+        if poll_due {
             set_thread_qos_utility();
+        } else {
+            set_thread_qos_user_initiated();
         }
 
         // Skip the player poll entirely when no surface is visible — the
         // resulting snapshot would just be coalesced away inside process_tick
         // anyway. Saves a per-10s AppleScript fire while everything is hidden.
-        // Also skip if the normal polling interval has not elapsed yet (early transition wakeups).
-        let snapshot = if any_surface_visible(&state.handle) && elapsed >= poll_interval_ms {
-            if let Ok(mut g) = state.last_spotify_poll_ms.lock() {
+        // Early lyric-transition wakeups also skip it.
+        let snapshot = if any_surface_visible(&state.handle) && poll_due {
+            if let Ok(mut g) = state.last_player_poll_ms.lock() {
                 *g = now_ms;
             }
             (state.poll_fn.lock().unwrap_or_else(|e| e.into_inner()))()
@@ -498,7 +661,7 @@ where
         }
     }
 
-    let queue = DispatchQueue::new("com.lyra.spotify.poll", None);
+    let queue = DispatchQueue::new("com.lyra.player.poll", None);
     let timer_type_ptr: *mut dispatch2::dispatch_source_type_s =
         unsafe { &dispatch2::_dispatch_source_type_timer as *const _ as *mut _ };
     let timer = unsafe { DispatchSource::new(timer_type_ptr, 0, 0, Some(&queue)) };
@@ -508,7 +671,7 @@ where
         poll_fn: std::sync::Mutex::new(Box::new(poll_fn)),
         ctx: PollContext::new(),
         timer: std::sync::Mutex::new(Some(timer.retain())),
-        last_spotify_poll_ms: std::sync::Mutex::new(0),
+        last_player_poll_ms: std::sync::Mutex::new(0),
     }));
 
     timer.set_event_handler_f(handler);
@@ -534,7 +697,7 @@ where
     F: FnMut() -> Option<lyra_core::domain::PlaybackSnapshot> + Send + 'static,
 {
     let ctx = PollContext::new();
-    let mut last_spotify_poll_ms = 0u64;
+    let mut last_player_poll_ms = 0u64;
     loop {
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -550,10 +713,12 @@ where
             }
         };
 
-        let elapsed = now_ms.saturating_sub(last_spotify_poll_ms);
+        let elapsed = now_ms.saturating_sub(last_player_poll_ms);
 
-        let snapshot = if any_surface_visible(&handle) && elapsed >= poll_interval_ms {
-            last_spotify_poll_ms = now_ms;
+        let snapshot = if any_surface_visible(&handle)
+            && player_poll_due(&handle, elapsed, poll_interval_ms)
+        {
+            last_player_poll_ms = now_ms;
             poll_fn()
         } else {
             None
@@ -607,12 +772,12 @@ fn set_thread_qos(qos: libc::qos_class_t) {
 #[cfg(not(target_os = "macos"))]
 fn set_thread_qos_utility() {}
 
-#[cfg(not(target_os = "macos"))]
-fn set_thread_qos_user_initiated() {}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .register_uri_scheme_protocol(ARTWORK_SCHEME, |ctx, request| {
+            artwork_response(ctx.app_handle(), &request)
+        })
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -635,9 +800,20 @@ pub fn run() {
             let ui = UiStateStore::load(&dir);
             let initial = ui.snapshot();
 
+            let runtime = LyraRuntime::new_in(dir.clone());
+            let players = Arc::new(
+                PlayerHub::new(platform_adapters(), artwork_base_url())
+                    .with_media_policy(&dir)
+                    .with_known_players(&dir)
+                    .with_lyric_cache(runtime.cache.clone()),
+            );
+            players.set_lookups_allowed(
+                runtime.settings().behavior.browser_lyrics == BrowserLyrics::Allow,
+            );
             app.manage(AppState {
-                runtime: Mutex::new(LyraRuntime::new_in(dir.clone())),
+                runtime: Mutex::new(runtime),
                 lyrics: LyricsRefresh::default(),
+                players: Arc::clone(&players),
                 ui,
                 surface_visibility: RuntimeSurfaceVisibility::new_all_hidden(),
             });
@@ -730,15 +906,12 @@ pub fn run() {
                 // }
 
                 // GCD-driven poll loop with leeway timer. Runs on its own
-                // queue thread; full Spotify polls use QoS_UTILITY, while
+                // queue thread; full player polls use QoS_UTILITY, while
                 // transition-only lyric ticks temporarily use a higher QoS.
                 let handle = app.handle().clone();
-                use lyra_core::player::PlayerAdapter;
-                let adapter = lyra_core::player::spotify_macos::SpotifyMacOsAdapter::new();
-                start_macos_poll_loop(handle, move || {
-                    let _ = adapter.poll();
-                    adapter.snapshot()
-                });
+                let probe_handle = app.handle().clone();
+                let players = Arc::clone(&players);
+                start_macos_poll_loop(handle, move || Some(poll_players(&probe_handle, &players)));
             }
 
             #[cfg(target_os = "windows")]
@@ -751,33 +924,26 @@ pub fn run() {
                     let _ = settings_win.set_decorations(false);
                 }
 
-                // Windows: poll Spotify via SMTC (System Media Transport Controls).
+                // Windows: poll players via SMTC (System Media Transport Controls).
                 let handle = app.handle().clone();
+                let probe_handle = app.handle().clone();
+                let players = Arc::clone(&players);
                 std::thread::spawn(move || {
                     set_thread_qos_utility();
-                    use lyra_core::player::PlayerAdapter;
-                    let adapter = lyra_core::player::spotify_windows::SpotifyWindowsAdapter::new();
-                    poll_loop_generic(handle, move || {
-                        let _ = adapter.poll();
-                        adapter.snapshot()
-                    });
+                    poll_loop_generic(handle, move || Some(poll_players(&probe_handle, &players)));
                 });
             }
 
             #[cfg(target_os = "linux")]
             {
-                // Linux: poll Spotify through MPRIS on the user's D-Bus
-                // session bus. MPRIS is distro-independent and is exposed by
-                // the official Spotify desktop client.
+                // Linux: poll players through MPRIS on the user's D-Bus
+                // session bus. MPRIS is distro-independent.
                 let handle = app.handle().clone();
+                let probe_handle = app.handle().clone();
+                let players = Arc::clone(&players);
                 std::thread::spawn(move || {
                     set_thread_qos_utility();
-                    use lyra_core::player::PlayerAdapter;
-                    let adapter = lyra_core::player::spotify_linux::SpotifyLinuxAdapter::new();
-                    poll_loop_generic(handle, move || {
-                        let _ = adapter.poll();
-                        adapter.snapshot()
-                    });
+                    poll_loop_generic(handle, move || Some(poll_players(&probe_handle, &players)));
                 });
             }
 
@@ -811,6 +977,16 @@ pub fn run() {
             commands::playback_next,
             commands::playback_previous,
             commands::playback_seek_ms,
+            commands::playback_raise,
+            commands::get_player_sessions,
+            commands::set_browser_lyrics,
+            commands::get_media_policy,
+            commands::set_pinned_app,
+            commands::get_known_players,
+            commands::forget_player,
+            commands::set_only_music,
+            commands::set_app_rule,
+            commands::set_track_override,
             commands::get_available_monitors,
             commands::set_preferred_monitor,
             commands::get_autostart_status,
@@ -848,11 +1024,16 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error building Lyra")
-        .run(|_app, _event| {
-            #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Reopen { .. } = _event {
-                crate::tray::open_lyra(_app);
+        .run(|app, event| match event {
+            tauri::RunEvent::Exit => {
+                // Stop player helper processes (macOS MediaRemote stream).
+                if let Some(state) = app.try_state::<AppState>() {
+                    state.players.shutdown();
+                }
             }
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => crate::tray::open_lyra(app),
+            _ => {}
         });
 }
 

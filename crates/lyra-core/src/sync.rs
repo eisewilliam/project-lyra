@@ -305,17 +305,12 @@ mod tests {
         let doc = make_doc(&[(0, "Intro"), (3000, "Verse"), (6000, "Chorus")]);
         let playback = PlaybackSnapshot {
             track: Some(crate::domain::TrackRef {
-                source: crate::domain::PlayerSource::SpotifyMacOs,
-                uri: "spotify:track:t".into(),
-                title: "t".into(),
-                artist: "a".into(),
-                album: None,
                 duration_ms: 9000,
-                artwork_url: None,
+                ..crate::domain::TrackRef::fixture("spotify:track:t")
             }),
             state: PlaybackState::Playing,
             position_ms: Some(pos_ms),
-            observed_at_ms: 0,
+            ..PlaybackSnapshot::stopped(0)
         };
         compute_render(playback, Some(&doc), LyricsStatus::Ready, 1, 1, offset_ms)
     }

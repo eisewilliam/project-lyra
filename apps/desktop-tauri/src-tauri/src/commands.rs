@@ -1,9 +1,13 @@
 use crate::tray;
 use crate::ui_state::UiState;
 use crate::AppState;
-use lyra_core::domain::{RenderSnapshot, SettingsSnapshot};
+use lyra_core::domain::{
+    BrowserLyrics, FollowRule, KnownPlayerInfo, MediaPolicyView, PlayerSessionInfo, RenderSnapshot,
+    SettingsSnapshot,
+};
+use lyra_core::player::PlayerCommand;
 use serde::{Deserialize, Serialize};
-use std::sync::MutexGuard;
+use std::sync::{Arc, MutexGuard};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use lyra_core::runtime::LyraRuntime;
@@ -236,44 +240,52 @@ pub fn nudge_lyric_offset(delta_ms: i64, state: State<'_, AppState>, app: AppHan
 
 // ── Playback Control ──────────────────────────────────────────────────────────
 
-#[tauri::command]
-pub fn playback_play_pause() {
-    #[cfg(target_os = "macos")]
-    lyra_core::player::spotify_macos::play_pause();
-    #[cfg(target_os = "linux")]
-    lyra_core::player::spotify_linux::play_pause();
-    #[cfg(target_os = "windows")]
-    lyra_core::player::spotify_windows::play_pause();
+/// Send a command to the followed player. Adapter calls block on OS IPC
+/// (AppleScript, WinRT, D-Bus), so they run on the blocking pool instead of
+/// the main thread.
+async fn send_player_command(
+    state: State<'_, AppState>,
+    command: PlayerCommand,
+) -> Result<(), String> {
+    let players = Arc::clone(&state.players);
+    tauri::async_runtime::spawn_blocking(move || players.control(command))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn playback_next() {
-    #[cfg(target_os = "macos")]
-    lyra_core::player::spotify_macos::next_track();
-    #[cfg(target_os = "linux")]
-    lyra_core::player::spotify_linux::next_track();
-    #[cfg(target_os = "windows")]
-    lyra_core::player::spotify_windows::next_track();
+pub async fn playback_play_pause(state: State<'_, AppState>) -> Result<(), String> {
+    send_player_command(state, PlayerCommand::PlayPause).await
 }
 
 #[tauri::command]
-pub fn playback_previous() {
-    #[cfg(target_os = "macos")]
-    lyra_core::player::spotify_macos::previous_track();
-    #[cfg(target_os = "linux")]
-    lyra_core::player::spotify_linux::previous_track();
-    #[cfg(target_os = "windows")]
-    lyra_core::player::spotify_windows::previous_track();
+pub async fn playback_next(state: State<'_, AppState>) -> Result<(), String> {
+    send_player_command(state, PlayerCommand::Next).await
 }
 
 #[tauri::command]
-pub fn playback_seek_ms(position_ms: u64) {
-    #[cfg(target_os = "macos")]
-    lyra_core::player::spotify_macos::seek_to_seconds(position_ms as f64 / 1000.0);
-    #[cfg(target_os = "linux")]
-    lyra_core::player::spotify_linux::seek_to_seconds(position_ms as f64 / 1000.0);
-    #[cfg(target_os = "windows")]
-    lyra_core::player::spotify_windows::seek_to_seconds(position_ms as f64 / 1000.0);
+pub async fn playback_previous(state: State<'_, AppState>) -> Result<(), String> {
+    send_player_command(state, PlayerCommand::Previous).await
+}
+
+#[tauri::command]
+pub async fn playback_seek_ms(position_ms: u64, state: State<'_, AppState>) -> Result<(), String> {
+    send_player_command(state, PlayerCommand::SeekMs(position_ms)).await
+}
+
+/// Bring the followed player to the front, showing the current track where
+/// the player allows it.
+#[tauri::command]
+pub async fn playback_raise(state: State<'_, AppState>) -> Result<(), String> {
+    send_player_command(state, PlayerCommand::Raise).await
+}
+
+/// Every playback session the adapters saw in the latest poll, for the
+/// player diagnostics view.
+#[tauri::command]
+pub fn get_player_sessions(state: State<'_, AppState>) -> Vec<PlayerSessionInfo> {
+    state.players.sessions()
 }
 
 #[tauri::command]
@@ -302,6 +314,7 @@ use lyra_core::domain::SettingsPatch;
 
 #[tauri::command]
 pub fn update_settings(patch: SettingsPatch, state: State<'_, AppState>, app: AppHandle) {
+    let behavior_changed = patch.behavior.is_some();
     let s = {
         let mut rt = lock_runtime(&state);
         let mut s = rt.settings().clone();
@@ -324,7 +337,129 @@ pub fn update_settings(patch: SettingsPatch, state: State<'_, AppState>, app: Ap
     // (island/karaoke) manage their own click-through/level natively, so only
     // the regular main window is driven from these settings.
     crate::apply_main_window_settings(&app, &s.window);
+    state
+        .players
+        .set_lookups_allowed(s.behavior.browser_lyrics == BrowserLyrics::Allow);
     let _ = app.emit("app-settings-changed", s);
+    // Behaviour settings (e.g. browser lyric consent) change what is
+    // followed and the lyric status.
+    if behavior_changed {
+        crate::refresh_playback_now(&app);
+    }
+}
+
+/// Record the user's answer to the browser-media lyric lookup prompt, then
+/// broadcast settings and a fresh snapshot so surfaces update immediately.
+#[tauri::command]
+pub fn set_browser_lyrics(choice: BrowserLyrics, state: State<'_, AppState>, app: AppHandle) {
+    let settings = {
+        let mut rt = lock_runtime(&state);
+        let mut settings = rt.settings().clone();
+        settings.behavior.browser_lyrics = choice;
+        rt.update_settings(settings.clone());
+        settings
+    };
+    state
+        .players
+        .set_lookups_allowed(choice == BrowserLyrics::Allow);
+    let _ = app.emit("app-settings-changed", settings);
+    crate::refresh_playback_now(&app);
+}
+
+// ── Media following rules ─────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_media_policy(state: State<'_, AppState>) -> MediaPolicyView {
+    state.players.media_policy()
+}
+
+/// Broadcast the new policy and apply it to playback before returning, so
+/// callers that re-read sessions see the effect.
+async fn policy_changed(
+    app: AppHandle,
+    view: Result<MediaPolicyView, String>,
+) -> Result<MediaPolicyView, String> {
+    let view = view?;
+    let _ = app.emit("media-policy-changed", &view);
+    crate::refresh_playback(app).await;
+    Ok(view)
+}
+
+/// Every player Lyra has seen, including ones not running now.
+#[tauri::command]
+pub fn get_known_players(state: State<'_, AppState>) -> Vec<KnownPlayerInfo> {
+    state.players.known_players()
+}
+
+/// Forget a player and its settings; it reappears if it plays again.
+#[tauri::command]
+pub async fn forget_player(
+    app_id: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<MediaPolicyView, String> {
+    let view = state
+        .players
+        .forget_player(&app_id)
+        .map_err(|e| e.to_string());
+    policy_changed(app, view).await
+}
+
+/// Follow only `app_id`, or select players automatically (`null`).
+#[tauri::command]
+pub async fn set_pinned_app(
+    app_id: Option<String>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<MediaPolicyView, String> {
+    let view = state
+        .players
+        .set_pinned_app(app_id.as_deref())
+        .map_err(|e| e.to_string());
+    policy_changed(app, view).await
+}
+
+/// `false` follows every media session, music or not.
+#[tauri::command]
+pub async fn set_only_music(
+    only_music: bool,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<MediaPolicyView, String> {
+    let view = state
+        .players
+        .set_only_music(only_music)
+        .map_err(|e| e.to_string());
+    policy_changed(app, view).await
+}
+
+#[tauri::command]
+pub async fn set_app_rule(
+    app_id: String,
+    rule: FollowRule,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<MediaPolicyView, String> {
+    let view = state
+        .players
+        .set_app_rule(&app_id, rule)
+        .map_err(|e| e.to_string());
+    policy_changed(app, view).await
+}
+
+/// Mark one track as music (`true`), not music (`false`), or clear (`null`).
+#[tauri::command]
+pub async fn set_track_override(
+    track_key: String,
+    is_music: Option<bool>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<MediaPolicyView, String> {
+    let view = state
+        .players
+        .set_track_override(&track_key, is_music)
+        .map_err(|e| e.to_string());
+    policy_changed(app, view).await
 }
 
 // ── System / OS integration ───────────────────────────────────────────────────

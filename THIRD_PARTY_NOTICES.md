@@ -53,6 +53,55 @@ cd apps/desktop-tauri && pnpm dlx license-checker --summary
 | typescript | Apache-2.0 |
 | eslint and plugins | MIT |
 
+### Bundled native code
+
+| Component | License | Notes |
+|---|---|---|
+| [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter) | BSD 3-Clause, Copyright (c) 2025 Jonas van den Berg and contributors | macOS only; vendored in `native/macos-sidecar/mediaremote-adapter` and shipped as `MediaRemoteAdapter.framework` |
+
+The BSD 3-Clause license requires its copyright notice, conditions and
+disclaimer to accompany binary redistributions; the full text is in
+`native/macos-sidecar/mediaremote-adapter/LICENSE` and is reproduced below.
+
+```
+BSD 3-Clause License
+
+Copyright (c) 2025, Jonas van den Berg and contributors
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+### Brand icons
+
+Platform and app glyphs in `apps/desktop-tauri/src/utils/brand-icons.ts`
+come from [Simple Icons](https://simpleicons.org), released under CC0 1.0,
+and are used unmodified as monochrome marks.
+The marks themselves are trademarks of their owners and are shown only to
+indicate where audio is playing.
+
 ## Data services
 
 - **Lyrics:** [LRCLIB](https://lrclib.net) — lyric content is fetched at runtime
@@ -61,6 +110,8 @@ cd apps/desktop-tauri && pnpm dlx license-checker --summary
 
 ## Trademarks
 
-"Spotify" is a trademark of Spotify AB. Lyra is not affiliated with or endorsed
-by Spotify AB. Other product names and trademarks are the property of their
-respective owners.
+"Spotify" is a trademark of Spotify AB. "Apple Music" is a trademark of Apple
+Inc. "YouTube", "YouTube Music" and "Google Chrome" are trademarks of Google
+LLC. Lyra is not affiliated with or endorsed by Spotify AB, Apple Inc. or
+Google LLC. Other product names, logos and trademarks are the property of
+their respective owners.
