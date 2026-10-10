@@ -4,7 +4,8 @@ import { Pause, Play } from '@phosphor-icons/react';
 import { DownloadButton } from '../components/DownloadButton.jsx';
 import { StaffLines } from '../components/StaffLines.jsx';
 import { ExternalLink, Link } from '../components/router.jsx';
-import { playerApps, playersPlanned, playersToday, siteConfig } from '../site-config.js';
+import { PlayerIcon } from '../components/PlayerIcons.jsx';
+import { playersAndOthers, playersOrOthers, siteConfig } from '../site-config.js';
 import { LyricLightField } from '../hero/LyricLightField.jsx';
 import { PHRASE_LENGTH, STILL_TIME } from '../hero/phrases.js';
 import { useSongClock } from '../demo/useSongClock.js';
@@ -276,6 +277,70 @@ function Surfaces() {
   </section>;
 }
 
+// Players section: the same Lyra window follows whichever player is chosen,
+// and declines a video. Each player plays a different public-domain demo song.
+const neutralPalette = { palette: { deep: '#07090a', a: '#3d4b4d', b: '#1c2628', c: '#c7d5d3' } };
+const sources = [
+  { id: 'spotify', icon: 'spotify', name: 'Spotify', song: 'shenandoah',
+    detail: 'Lyra reads Spotify directly. The mark on the artwork opens the track in Spotify.' },
+  { id: 'apple-music', icon: 'appleMusic', name: 'Apple Music', song: 'greensleeves',
+    detail: 'Streaming and your own library, including music files you added yourself.' },
+  { id: 'youtube-music', icon: 'youtubeMusic', name: 'YouTube Music', where: 'in a browser', song: 'dannyboy',
+    detail: 'Music playing in a browser counts too. Lyra asks once before looking up its lyrics.' },
+  { id: 'video', icon: 'youtube', name: 'A video', where: 'in a browser', song: 'dannyboy',
+    ignored: { title: 'How sourdough bread is made', where: 'YouTube in a browser' },
+    detail: 'Not music, so Lyra stays out of the way. If it gets one wrong, one click shows the lyrics anyway.' },
+];
+
+function Players() {
+  const stageRef = useRef(null);
+  const [sourceId, setSourceId] = useState(sources[0].id);
+  const source = sources.find(option => option.id === sourceId);
+  const song = songs.find(option => option.id === source.song);
+  const demo = useDemoPlayback(stageRef, song);
+  const label = source.ignored
+    ? 'The Lyra window not following a video playing in a browser'
+    : `The Lyra window showing ${song.title} playing in ${source.name}`;
+  return <section className="section players" id="players" aria-labelledby="players-title"
+    style={paletteStyle(source.ignored ? neutralPalette : song)}>
+    <div className="section-head">
+      <h2 id="players-title">Whatever you<br />play it on.</h2>
+      <p className="lead">Lyra follows {playersAndOthers}. When something isn’t music, Lyra leaves it alone.</p>
+    </div>
+    <div className="players-body">
+      <figure className={'players-stage scene' + (demo.playing ? ' is-playing' : '')} ref={stageRef}>
+        <div className="scene-screen" role="img" aria-label={label}>
+          <AnimatePresence initial={false} mode="popLayout">
+            <motion.div key={source.id} className="scene-content scene-window"
+              initial={{ opacity: 0, scale: 0.97, filter: 'blur(10px)' }} animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, filter: 'blur(10px)', transition: { duration: 0.3 } }} transition={{ duration: 0.5, ease }}>
+              <span className="scene-wallpaper" />
+              <LyraWindow song={song} position={demo.position} playing={demo.playing} source={source.icon} ignored={source.ignored ?? null} />
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </figure>
+      <div className="players-controls">
+        <fieldset className="player-picker">
+          <legend>Playing in</legend>
+          {sources.map(option => <label key={option.id} className="player-option">
+            <input type="radio" name="player-source" value={option.id} checked={option.id === sourceId}
+              onChange={() => setSourceId(option.id)} />
+            {option.id === sourceId && <motion.span className="player-option-indicator" layoutId="player-option" transition={spring} />}
+            <PlayerIcon player={option.icon} />
+            <span className="player-option-name">{option.name}{option.where && <span> {option.where}</span>}</span>
+          </label>)}
+        </fieldset>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.p key={source.id} className="players-detail" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.22, ease }}>{source.detail}</motion.p>
+        </AnimatePresence>
+        <DemoToggle demo={demo} />
+      </div>
+    </div>
+  </section>;
+}
+
 const choices = {
   position: [['top', 'Top'], ['bottom', 'Bottom']],
   align: [['left', 'Left'], ['center', 'Center'], ['right', 'Right']],
@@ -334,7 +399,7 @@ function Customize() {
 
 const steps = [
   ['Install Lyra', 'Download it for your computer and open it. Lyra sits in your menu bar or system tray.'],
-  ['Press play', `Lyra sees the track playing in the ${playerApps} and looks up its synced lyrics.`],
+  ['Press play', `Play something in ${playersOrOthers}. Lyra notices and looks up its synced lyrics.`],
   ['Follow along', 'Turn the window, the island or the overlay on or off at any time from the tray.'],
 ];
 
@@ -359,7 +424,7 @@ function Steps() {
 
 const credits = [
   ['Lyrics', 'LRCLIB, a community-maintained lyrics database'],
-  ['Playback', `Read from the player on your computer, the ${playerApps} for now. Lyra doesn’t use the Spotify Web API.`],
+  ['Playback', `Read from the players on your computer: ${playersAndOthers}. Lyra doesn’t use any streaming service’s web API.`],
   ['Storage', 'Lyrics are cached on your computer. Your own .lrc file can replace any song’s lyrics.'],
   ['Account', 'None'],
   ['Telemetry', 'None, and no analytics'],
@@ -389,12 +454,13 @@ function LinerNotes() {
 }
 
 const faqs = [
-  ['What do I need to use Lyra?', `A Mac, a Windows PC or a Linux computer with the ${playerApps}. Start a song and Lyra follows along.`],
+  ['What do I need to use Lyra?', `A Mac, a Windows PC or a Linux computer, and a music player: ${playersOrOthers}. Start a song and Lyra follows along.`],
   ['Does it work with every song?', 'Lyrics come from LRCLIB, a community database, so coverage varies. Songs with synced lyrics move with the music. If only plain lyrics exist, Lyra shows them without timing. If there are none, Lyra tells you, and you can retry or add your own .lrc file.'],
-  ['What does Lyra send over the internet?', 'Only lyric lookups. To find lyrics, Lyra sends LRCLIB the song’s title, artist, album and length. Playback is read on your computer, and there is no account, telemetry or analytics.'],
+  ['What does Lyra send over the internet?', 'Only lyric lookups. To find lyrics, Lyra sends LRCLIB the song’s title, artist, album and length. For something playing in a browser, Lyra asks you first. Playback is read on your computer, and there is no account, telemetry or analytics.'],
   ['The lyrics are a little early or late. Can I fix that?', 'Yes. Nudge the timing earlier or later from the Lyra window. The adjustment is remembered for that song.'],
   ['Is Lyra free?', 'Yes. Lyra is an independent, open-source project under the MIT license.'],
-  ['Does it work with other music players?', `Not yet. The first release follows the ${playerApps}. ${playersPlanned} are planned: Lyra is built so each new player is a new connection to your computer’s playback, not a rewrite.`],
+  ['Which music players does it work with?', `${playersAndOthers}, including music playing in a browser. If several are playing, Lyra follows the one you started last, or only the player you choose in settings.`],
+  ['Will it show lyrics for videos and podcasts?', 'No. Lyra only follows music, so a video, a stream or a podcast episode doesn’t take over your lyrics. If it gets one wrong, show lyrics anyway for that song, or tell Lyra to always or never follow an app.'],
 ];
 
 function Faq() {
@@ -423,7 +489,7 @@ function Closing({ platform }) {
       <DownloadButton platform={platform} />
       <Link className="text-link" to="/download">Other downloads</Link>
     </div>
-    <p className="player-note">Works with {playersToday} today. {playersPlanned} are planned.</p>
+    <p className="player-note">Works with {playersAndOthers}.</p>
   </section>;
 }
 
@@ -431,6 +497,7 @@ export function LandingPage({ platform }) {
   return <main id="main-content">
     <Hero platform={platform} />
     <Surfaces />
+    <Players />
     <Customize />
     <Steps />
     <LinerNotes />

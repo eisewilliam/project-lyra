@@ -25,9 +25,9 @@ QA helpers: `?frame=<phrase>:<seconds>` renders one still frame of the hero ligh
 | `src/hero/lyrics.js` | Original lyric fragments for the hero field |
 | `src/hero/LyricLightField.jsx` | React wrapper: sizing, visibility, pointer light, still-art fallback without WebGL2 |
 | `src/demo/` | Three public-domain demo songs (Shenandoah, Greensleeves, Danny Boy) with artwork palettes, the song clock, and illustrative recreations of the window, island and overlay |
-| `src/landing/LandingPage.jsx` | Hero, pinned surfaces story, settings preview, steps, liner notes, FAQ, closing; interaction animation uses Motion (`motion/react`) |
+| `src/landing/LandingPage.jsx` | Hero, pinned surfaces story, players picker, settings preview, steps, liner notes, FAQ, closing; interaction animation uses Motion (`motion/react`) |
 | `src/download/DownloadPage.jsx` | Platform rows, release status, build from source |
-| `src/components/` | Router, header, footer, download button, staff-line motif |
+| `src/components/` | Router, header, footer, download button, staff-line motif, OS and player marks |
 | `src/site-config.js` | Repository, release and binary URLs; platform facts; platform detection |
 
 ## How the hero works
@@ -40,7 +40,7 @@ The loop pauses when the hero is off screen or the tab is hidden, honours reduce
 
 `src/site-config.js` centralises the repository (`https://github.com/EiseWilliam/project-lyra`, public later), the releases page and per-platform binary URLs. Binary URLs stay `null` until verified public files exist, so Download Lyra opens the downloads page with an honest pending state. Platform requirements and first-launch notes come from the repository README and platform adapters; update `signedBuilds` when releases are signed.
 
-Lyra is not Spotify-only: other players are planned (Apple Music is named in `docs/PRD.md`). `players` in `src/site-config.js` lists supported and planned players, and the closing note, steps, liner notes, FAQ and downloads page read from it. Update the static meta description in `index.html` alongside it.
+Lyra is not Spotify-only. `players.named` in `src/site-config.js` lists the players the site names (Spotify, Apple Music, YouTube Music); the players section, closing note, steps, liner notes, FAQ, platform requirements and downloads page read from it. Update the static meta description in `index.html` alongside it.
 
 ## References
 

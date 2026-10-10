@@ -4,7 +4,7 @@ import { Check, Copy } from '@phosphor-icons/react';
 import { PlatformIcon } from '../components/DownloadButton.jsx';
 import { ExternalLink } from '../components/router.jsx';
 import { StaffLines } from '../components/StaffLines.jsx';
-import { platformDetails, platformNames, playerApps, playersPlanned, siteConfig } from '../site-config.js';
+import { platformDetails, platformNames, playersAndOthers, siteConfig } from '../site-config.js';
 
 const ORDER = ['macos', 'windows', 'linux'];
 const ease = [0.2, 0.8, 0.2, 1];
@@ -74,7 +74,7 @@ export function DownloadPage({ platform: detected }) {
       <StaffLines id="download-staff" className="download-staff"
         lyrics={[[1, 'carry a little light with you', '14%'], [3, 'and still the melody stays', '52%']]} />
       <h1 id="download-title" tabIndex={-1}>Download Lyra</h1>
-      <p className="lead">Free for macOS, Windows and Linux. Lyra works with the {playerApps} today. {playersPlanned} are planned.</p>
+      <p className="lead">Free for macOS, Windows and Linux. Lyra works with {playersAndOthers}.</p>
       {!published && <p className="release-status" role="status"><span className="status-light" aria-hidden="true" />
         The first public release is being prepared. Downloads will appear here as soon as they are published.</p>}
       {!detected && <p className="device-note">Lyra is a desktop app. Open this page on your Mac, Windows or Linux computer to download it.</p>}

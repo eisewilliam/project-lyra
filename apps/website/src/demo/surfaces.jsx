@@ -1,6 +1,7 @@
 import { Fragment, useLayoutEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Pause, Play, SkipBack, SkipForward } from '@phosphor-icons/react';
+import { PlayerIcon } from '../components/PlayerIcons.jsx';
 
 // Illustrative recreations of Lyra's surfaces, modelled on the desktop app's
 // own views. Purely visual: the surrounding figure carries the accessible label.
@@ -29,11 +30,12 @@ export function DemoArtwork({ song, className = '' }) {
 
 // Long lines wrap, as in the app, so the sheet centres the active line by
 // measuring it rather than assuming a fixed row height.
-function useActiveLineOffset(index, songId) {
+function useActiveLineOffset(index, songId, shown = true) {
   const sheetRef = useRef(null);
   const [offset, setOffset] = useState(0);
   useLayoutEffect(() => {
     const sheet = sheetRef.current;
+    if (!sheet) return undefined;
     const update = () => {
       const active = sheet.children[index];
       if (active) setOffset(active.offsetTop + active.offsetHeight / 2);
@@ -42,28 +44,43 @@ function useActiveLineOffset(index, songId) {
     const observer = new ResizeObserver(update);
     observer.observe(sheet);
     return () => observer.disconnect();
-  }, [index, songId]);
+  }, [index, songId, shown]);
   return [sheetRef, offset];
 }
 
-export function LyraWindow({ song, position, playing }) {
+// What the app's lyric pane says about media it decided not to follow.
+function IgnoredNote({ ignored }) {
+  return <div className="window-ignored">
+    <span className="window-ignored-title">Not following “{ignored.title}”</span>
+    <span className="window-ignored-reason">{ignored.where}. Looks like a video, not music.</span>
+    <span className="window-ignored-action">Show lyrics anyway</span>
+  </div>;
+}
+
+// `source` puts the player's mark on the artwork, as the app does; with
+// `ignored` the window shows how Lyra declines media that isn't music.
+export function LyraWindow({ song, position, playing, source = null, ignored = null }) {
   const { index, loop, songTime } = position;
-  const [sheetRef, offset] = useActiveLineOffset(index, song.id);
+  const [sheetRef, offset] = useActiveLineOffset(index, song.id, !ignored);
   return <div className="surface surface-window">
     <span className="window-ambient" aria-hidden="true" />
     <div className="window-sidebar">
       <span className="window-dots"><i /><i /><i /></span>
-      <DemoArtwork song={song} className="window-art" />
-      <span className="window-title">{song.title}</span>
-      <span className="window-artist">{song.artist}</span>
+      <span className="window-art-frame">
+        {ignored ? <span className="window-art is-empty" /> : <DemoArtwork song={song} className="window-art" />}
+        {source && !ignored && <span className="window-source"><PlayerIcon player={source} /></span>}
+      </span>
+      {ignored
+        ? <span className="window-skeleton"><i /><i /></span>
+        : <><span className="window-title">{song.title}</span><span className="window-artist">{song.artist}</span></>}
       <span className="window-progress"><SongProgress key={song.id + loop} song={song} songTime={songTime} className="window-progress-fill" /></span>
       <span className="window-controls"><SkipBack weight="fill" /><span className="window-play">{playing ? <Pause weight="fill" /> : <Play weight="fill" />}</span><SkipForward weight="fill" /></span>
     </div>
     <div className="window-lyrics">
-      <div className="window-sheet" ref={sheetRef} style={{ transform: `translateY(${-offset}px)` }}>
+      {ignored ? <IgnoredNote ignored={ignored} /> : <div className="window-sheet" ref={sheetRef} style={{ transform: `translateY(${-offset}px)` }}>
         {song.lines.map((line, i) => <p key={i} className={'window-line' + (i === index ? ' is-active' : i < index ? ' is-passed' : '')}
           style={{ '--distance': Math.min(3, Math.abs(i - index)) }}>{line.text}</p>)}
-      </div>
+      </div>}
     </div>
   </div>;
 }
