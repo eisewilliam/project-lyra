@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePlaybackSnapshot } from '@/hooks/use-playback-snapshot';
-import type { LyricWord, RenderSnapshot, TrackRef } from '@/types/tauri-contracts';
+import type {
+  IgnoredMedia,
+  LyricWord,
+  PlaybackCaps,
+  RenderSnapshot,
+  TrackRef,
+} from '@/types/tauri-contracts';
 import {
   BLEND_MS,
+  NO_PLAYBACK_CAPS,
   interpolatePosition,
+  sameCaps,
   wordsKey,
   type PositionBaseline,
 } from '@/utils/playback-sync';
@@ -33,6 +41,9 @@ export function useLyricsPlayback({
   const [positionMs, setPositionMs] = useState(0);
   const [activeLineWords, setActiveLineWords] = useState<LyricWord[]>([]);
   const [lyricOffsetMs, setLyricOffsetMs] = useState(0);
+  const [caps, setCaps] = useState<PlaybackCaps>(NO_PLAYBACK_CAPS);
+  const [ignoredMedia, setIgnoredMedia] = useState<IgnoredMedia | null>(null);
+  const canSeekRef = useRef(false);
 
   const baselineRef = useRef<PositionBaseline>({ ms: 0, at: 0, targetMs: 0, targetAt: 0, blendDur: 1 });
   const lyricsRef = useRef<(HTMLButtonElement | null)[]>([]);
@@ -58,6 +69,7 @@ export function useLyricsPlayback({
     isDragging,
   } = useProgressBarDrag({
     track,
+    canSeek: caps.seek,
     setPositionMs,
     baselineRef,
   });
@@ -69,7 +81,8 @@ export function useLyricsPlayback({
 
   const seekToLine = useCallback((index: number, eventTimeStamp: number) => {
     const target = lyricsRefForCb.current[index]?.start_ms;
-    if (target === undefined) return;
+    // Players that cannot seek keep their position; do not move the UI.
+    if (target === undefined || !canSeekRef.current) return;
     const now = eventTimeStamp;
     baselineRef.current = { ms: target, at: now, targetMs: target, targetAt: now, blendDur: 1 };
     setPositionMs(target);
@@ -114,6 +127,12 @@ export function useLyricsPlayback({
       setIsPlaying(playingNow);
     }
     setTrack((prev) => sameTrack(prev, snap.playback.track) ? prev : snap.playback.track);
+    canSeekRef.current = snap.playback.caps.seek;
+    setCaps((prev) => sameCaps(prev, snap.playback.caps) ? prev : snap.playback.caps);
+    const ignored = snap.playback.ignored;
+    setIgnoredMedia((prev) => (
+      prev?.track_key === ignored?.track_key && prev?.reason === ignored?.reason ? prev : ignored
+    ));
     setLyricsStatus(snap.lyrics_status);
 
     const newPos = snap.playback.position_ms ?? 0;
@@ -189,6 +208,8 @@ export function useLyricsPlayback({
     setIsPlaying,
     togglePlaying,
     track,
+    caps,
+    ignoredMedia,
     lyricsStatus,
     snapshotReady,
     positionMs,

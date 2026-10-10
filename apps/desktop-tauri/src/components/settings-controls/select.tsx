@@ -7,26 +7,32 @@ export function CustomSelect({
   value,
   options,
   onChange,
+  label,
 }: Readonly<{
   value: string;
   options: ReadonlyArray<SelectOption>;
   onChange: (v: string) => MaybePromise<void>;
+  /** Accessible name when no visible label is associated. */
+  label?: string | undefined;
 }>) {
-  return <NativeSelect value={value} options={options} onChange={onChange} />;
+  return <NativeSelect value={value} options={options} onChange={onChange} label={label} />;
 }
 
 function NativeSelect({
   value,
   options,
   onChange,
+  label,
 }: Readonly<{
   value: string;
   options: ReadonlyArray<SelectOption>;
   onChange: (v: string) => MaybePromise<void>;
+  label?: string | undefined;
 }>) {
   return (
     <select
       value={value}
+      aria-label={label}
       onChange={(e) => runSettingsAction(onChange(e.target.value))}
     >
       {options.map((opt) => (

@@ -7,6 +7,19 @@ export const THEME_OPTIONS: SelectOption[] = [
   { value: 'light', label: 'Light' },
 ];
 
+/** Per-app following rule; `Auto` follows music only. */
+export const FOLLOW_RULE_OPTIONS: SelectOption[] = [
+  { value: 'Auto', label: 'Music only' },
+  { value: 'Always', label: 'Always follow' },
+  { value: 'Never', label: 'Never follow' },
+];
+
+export const BROWSER_LYRICS_OPTIONS: SelectOption[] = [
+  { value: 'Ask', label: 'Ask' },
+  { value: 'Allow', label: 'Look up lyrics' },
+  { value: 'Deny', label: "Don't look up" },
+];
+
 export const POLLING_INTERVAL_OPTIONS: SelectOption[] = [
   { value: '250', label: 'Very Fast (250ms)' },
   { value: '500', label: 'Fast (500ms)' },

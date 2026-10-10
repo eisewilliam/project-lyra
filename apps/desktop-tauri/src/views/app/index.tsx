@@ -26,8 +26,12 @@ import {
 import {
   forceRefreshLyrics,
   nudgeLyricOffset,
+  setBrowserLyrics,
   setLyricOffset,
+  setPinnedApp,
+  setTrackOverride,
 } from '@/utils/tauri-commands';
+import type { BrowserLyrics } from '@/types/tauri-contracts';
 import { TRANSPARENT_FALLBACK_ART } from '@/utils/artwork';
 import { noop } from './utils';
 import './app.css';
@@ -53,6 +57,8 @@ function App() {
     isPlaying,
     togglePlaying,
     track,
+    caps,
+    ignoredMedia,
     lyricsStatus,
     snapshotReady,
     positionMs,
@@ -165,6 +171,24 @@ function App() {
     setArtworkError(true);
   }, [setArtworkError]);
 
+  const chooseBrowserLyrics = useCallback((choice: BrowserLyrics) => {
+    setBrowserLyrics(choice).catch(noop);
+  }, []);
+
+  const ignoredTrackKey = ignoredMedia?.track_key ?? null;
+  const followIgnored = useCallback(() => {
+    if (ignoredTrackKey) setTrackOverride(ignoredTrackKey, true).catch(noop);
+  }, [ignoredTrackKey]);
+
+  const followAutomatically = useCallback(() => {
+    setPinnedApp(null).catch(noop);
+  }, []);
+
+  const trackKey = track?.uri ?? null;
+  const markNotMusic = useCallback(() => {
+    if (trackKey) setTrackOverride(trackKey, false).catch(noop);
+  }, [trackKey]);
+
   const retryLyrics = useCallback(() => {
     refreshedUriForRetry.current = '';
     forceRefreshLyrics().catch(noop);
@@ -198,6 +222,7 @@ function App() {
         artworkError={artworkError}
         artworkSrc={artworkSrc}
         baselineRef={baselineRef}
+        caps={caps}
         clampedPositionMs={clampedPositionMs}
         durationMs={durationMs}
         handleMouseDown={handleMouseDown}
@@ -216,6 +241,7 @@ function App() {
         progressTrackRef={progressTrackRef}
         selectValue={selectValue}
         togglePlaying={togglePlaying}
+        onMarkNotMusic={markNotMusic}
         setPositionMs={setPositionMs}
         setSelectValue={setSelectValue}
         setShowDelayControl={setShowDelayControl}
@@ -235,6 +261,10 @@ function App() {
         lyricsRef={lyricsRef}
         lyricsViewState={lyricsViewState}
         notFoundReason={notFoundReason}
+        onBrowserLyrics={chooseBrowserLyrics}
+        ignoredMedia={ignoredMedia}
+        onFollowIgnored={followIgnored}
+        onFollowAutomatically={followAutomatically}
         paintRange={paintRange}
         screenEdgeMotion={screenEdgeMotion}
         {...(canRetry ? { onRetryLyrics: retryLyrics } : {})}

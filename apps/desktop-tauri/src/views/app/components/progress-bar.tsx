@@ -6,6 +6,7 @@ import { formatMs, noop } from '../utils';
 
 export function ProgressBar({
   baselineRef,
+  canSeek,
   clampedPositionMs,
   durationMs,
   handleMouseDown,
@@ -18,6 +19,7 @@ export function ProgressBar({
   track,
 }: Readonly<{
   baselineRef: RefObject<PositionBaseline>;
+  canSeek: boolean;
   clampedPositionMs: number;
   durationMs: number;
   handleMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -30,7 +32,7 @@ export function ProgressBar({
   track: TrackRef | null;
 }>) {
   const handleProgressKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!track || track.duration_ms === 0) return;
+    if (!track || track.duration_ms === 0 || !canSeek) return;
     let targetMs: number;
     if (event.key === 'ArrowLeft') {
       targetMs = Math.max(0, clampedPositionMs - 5000);
@@ -50,13 +52,14 @@ export function ProgressBar({
     <div className="progress-bar">
       <span className="time-label" ref={positionLabelRef}>{formatMs(clampedPositionMs)}</span>
       <div
-        className={`progress-track ${hasTrack ? '' : 'is-placeholder'}`}
+        className={`progress-track ${hasTrack ? '' : 'is-placeholder'} ${hasTrack && !canSeek ? 'is-readonly' : ''}`}
         ref={progressTrackRef}
         onMouseDown={handleMouseDown}
         onKeyDown={handleProgressKeyDown}
         role="slider"
-        tabIndex={hasTrack ? 0 : -1}
+        tabIndex={hasTrack && canSeek ? 0 : -1}
         aria-label="Playback progress"
+        aria-readonly={!canSeek}
         aria-valuemin={0}
         aria-valuemax={durationMs}
         aria-valuenow={clampedPositionMs}

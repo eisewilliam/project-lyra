@@ -11,6 +11,7 @@ const NAV_GROUPS: { header: string | null; items: NavItem[] }[] = [
     items: [
       { id: 'general', label: SETTINGS_SECTION_LABELS.general, icon: <IconGear /> },
       { id: 'appearance', label: SETTINGS_SECTION_LABELS.appearance, icon: <IconAppearance /> },
+      { id: 'players', label: SETTINGS_SECTION_LABELS.players, icon: <IconPlayers /> },
     ],
   },
   {
@@ -115,6 +116,16 @@ function IconWindow() {
       <circle cx="5.5" cy="6" r="0.75" fill="currentColor" stroke="none" />
       <circle cx="8" cy="6" r="0.75" fill="currentColor" stroke="none" />
       <circle cx="10.5" cy="6" r="0.75" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function IconPlayers() {
+  return (
+    <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 14.5V4.5l8-1.5v10" />
+      <circle cx="6" cy="14.5" r="2" />
+      <circle cx="14" cy="13" r="2" />
     </svg>
   );
 }

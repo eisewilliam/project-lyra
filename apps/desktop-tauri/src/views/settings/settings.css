@@ -183,6 +183,190 @@ input[type="checkbox"]:focus-visible,
   color: var(--text-primary);
 }
 
+/* Secondary, read-only text in a row's control area. */
+.row-detail {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  text-align: right;
+}
+
+/* Detected players: song and artist on the left, status and source on the
+   right; details and overrides open below. */
+.player-session {
+  border-bottom: 1px solid var(--border-row);
+}
+
+.player-session:last-child {
+  border-bottom: none;
+}
+
+.player-session-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px 10px 12px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: 10px;
+}
+
+.player-session-summary::-webkit-details-marker {
+  display: none;
+}
+
+.player-session-summary:focus-visible {
+  outline: 2px solid var(--text-secondary);
+  outline-offset: -2px;
+}
+
+.player-session-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  color: var(--text-secondary);
+}
+
+.player-session[open] .player-session-icon,
+.player-session-summary:hover .player-session-icon {
+  color: var(--text-primary);
+}
+
+.player-session-track,
+.player-session-where {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.player-session-where {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.player-session-title {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-session-artist,
+.player-session-source {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-session-source {
+  max-width: 220px;
+}
+
+.player-session-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.player-session-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+}
+
+.player-session-status[data-tone='live']::before {
+  background: #30d158;
+  box-shadow: 0 0 0 3px rgba(48, 209, 88, 0.18);
+}
+
+.player-session-status[data-tone='ignored'] {
+  color: var(--text-secondary);
+}
+
+.player-session-status[data-tone='ignored']::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--text-secondary);
+}
+
+.player-session-chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--text-secondary);
+  transition: transform var(--duration-fast, 150ms) ease;
+}
+
+.player-session[open] .player-session-chevron {
+  transform: rotate(90deg);
+}
+
+.player-session-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 2px 16px 14px 52px;
+}
+
+.player-session-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.player-session-facts dt {
+  color: var(--text-secondary);
+}
+
+.player-session-facts dd {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.player-session-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+/* Remembered players: name and usage, with the app's following rule. */
+.known-player {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px 10px 12px;
+  border-bottom: 1px solid var(--border-row);
+}
+
+.known-player:last-child {
+  border-bottom: none;
+}
+
+.known-player-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-session-chevron {
+    transition: none;
+  }
+}
+
 .snap-slider-control {
   display: inline-flex;
   align-items: flex-start;

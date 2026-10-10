@@ -6,10 +6,13 @@ import { formatMs, noop } from '../utils';
 
 export function useProgressBarDrag({
   track,
+  canSeek,
   setPositionMs,
   baselineRef,
 }: {
   track: TrackRef | null;
+  /** False when the followed player cannot seek; dragging is disabled. */
+  canSeek: boolean;
   setPositionMs: React.Dispatch<React.SetStateAction<number>>;
   baselineRef: RefObject<PositionBaseline>;
 }) {
@@ -23,6 +26,11 @@ export function useProgressBarDrag({
   useEffect(() => {
     trackRef.current = track;
   }, [track]);
+
+  const canSeekRef = useRef(canSeek);
+  useEffect(() => {
+    canSeekRef.current = canSeek;
+  }, [canSeek]);
 
   const updateDragPosition = useCallback((clientX: number) => {
     const currentTrack = trackRef.current;
@@ -74,7 +82,7 @@ export function useProgressBarDrag({
 
   const handleMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const currentTrack = trackRef.current;
-    if (!currentTrack || currentTrack.duration_ms === 0) return;
+    if (!currentTrack || currentTrack.duration_ms === 0 || !canSeekRef.current) return;
     isDraggingRef.current = true;
     progressTrackRef.current?.classList.add('is-dragging');
 
