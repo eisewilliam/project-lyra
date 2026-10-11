@@ -32,17 +32,21 @@ function NativeSelect({
 }>) {
   const aria = useRowAria();
   return (
-    <select
-      {...(label ? {} : aria)}
-      value={value}
-      aria-label={label}
-      onChange={(e) => runSettingsAction(onChange(e.target.value))}
-    >
-      {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>
-          {opt.label}
-        </option>
-      ))}
-    </select>
+    // The wrapper draws the arrow, tinted from the theme like the other
+    // chevrons; an SVG background on the select itself can't use its colour.
+    <span className="select-control">
+      <select
+        {...(label ? {} : aria)}
+        value={value}
+        aria-label={label}
+        onChange={(e) => runSettingsAction(onChange(e.target.value))}
+      >
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </span>
   );
 }

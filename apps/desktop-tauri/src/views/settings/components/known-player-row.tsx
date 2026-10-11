@@ -46,10 +46,11 @@ export function KnownPlayerRow({
           onChange={(value) => (isFollowRule(value) ? onRuleChange(app.id, value) : undefined)}
         />
         <ActionFeedbackButton
+          quiet
           label="Forget"
-          pendingLabel="Forgetting..."
+          pendingLabel="Forgetting…"
           feedbackLabel="Forgotten"
-          failureLabel="Failed"
+          failureLabel="Couldn't forget"
           onClick={() => onForget(app.id)}
         />
       </span>

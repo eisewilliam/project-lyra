@@ -6,12 +6,15 @@ export function ActionFeedbackButton({
   pendingLabel = 'Working…',
   feedbackLabel,
   failureLabel = 'Failed',
+  quiet = false,
   onClick,
 }: Readonly<{
   label: string;
   pendingLabel?: string;
   feedbackLabel: string;
   failureLabel?: string;
+  /** Borderless, for a secondary action repeated on every row of a list. */
+  quiet?: boolean;
   onClick: () => Promise<void>;
 }>) {
   const [status, setStatus] = useState<'idle' | 'pending' | 'success' | 'failure'>('idle');
@@ -55,7 +58,7 @@ export function ActionFeedbackButton({
   }
 
   return (
-    <button className="action-btn" type="button" onClick={handleClick} disabled={status === 'pending'} aria-live="polite">
+    <button className={quiet ? 'action-btn is-quiet' : 'action-btn'} type="button" onClick={handleClick} disabled={status === 'pending'} aria-live="polite">
       {text}
     </button>
   );

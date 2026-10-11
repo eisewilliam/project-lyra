@@ -271,8 +271,9 @@ input[type="checkbox"]:focus-visible,
   text-align: right;
 }
 
-/* Detected players: song and artist on the left, status and source on the
-   right; details and overrides open below. */
+/* Now playing: song and artist on the left, status and source on the
+   right; details and overrides open below. Rows share the 16 px inset of
+   every other settings row (on macOS the card provides it). */
 .player-session {
   border-bottom: 1px solid var(--border-row);
 }
@@ -286,10 +287,10 @@ input[type="checkbox"]:focus-visible,
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px 10px 12px;
+  padding: 10px 16px;
   cursor: default;
   list-style: none;
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .player-session-summary::-webkit-details-marker {
@@ -399,7 +400,8 @@ input[type="checkbox"]:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 2px 16px 14px 52px;
+  /* Indented to the title column: icon (28) + gap (12). */
+  padding: 0 16px 14px 56px;
 }
 
 .player-session-facts {
@@ -432,7 +434,7 @@ input[type="checkbox"]:focus-visible,
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px 10px 12px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--border-row);
 }
 
@@ -444,6 +446,20 @@ input[type="checkbox"]:focus-visible,
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+body[data-os="macos"] .player-session-summary,
+body[data-os="macos"] .known-player {
+  padding-inline: 0;
+}
+
+body[data-os="macos"] .player-session-body {
+  padding: 0 0 14px 40px;
+}
+
+/* No side padding there, so draw the focus ring just outside the row. */
+body[data-os="macos"] .player-session-summary:focus-visible {
+  outline-offset: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -593,9 +609,6 @@ select {
   font-size: 13px;
   outline: none;
   cursor: default;
-  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-position: right 8px center;
-  background-repeat: no-repeat;
   transition:
     background-color var(--duration-base) var(--ease-control),
     border-color var(--duration-base) var(--ease-control),
@@ -604,6 +617,61 @@ select {
 
 select:hover {
   background-color: var(--input-hover);
+}
+
+/* Pop-up menu arrow, drawn as a mask so it takes the secondary text colour
+   like every other chevron in Settings. */
+.select-control {
+  position: relative;
+  display: inline-flex;
+}
+
+.select-control::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  width: 10px;
+  height: 10px;
+  background: var(--text-secondary);
+  transform: translateY(-50%);
+  pointer-events: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5l3 3 3-3' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5l3 3 3-3' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* macOS pop-up buttons show the stacked up/down pair. */
+body[data-os="macos"] .select-control::after {
+  width: 8px;
+  height: 12px;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 12'%3E%3Cpath d='M1.5 4.5L4 2l2.5 2.5M1.5 7.5L4 10l2.5-2.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 12'%3E%3Cpath d='M1.5 4.5L4 2l2.5 2.5M1.5 7.5L4 10l2.5-2.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* One control height on macOS, so a menu and a button side by side line up. */
+body[data-os="macos"] select,
+body[data-os="macos"] .action-btn {
+  box-sizing: border-box;
+  height: 24px;
+  font-size: 13px;
+}
+
+body[data-os="macos"] select {
+  padding: 0 26px 0 10px;
+}
+
+/* A secondary action repeated on every row of a list: text only until
+   hovered, so the list isn't a column of identical buttons. */
+.settings-shell .action-btn.is-quiet {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--text-secondary);
+}
+
+.settings-shell .action-btn.is-quiet:hover {
+  background: var(--input-bg);
+  color: var(--text-primary);
 }
 
 .action-btn {
@@ -820,9 +888,8 @@ body[data-os="macos"] .segmented-option.active {
 body[data-os="macos"] .action-btn {
   background: rgba(255, 255, 255, 0.1);
   border: 0.5px solid rgba(255, 255, 255, 0.08);
-  border-radius: 5px;
-  font-size: 12px;
-  padding: 4px 12px;
+  border-radius: 6px;
+  padding: 0 12px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 body[data-os="macos"] .action-btn:hover {

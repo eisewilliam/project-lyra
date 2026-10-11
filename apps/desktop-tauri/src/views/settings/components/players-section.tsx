@@ -96,7 +96,7 @@ export function PlayersSection({
         </Row>
       </Group>
 
-      <Group title="Active players">
+      <Group title="Now playing">
         {sessions === null && <Row label="Looking for players…">{null}</Row>}
         {sessions?.length === 0 && <Row label="Nothing is playing right now">{null}</Row>}
         {sessions?.map((session) => (
@@ -110,7 +110,7 @@ export function PlayersSection({
         ))}
       </Group>
 
-      <Group title="Detected players">
+      <Group title="Remembered players">
         {known === null && <Row label="Loading…">{null}</Row>}
         {known?.length === 0 && <Row label="Players appear here once they play something">{null}</Row>}
         {known?.map((player) => (

@@ -137,18 +137,18 @@ export function PlayerSessionRow({
           {player ? (
             <ActionFeedbackButton
               label={pinned ? 'Follow any player' : 'Follow only this player'}
-              pendingLabel="Saving..."
+              pendingLabel="Saving…"
               feedbackLabel="Saved"
-              failureLabel="Failed"
+              failureLabel="Couldn't save"
               onClick={() => onPin(pinned ? null : player.id)}
             />
           ) : null}
           {action && trackKey ? (
             <ActionFeedbackButton
               label={action.label}
-              pendingLabel="Saving..."
+              pendingLabel="Saving…"
               feedbackLabel="Saved"
-              failureLabel="Failed"
+              failureLabel="Couldn't save"
               onClick={() => onTrackOverride(trackKey, action.value)}
             />
           ) : null}
