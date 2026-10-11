@@ -1,10 +1,15 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
   AppSettings,
+  BrowserLyrics,
+  FollowRule,
+  KnownPlayerInfo,
+  MediaPolicyView,
   IslandSettingsPatch,
   KaraokeSettingsPatch,
   LyricLineSlim,
   MonitorInfo,
+  PlayerSessionInfo,
   RenderSnapshot,
   SettingsPatch,
   UiState,
@@ -12,8 +17,8 @@ import type {
 
 // Manual contract-alignment checklist for Phase 1:
 // - crates/lyra-core/src/domain.rs: TrackRef, PlaybackSnapshot,
-//   RenderSnapshot, VisibleLine, LyricWord, LyricsStatus, SettingsSnapshot,
-//   SettingsPatch.
+//   PlaybackCaps, PlayerSessionInfo, RenderSnapshot, VisibleLine, LyricWord,
+//   LyricsStatus, SettingsSnapshot, SettingsPatch.
 // - apps/desktop-tauri/src-tauri/src/ui_state.rs: UiState.
 // - apps/desktop-tauri/src-tauri/src/commands.rs: command names, argument
 //   payloads, return types, and event payloads.
@@ -107,6 +112,49 @@ export function playbackPrevious(): Promise<void> {
 
 export function playbackSeekMs(positionMs: number): Promise<void> {
   return invoke('playback_seek_ms', { positionMs });
+}
+
+export function playbackRaise(): Promise<void> {
+  return invoke('playback_raise');
+}
+
+export function getPlayerSessions(): Promise<PlayerSessionInfo[]> {
+  return invoke('get_player_sessions');
+}
+
+export function setBrowserLyrics(choice: BrowserLyrics): Promise<void> {
+  return invoke('set_browser_lyrics', { choice });
+}
+
+export function getMediaPolicy(): Promise<MediaPolicyView> {
+  return invoke('get_media_policy');
+}
+
+export function getKnownPlayers(): Promise<KnownPlayerInfo[]> {
+  return invoke('get_known_players');
+}
+
+/** Forget a player and its settings; it reappears if it plays again. */
+export function forgetPlayer(appId: string): Promise<MediaPolicyView> {
+  return invoke('forget_player', { appId });
+}
+
+/** Follow only this player, or choose automatically with `null`. */
+export function setPinnedApp(appId: string | null): Promise<MediaPolicyView> {
+  return invoke('set_pinned_app', { appId });
+}
+
+export function setOnlyMusic(onlyMusic: boolean): Promise<MediaPolicyView> {
+  return invoke('set_only_music', { onlyMusic });
+}
+
+export function setAppRule(appId: string, rule: FollowRule): Promise<MediaPolicyView> {
+  return invoke('set_app_rule', { appId, rule });
+}
+
+/** `true` marks the track as music, `false` as not music, `null` clears. */
+export function setTrackOverride(trackKey: string, isMusic: boolean | null): Promise<MediaPolicyView> {
+  return invoke('set_track_override', { trackKey, isMusic });
 }
 
 export function clearLyricsCache(): Promise<void> {

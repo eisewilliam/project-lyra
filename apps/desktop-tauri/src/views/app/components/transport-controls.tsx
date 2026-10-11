@@ -1,10 +1,14 @@
+import type { PlaybackCaps } from '@/types/tauri-contracts';
 import { playbackNext, playbackPlayPause, playbackPrevious } from '@/utils/tauri-commands';
 import { noop } from '../utils';
 
 export function TransportControls({
+  caps,
   isPlaying,
   togglePlaying,
 }: Readonly<{
+  /** Buttons for controls the player does not support are disabled. */
+  caps: PlaybackCaps;
   isPlaying: boolean;
   togglePlaying: () => void;
 }>) {
@@ -13,6 +17,7 @@ export function TransportControls({
       <button
         className="btn-icon skip"
         aria-label="Previous"
+        disabled={!caps.previous}
         onClick={() => playbackPrevious().catch(noop)}
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg>
@@ -21,6 +26,7 @@ export function TransportControls({
         className="btn-icon play-pause"
         aria-label={isPlaying ? "Pause" : "Play"}
         data-playing={isPlaying}
+        disabled={!caps.play_pause}
         onClick={() => {
           togglePlaying();
           playbackPlayPause().catch(noop);
@@ -32,6 +38,7 @@ export function TransportControls({
       <button
         className="btn-icon skip"
         aria-label="Next"
+        disabled={!caps.next}
         onClick={() => playbackNext().catch(noop)}
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg>

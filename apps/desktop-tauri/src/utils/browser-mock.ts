@@ -7,7 +7,11 @@ import type {
   LyricLineSlim,
   LyricWord,
   VisibleLine,
+  KnownPlayerInfo,
+  MediaPolicyView,
+  PlaybackCaps,
   PlaybackSnapshot,
+  PlayerSessionInfo,
   TrackRef,
   PlaybackState,
   NotFoundReason,
@@ -19,13 +23,23 @@ if (!isTauri) {
   console.log('🚀 [Lyra Mock] Activating browser development mock...');
 
   // --- Mock Data ---
+  const MOCK_PLAYER = {
+    player: { id: 'com.spotify.client', name: 'Spotify' },
+    transport: 'AppleScript',
+    native_id: null,
+    from_browser: false,
+    platform: null,
+    kind: 'Music',
+  } satisfies Pick<TrackRef, 'player' | 'transport' | 'native_id' | 'from_browser' | 'platform' | 'kind'>;
+  const MOCK_CAPS: PlaybackCaps = { play_pause: true, next: true, previous: true, seek: true, raise: true };
+
   const MOCK_TRACKS: {
     track: TrackRef;
     lines: { start_ms: number; end_ms: number; text: string }[];
   }[] = [
     {
       track: {
-        source: 'SpotifyMacOs',
+        ...MOCK_PLAYER,
         uri: 'spotify:track:stay',
         title: 'Stay',
         artist: 'The Kid LAROI, Justin Bieber',
@@ -62,7 +76,7 @@ if (!isTauri) {
     },
     {
       track: {
-        source: 'SpotifyMacOs',
+        ...MOCK_PLAYER,
         uri: 'spotify:track:blindinglights',
         title: 'Blinding Lights',
         artist: 'The Weeknd',
@@ -89,7 +103,7 @@ if (!isTauri) {
     },
     {
       track: {
-        source: 'SpotifyMacOs',
+        ...MOCK_PLAYER,
         uri: 'spotify:track:bohemianrhapsody',
         title: 'Bohemian Rhapsody',
         artist: 'Queen',
@@ -134,6 +148,7 @@ if (!isTauri) {
       karaoke_mode: false,
       poll_interval_ms: 300,
       hide_when_paused: false,
+      browser_lyrics: 'Ask',
     },
   };
 
@@ -226,7 +241,16 @@ if (!isTauri) {
     const trackData = MOCK_TRACKS[currentTrackIdx];
     if (!trackData) {
       return {
-        playback: { track: null, state: 'Stopped', position_ms: null, observed_at_ms: Date.now() },
+        playback: {
+          track: null,
+          state: 'Stopped',
+          position_ms: null,
+          observed_at_ms: Date.now(),
+          rate: 1,
+          position_quality: 'Missing',
+          caps: { play_pause: false, next: false, previous: false, seek: false, raise: false },
+          ignored: null,
+        },
         lyrics_status: { NotFound: { reason: 'Miss' as NotFoundReason } },
         active_line_index: null,
         line_progress: null,
@@ -243,6 +267,10 @@ if (!isTauri) {
       state: playbackState,
       position_ms: positionMs,
       observed_at_ms: observedAtMs,
+      rate: 1,
+      position_quality: 'Exact',
+      caps: MOCK_CAPS,
+      ignored: null,
     };
 
     let activeIdx: number | null = null;
@@ -502,6 +530,102 @@ if (!isTauri) {
         void emit('playback-tick', computeRenderSnapshot());
         return;
       }
+
+      case 'get_player_sessions': {
+        const trackData = MOCK_TRACKS[currentTrackIdx];
+        if (!trackData) return [] satisfies PlayerSessionInfo[];
+        return [{
+          id: 'applescript:com.spotify.client',
+          player: trackData.track.player,
+          transport: trackData.track.transport,
+          state: playbackState,
+          title: trackData.track.title,
+          artist: trackData.track.artist,
+          platform: null,
+          kind: 'Music',
+          track_key: trackData.track.uri,
+          ignored: null,
+          marked_music: null,
+          app_rule: 'Auto',
+          position_quality: 'Exact',
+          caps: MOCK_CAPS,
+          os_current: false,
+          active: true,
+        }, {
+          id: 'mediaremote:com.google.Chrome.app.cinhimbnkkaeohfgghhklpknlkffjgod',
+          player: { id: 'com.google.Chrome.app.cinhimbnkkaeohfgghhklpknlkffjgod', name: 'YouTube Music' },
+          transport: 'MediaRemote',
+          state: 'Paused',
+          title: 'DESPECHÁ',
+          artist: 'ROSALÍA',
+          platform: 'YouTube Music',
+          kind: 'Music',
+          track_key: 'meta::rosal%C3%ADa::despech%C3%A1::157',
+          ignored: null,
+          marked_music: null,
+          app_rule: 'Auto',
+          position_quality: 'Extrapolated',
+          caps: MOCK_CAPS,
+          os_current: true,
+          active: false,
+        }, {
+          id: 'mediaremote:com.google.Chrome',
+          player: { id: 'com.google.Chrome', name: 'Google Chrome' },
+          transport: 'MediaRemote',
+          state: 'Playing',
+          title: 'I Survived 100 Days in the Wilderness',
+          artist: 'MrBeast',
+          platform: null,
+          kind: 'NotMusic',
+          track_key: 'meta::mrbeast::i%20survived::1500',
+          ignored: 'NotMusicSignals',
+          marked_music: null,
+          app_rule: 'Auto',
+          position_quality: 'Extrapolated',
+          caps: MOCK_CAPS,
+          os_current: false,
+          active: false,
+        }] satisfies PlayerSessionInfo[];
+      }
+
+      case 'get_known_players':
+        return [
+          {
+            app: { id: 'com.spotify.client', name: 'Spotify' },
+            transport: 'AppleScript',
+            last_seen_ms: Date.now(),
+            running: true,
+            rule: 'Auto',
+            pinned: false,
+          },
+          {
+            app: { id: 'com.google.Chrome.app.cinhimbnkkaeohfgghhklpknlkffjgod', name: 'YouTube Music' },
+            transport: 'MediaRemote',
+            last_seen_ms: Date.now() - 3 * 60 * 60 * 1000,
+            running: false,
+            rule: 'Auto',
+            pinned: false,
+          },
+          {
+            app: { id: 'com.apple.Music', name: 'Apple Music' },
+            transport: 'AppleScript',
+            last_seen_ms: Date.now() - 4 * 24 * 60 * 60 * 1000,
+            running: false,
+            rule: 'Never',
+            pinned: false,
+          },
+        ] satisfies KnownPlayerInfo[];
+
+      case 'forget_player':
+      case 'get_media_policy':
+      case 'set_pinned_app':
+      case 'set_only_music':
+      case 'set_app_rule':
+      case 'set_track_override':
+        return { pinned_app: null, only_music: true, app_rules: {} } satisfies MediaPolicyView;
+
+      case 'playback_raise':
+        return;
 
       case 'clear_lyrics_cache':
         return;

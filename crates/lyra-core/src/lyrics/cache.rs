@@ -67,6 +67,17 @@ impl LyricCache {
         })
     }
 
+    /// True when synced, plain or user-supplied lyrics exist for the track.
+    /// Cheaper than `get`: checks files without reading them.
+    pub fn has_lyrics(&self, track_key: &str) -> bool {
+        self.override_dir.join(Self::filename(track_key)).exists()
+            || self.cache_dir.join(Self::filename(track_key)).exists()
+            || self
+                .cache_dir
+                .join(format!("{}.txt", Self::stem(track_key)))
+                .exists()
+    }
+
     pub fn put_document(&self, doc: &LyricDocument) -> Result<()> {
         if let Some(plain) = doc.plain_lyrics.as_ref().filter(|_| doc.lines.is_empty()) {
             std::fs::create_dir_all(&self.cache_dir)?;

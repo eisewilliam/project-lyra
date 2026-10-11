@@ -689,13 +689,9 @@ mod tests {
 
     fn track() -> TrackRef {
         TrackRef {
-            source: crate::domain::PlayerSource::SpotifyMacOs,
-            uri: "test".into(),
             title: "Song".into(),
             artist: "Artist".into(),
-            album: None,
-            duration_ms: 180_000,
-            artwork_url: None,
+            ..TrackRef::fixture("test")
         }
     }
 

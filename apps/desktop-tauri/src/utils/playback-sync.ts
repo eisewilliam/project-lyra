@@ -1,10 +1,27 @@
 // Shared playback-sync primitives used by all three lyric surfaces (main,
 // island, karaoke). These were previously copy-pasted into each view; keeping
 // one definition means a sync/interpolation fix lands everywhere at once.
-import type { LyricWord } from '@/types/tauri-contracts';
+import type { LyricWord, PlaybackCaps } from '@/types/tauri-contracts';
 import { windowReady, type SurfaceLabel } from '@/utils/tauri-commands';
 
 export const BLEND_MS = 500;
+
+/** Controls before the first snapshot arrives or when no player is followed. */
+export const NO_PLAYBACK_CAPS: PlaybackCaps = {
+  play_pause: false,
+  next: false,
+  previous: false,
+  seek: false,
+  raise: false,
+};
+
+export function sameCaps(a: PlaybackCaps, b: PlaybackCaps): boolean {
+  return a.play_pause === b.play_pause
+    && a.next === b.next
+    && a.previous === b.previous
+    && a.seek === b.seek
+    && a.raise === b.raise;
+}
 
 export type { LyricWord };
 

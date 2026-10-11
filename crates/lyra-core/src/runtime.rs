@@ -1,8 +1,8 @@
 use crate::{
     config::ConfigStore,
     domain::{
-        LyricDocument, LyricsStatus, NotFoundReason, PlaybackSnapshot, PlaybackState,
-        RenderSnapshot, SettingsSnapshot, TrackRef,
+        BrowserLyrics, LyricDocument, LyricsStatus, NotFoundReason, PlaybackSnapshot,
+        PlaybackState, RenderSnapshot, SettingsSnapshot, TrackRef,
     },
     lyrics::cache::LyricCache,
     lyrics::offsets::OffsetStore,
@@ -86,6 +86,20 @@ impl LyraRuntime {
     pub fn set_current_offset(&mut self, offset_ms: i64) {
         if let Some(key) = self.last_track_key.clone() {
             self.offsets.set(&key, offset_ms);
+        }
+    }
+
+    /// Why a provider lookup is not allowed for `track`, if it is not.
+    /// Cached and user-supplied lyrics still show; only network lookups for
+    /// browser media wait for the user's consent.
+    pub fn lookup_blocked(&self, track: &TrackRef) -> Option<NotFoundReason> {
+        if !track.from_browser {
+            return None;
+        }
+        match self.settings.behavior.browser_lyrics {
+            BrowserLyrics::Allow => None,
+            BrowserLyrics::Ask => Some(NotFoundReason::ConsentRequired),
+            BrowserLyrics::Deny => Some(NotFoundReason::LookupDisabled),
         }
     }
 
@@ -195,18 +209,13 @@ impl LyraRuntime {
         let mut snapshot = self
             .last_playback_snapshot
             .clone()
-            .unwrap_or(PlaybackSnapshot {
-                track: None,
-                state: PlaybackState::Stopped,
-                position_ms: None,
-                observed_at_ms: 0,
-            });
+            .unwrap_or_else(|| PlaybackSnapshot::stopped(0));
 
         if snapshot.state == PlaybackState::Playing {
             if let Some(pos) = snapshot.position_ms {
                 if snapshot.observed_at_ms > 0 {
                     let elapsed = now_ms.saturating_sub(snapshot.observed_at_ms);
-                    snapshot.position_ms = Some(pos + elapsed);
+                    snapshot.position_ms = Some(pos + scale_by_rate(elapsed, snapshot.rate));
                     snapshot.observed_at_ms = now_ms;
                 }
             }
@@ -236,6 +245,12 @@ impl LyraRuntime {
                         reason: NotFoundReason::Miss,
                     }
                 } else if let Some(reason) = self.transient_errors.get(key).copied() {
+                    LyricsStatus::NotFound { reason }
+                } else if let Some(reason) = snapshot
+                    .track
+                    .as_ref()
+                    .and_then(|track| self.lookup_blocked(track))
+                {
                     LyricsStatus::NotFound { reason }
                 } else {
                     LyricsStatus::Loading
@@ -292,6 +307,16 @@ impl LyraRuntime {
     }
 }
 
+/// Playback-time elapsed for `wall_ms` of wall-clock time. Non-finite or
+/// negative rates from a misbehaving player fall back to normal speed.
+pub fn scale_by_rate(wall_ms: u64, rate: f64) -> u64 {
+    if rate.is_finite() && rate >= 0.0 {
+        (wall_ms as f64 * rate).round() as u64
+    } else {
+        wall_ms
+    }
+}
+
 fn spawn_cache_write<F>(write: F)
 where
     F: FnOnce() + Send + 'static,
@@ -309,6 +334,13 @@ where
 mod tests {
     use super::*;
     use crate::domain::{LyricLine, LyricSourceKind};
+
+    fn test_track(uri: &str, duration_ms: u64) -> TrackRef {
+        TrackRef {
+            duration_ms,
+            ..TrackRef::fixture(uri)
+        }
+    }
 
     fn make_test_doc(timestamps: &[u64]) -> LyricDocument {
         let mut lines = Vec::new();
@@ -342,18 +374,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let mut rt = LyraRuntime::new_in(dir.clone());
         let playback = PlaybackSnapshot {
-            track: Some(TrackRef {
-                source: crate::domain::PlayerSource::SpotifyMacOs,
-                uri: "test_key".into(),
-                title: "title".into(),
-                artist: "artist".into(),
-                album: None,
-                artwork_url: None,
-                duration_ms: 10000,
-            }),
+            track: Some(test_track("test_key", 10000)),
             state: PlaybackState::Paused,
             position_ms: Some(2000),
-            observed_at_ms: 0,
+            ..PlaybackSnapshot::stopped(0)
         };
         rt.set_playback_snapshot(playback.clone());
         rt.tick();
@@ -386,15 +410,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&temp_dir);
         let mut rt = LyraRuntime::new_in(temp_dir);
         let original_snap = PlaybackSnapshot {
-            track: Some(TrackRef {
-                source: crate::domain::PlayerSource::SpotifyMacOs,
-                uri: "spotify:track:1".to_string(),
-                title: "Title".to_string(),
-                artist: "Artist".to_string(),
-                album: None,
-                duration_ms: 180000,
-                artwork_url: None,
-            }),
+            track: Some(test_track("spotify:track:1", 180000)),
             state: PlaybackState::Playing,
             position_ms: Some(10000),
             observed_at_ms: SystemTime::now()
@@ -402,6 +418,7 @@ mod tests {
                 .unwrap()
                 .as_millis() as u64
                 - 200, // 200ms ago
+            ..PlaybackSnapshot::stopped(0)
         };
         rt.set_playback_snapshot(original_snap.clone());
 
@@ -418,6 +435,38 @@ mod tests {
         let canonical = rt.last_playback_snapshot.as_ref().unwrap();
         assert_eq!(canonical.position_ms.unwrap(), 10000);
         assert_eq!(canonical.observed_at_ms, original_snap.observed_at_ms);
+    }
+
+    #[test]
+    fn tick_extrapolates_at_the_player_playback_rate() {
+        let temp_dir = std::env::temp_dir().join(format!("lyra-rate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        let mut rt = LyraRuntime::new_in(temp_dir.clone());
+        let observed_at_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            - 1_000;
+        rt.set_playback_snapshot(PlaybackSnapshot {
+            track: Some(test_track("spotify:track:rate", 180000)),
+            state: PlaybackState::Playing,
+            position_ms: Some(10_000),
+            observed_at_ms,
+            rate: 2.0,
+            ..PlaybackSnapshot::stopped(0)
+        });
+        let render = rt.tick();
+        let wall = render.playback.observed_at_ms - observed_at_ms;
+        assert_eq!(render.playback.position_ms, Some(10_000 + wall * 2));
+        let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn scale_by_rate_ignores_invalid_rates() {
+        assert_eq!(scale_by_rate(1_000, 1.5), 1_500);
+        assert_eq!(scale_by_rate(1_000, 0.0), 0);
+        assert_eq!(scale_by_rate(1_000, f64::NAN), 1_000);
+        assert_eq!(scale_by_rate(1_000, -1.0), 1_000);
     }
 
     #[test]

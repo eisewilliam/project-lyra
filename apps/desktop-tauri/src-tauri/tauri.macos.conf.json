@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "macOS": {
+      "frameworks": ["native-build/MediaRemoteAdapter.framework"]
+    }
+  }
+}

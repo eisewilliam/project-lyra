@@ -1,9 +1,10 @@
 import { memo, type RefObject } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import type { TrackRef } from '@/types/tauri-contracts';
+import type { PlaybackCaps, TrackRef } from '@/types/tauri-contracts';
 import type { PositionBaseline } from '@/utils/playback-sync';
 import { DelayControl } from './delay-control';
 import { ProgressBar } from './progress-bar';
+import { SourceBadge } from './source-badge';
 import { TrackInfo } from './track-info';
 import { TransportControls } from './transport-controls';
 
@@ -13,6 +14,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
 
   artworkError,
   artworkSrc,
+  caps,
   clampedPositionMs,
   durationMs,
   handleMouseDown,
@@ -23,6 +25,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   lyricOffsetMs,
   offsetLabel,
   onArtworkError,
+  onMarkNotMusic,
   onNudgeOffset,
   onResetOffset,
   onRetryLyrics,
@@ -42,6 +45,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
 }: Readonly<{
   artworkError: boolean;
   artworkSrc: string;
+  caps: PlaybackCaps;
   clampedPositionMs: number;
   durationMs: number;
   handleMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -52,6 +56,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   lyricOffsetMs: number;
   offsetLabel: string;
   onArtworkError: () => void;
+  onMarkNotMusic: () => void;
   onNudgeOffset: (deltaMs: number) => void;
   onResetOffset: () => void;
   onRetryLyrics: () => void;
@@ -76,14 +81,17 @@ export const PlayerSidebar = memo(function PlayerSidebar({
       <div className="drag-region" data-tauri-drag-region />
 
       <div className="album-art-large">
-        <img
-          src={artworkSrc}
-          alt={hasTrack && !artworkError ? 'Album cover' : ''}
-          className={`album-cover ${hasArtwork ? '' : 'placeholder'}`}
-          draggable={false}
-          decoding="async"
-          onError={onArtworkError}
-        />
+        <div className="album-art-frame">
+          <img
+            src={artworkSrc}
+            alt={hasTrack && !artworkError ? 'Album cover' : ''}
+            className={`album-cover ${hasArtwork ? '' : 'placeholder'}`}
+            draggable={false}
+            decoding="async"
+            onError={onArtworkError}
+          />
+          {track ? <SourceBadge track={track} canRaise={caps.raise} /> : null}
+        </div>
       </div>
 
       <div className="player-controls-bottom">
@@ -108,6 +116,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
               <TrackInfo
                 hasTrack={hasTrack}
                 hasSyncedLyrics={hasSyncedLyrics}
+                onMarkNotMusic={onMarkNotMusic}
                 onRetryLyrics={onRetryLyrics}
                 selectValue={selectValue}
                 setSelectValue={setSelectValue}
@@ -121,6 +130,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
 
         <ProgressBar
           baselineRef={baselineRef}
+          canSeek={caps.seek}
           clampedPositionMs={clampedPositionMs}
           durationMs={durationMs}
           handleMouseDown={handleMouseDown}
@@ -134,6 +144,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
         />
 
         <TransportControls
+          caps={caps}
           isPlaying={isPlaying}
           togglePlaying={togglePlaying}
         />

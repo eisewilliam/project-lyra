@@ -7,6 +7,7 @@ const noop = () => {};
 export function TrackInfo({
   hasTrack,
   hasSyncedLyrics,
+  onMarkNotMusic,
   onRetryLyrics,
   selectValue,
   setSelectValue,
@@ -16,6 +17,8 @@ export function TrackInfo({
 }: Readonly<{
   hasTrack: boolean;
   hasSyncedLyrics: boolean;
+  /** Stop following this media and remember it is not music. */
+  onMarkNotMusic: () => void;
   onRetryLyrics: () => void;
   selectValue: string;
   setSelectValue: React.Dispatch<React.SetStateAction<string>>;
@@ -43,6 +46,8 @@ export function TrackInfo({
       onRetryLyrics();
     } else if (val === 'settings') {
       toggleSurface('settings').catch(noop);
+    } else if (val === 'not-music') {
+      onMarkNotMusic();
     }
     setSelectValue('');
     event.target.blur();
@@ -76,6 +81,7 @@ export function TrackInfo({
               <option value="" disabled hidden>Actions</option>
               <option value="delay" disabled={!hasSyncedLyrics}>☰ Lyrics delay</option>
               <option value="refresh">↻ Refresh lyrics</option>
+              <option value="not-music">⊘ Not music — stop following</option>
               <option value="settings">⛭ Settings</option>
             </select>
           )}

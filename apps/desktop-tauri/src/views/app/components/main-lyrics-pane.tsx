@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState, type RefObject } from 'react';
 import { LyricsPlaceholder } from '@/components/lyrics-placeholder';
-import type { LyricWord } from '@/types/tauri-contracts';
+import type { BrowserLyrics, IgnoredMedia, LyricWord } from '@/types/tauri-contracts';
 import type { LyricsPlaceholderState, NotFoundReason } from '@/utils/lyrics-state';
 import type { LineRef, PaintRange, ScreenEdgeMotionMap } from '../types';
 import { getLyricProximityClass } from '../utils';
@@ -19,6 +19,10 @@ export const MainLyricsPane = memo(function MainLyricsPane({
   lyricsViewState,
   notFoundReason,
   onRetryLyrics,
+  onBrowserLyrics,
+  ignoredMedia,
+  onFollowIgnored,
+  onFollowAutomatically,
   paintRange,
   screenEdgeMotion,
   seekToLine,
@@ -35,6 +39,10 @@ export const MainLyricsPane = memo(function MainLyricsPane({
   lyricsViewState: LyricsPlaceholderState;
   notFoundReason: NotFoundReason | null;
   onRetryLyrics?: () => void;
+  onBrowserLyrics: (choice: BrowserLyrics) => void;
+  ignoredMedia: IgnoredMedia | null;
+  onFollowIgnored: () => void;
+  onFollowAutomatically: () => void;
   paintRange: PaintRange | null;
   screenEdgeMotion: ScreenEdgeMotionMap;
   seekToLine: (index: number, ts: number) => void;
@@ -155,6 +163,10 @@ export const MainLyricsPane = memo(function MainLyricsPane({
         <LyricsPlaceholder
           state={lyricsViewState}
           notFoundReason={notFoundReason}
+          onBrowserLyrics={onBrowserLyrics}
+          ignored={ignoredMedia}
+          onFollowIgnored={onFollowIgnored}
+          onFollowAutomatically={onFollowAutomatically}
           {...placeholderProps}
         />
       )}

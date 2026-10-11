@@ -6,6 +6,7 @@ export type LyricsPlaceholderState =
   | 'booting'
   | 'idle'
   | 'loading'
+  | 'consent'
   | 'empty'
   | 'error'
   | 'ready'
@@ -62,6 +63,7 @@ export function resolveLyricsSurfaceState({
   }
 
   if (isLyricsNotFound(lyricsStatus)) {
+    if (getNotFoundReason(lyricsStatus) === 'ConsentRequired') return 'consent';
     return isRetryableNotFound(lyricsStatus) ? 'error' : 'empty';
   }
 

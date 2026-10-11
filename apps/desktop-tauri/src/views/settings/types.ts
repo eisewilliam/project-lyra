@@ -6,7 +6,7 @@ import type {
 
 export type Surface = 'main' | 'island' | 'karaoke';
 export type FloatingSurface = 'main' | 'island';
-export type Section = 'general' | 'appearance' | 'main' | 'island' | 'karaoke';
+export type Section = 'general' | 'appearance' | 'players' | 'main' | 'island' | 'karaoke';
 export type ConsolidatedState = { ui: UiState; app: AppSettings };
 
 export type Actions = {

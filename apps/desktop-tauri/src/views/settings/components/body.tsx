@@ -28,6 +28,7 @@ import {
   THEME_OPTIONS,
 } from '../settings-options';
 import type { FloatingSurface, SettingsBodyProps } from '../types';
+import { PlayersSection } from './players-section';
 
 function monitorLabel(m: MonitorInfo, idx: number): string {
   const res = `${m.width}×${m.height}`;
@@ -105,6 +106,15 @@ export function Body({
           </Group>
         )}
       </>
+    );
+  }
+
+  if (section === 'players') {
+    return (
+      <PlayersSection
+        browserLyrics={app.behavior.browser_lyrics}
+        onBrowserLyricsChange={(choice) => actions.updateAppSetting('behavior', 'browser_lyrics', choice)}
+      />
     );
   }
 

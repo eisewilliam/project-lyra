@@ -50,3 +50,10 @@ img {
   animation: none !important;
   transition: none !important;
 }
+
+/* Monochrome mark of where media plays (main panel badge, settings). */
+.source-icon {
+  flex: none;
+  width: var(--source-icon-size, 16px);
+  height: var(--source-icon-size, 16px);
+}
