@@ -94,3 +94,35 @@ jobs:
             - name: Type-check and build
               working-directory: ${{ env.APP_DIR }}
               run: pnpm run build
+
+    website:
+        name: Website (lint, test, build)
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: apps/website
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v4
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: lts/*
+                  cache: npm
+                  cache-dependency-path: apps/website/package-lock.json
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Lint
+              run: npm run lint
+
+            - name: Unit tests
+              run: npm test
+
+            - name: Type-check and build
+              run: npm run build
+
+            - name: Sites packaging checks
+              run: npm run test:sites

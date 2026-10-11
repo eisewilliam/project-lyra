@@ -1,21 +1,22 @@
-import { useState } from 'react';
-import { motion } from 'motion/react';
+import { useEffect, useState } from 'react';
+import { getRouteApi } from '@tanstack/react-router';
+import { motion, type Variants } from 'motion/react';
 import { Check, Copy } from '@phosphor-icons/react';
-import { PlatformIcon } from '../components/DownloadButton.jsx';
-import { ExternalLink } from '../components/router.jsx';
-import { StaffLines } from '../components/StaffLines.jsx';
-import { platformDetails, platformNames, playersAndOthers, siteConfig } from '../site-config.js';
+import { ExternalLink } from '../components/ExternalLink.tsx';
+import { OsIcon } from '../components/OsIcons.tsx';
+import { StaffLines } from '../components/StaffLines.tsx';
+import { platformDetails, platformNames, platforms, playersAndOthers, siteConfig, type Platform } from '../site-config.ts';
 
-const ORDER = ['macos', 'windows', 'linux'];
-const ease = [0.2, 0.8, 0.2, 1];
-const rowIn = { hidden: { opacity: 0, y: 18 }, shown: { opacity: 1, y: 0, transition: { duration: 0.55, ease } } };
+const route = getRouteApi('/download');
+const ease = [0.2, 0.8, 0.2, 1] as const;
+const rowIn: Variants = { hidden: { opacity: 0, y: 18 }, shown: { opacity: 1, y: 0, transition: { duration: 0.55, ease } } };
 
-function PlatformRow({ id, detected, featured }) {
+function PlatformRow({ id, detected, featured }: { id: Platform; detected: boolean; featured: boolean }) {
   const url = siteConfig.downloads[id];
   const details = platformDetails[id];
   return <motion.article className={'platform-row' + (featured ? ' is-featured' : '')} aria-labelledby={id + '-name'} variants={rowIn}>
     <div className="platform-name">
-      <PlatformIcon platform={id} className="platform-icon" />
+      <OsIcon platform={id} className="platform-icon" />
       <div>
         <h2 id={id + '-name'}>{platformNames[id]}</h2>
         {detected && <p className="platform-tag">This computer</p>}
@@ -43,11 +44,15 @@ const buildSteps = [
 
 function CopyCommands() {
   const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return undefined;
+    const timer = window.setTimeout(() => setCopied(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(buildSteps.join('\n'));
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
     } catch {
       setCopied(false);
     }
@@ -55,7 +60,7 @@ function CopyCommands() {
   return <div className="terminal">
     <div className="terminal-bar">
       <span>Terminal</span>
-      <button className="terminal-copy" onClick={copy}>
+      <button type="button" className="terminal-copy" onClick={copy}>
         {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}<span>{copied ? 'Copied' : 'Copy'}</span>
       </button>
     </div>
@@ -64,11 +69,12 @@ function CopyCommands() {
   </div>;
 }
 
-export function DownloadPage({ platform: detected }) {
-  const requested = new URLSearchParams(window.location.search).get('platform');
-  const highlight = platformNames[requested] ? requested : detected;
-  const order = highlight ? [highlight, ...ORDER.filter(id => id !== highlight)] : ORDER;
-  const published = ORDER.some(id => siteConfig.downloads[id]);
+export function DownloadPage() {
+  const { platform: detected } = route.useRouteContext();
+  const { platform: requested } = route.useSearch();
+  const highlight = requested ?? detected;
+  const order = highlight ? [highlight, ...platforms.filter(id => id !== highlight)] : platforms;
+  const published = platforms.some(id => siteConfig.downloads[id]);
   return <main id="main-content" className="download-page">
     <section className="download-intro" aria-labelledby="download-title">
       <StaffLines id="download-staff" className="download-staff"

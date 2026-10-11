@@ -1,59 +1,71 @@
-import { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion, useMotionValue, useMotionValueEvent, useScroll, useSpring, useTransform } from 'motion/react';
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode, type RefObject } from 'react';
+import { getRouteApi, Link } from '@tanstack/react-router';
+import { AnimatePresence, motion, useMotionValue, useMotionValueEvent, useScroll, useSpring, useTransform,
+  type MotionValue, type Transition, type Variants } from 'motion/react';
 import { Pause, Play } from '@phosphor-icons/react';
-import { DownloadButton } from '../components/DownloadButton.jsx';
-import { StaffLines } from '../components/StaffLines.jsx';
-import { ExternalLink, Link } from '../components/router.jsx';
-import { PlayerIcon } from '../components/PlayerIcons.jsx';
-import { playersAndOthers, playersOrOthers, siteConfig } from '../site-config.js';
-import { LyricLightField } from '../hero/LyricLightField.jsx';
-import { PHRASE_LENGTH, STILL_TIME } from '../hero/phrases.js';
-import { useSongClock } from '../demo/useSongClock.js';
-import { DemoArtwork, FloatingIsland, KaraokeOverlay, LyraWindow } from '../demo/surfaces.jsx';
-import { paletteStyle, songs } from '../demo/song.js';
+import { DownloadButton } from '../components/DownloadButton.tsx';
+import { ExternalLink } from '../components/ExternalLink.tsx';
+import { PlayerIcon, type PlayerName } from '../components/PlayerIcons.tsx';
+import { StaffLines } from '../components/StaffLines.tsx';
+import { playersAndOthers, playersOrOthers, siteConfig, type Platform } from '../site-config.ts';
+import { LyricLightField } from '../hero/LyricLightField.tsx';
+import { PHRASE_LENGTH, STILL_TIME } from '../hero/phrases.ts';
+import { useSongClock, type SongPosition } from '../demo/useSongClock.ts';
+import { DemoArtwork, FloatingIsland, KaraokeOverlay, LyraWindow, type IgnoredMedia } from '../demo/surfaces.tsx';
+import { paletteStyle, songById, songs, type Song, type SongId } from '../demo/song.ts';
 
+const route = getRouteApi('/');
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // QA hook: ?frame=<phrase>:<seconds> renders one still frame of the hero light.
-function requestedFrame() {
-  const match = /^(\d+):(\d+(?:\.\d+)?)$/.exec(new URLSearchParams(window.location.search).get('frame') || '');
+function parseFrame(frame: string | undefined) {
+  const match = /^(\d+):(\d+(?:\.\d+)?)$/.exec(frame ?? '');
   return match ? Number(match[1]) * PHRASE_LENGTH + Number(match[2]) : undefined;
 }
 
-function useInView(ref, threshold = 0.3) {
+function useInView(ref: RefObject<Element | null>, threshold = 0.3) {
   const [inView, setInView] = useState(false);
   useEffect(() => {
-    const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold });
-    observer.observe(ref.current);
+    const target = ref.current;
+    if (!target) return undefined;
+    const observer = new IntersectionObserver(([entry]) => setInView(entry?.isIntersecting ?? false), { threshold });
+    observer.observe(target);
     return () => observer.disconnect();
   }, [ref, threshold]);
   return inView;
 }
 
+interface DemoPlayback {
+  playing: boolean;
+  wantsPlay: boolean;
+  toggle: () => void;
+  position: SongPosition;
+}
+
 // Demo playback runs only while its stage is on screen, and never on its own
 // when the visitor prefers reduced motion.
-function useDemoPlayback(ref, song, threshold = 0.3) {
+function useDemoPlayback(ref: RefObject<Element | null>, song: Song, threshold = 0.3): DemoPlayback {
   const inView = useInView(ref, threshold);
   const [wantsPlay, setWantsPlay] = useState(() => !reducedMotion());
   const playing = wantsPlay && inView;
   return { playing, wantsPlay, toggle: () => setWantsPlay(value => !value), position: useSongClock(song, playing) };
 }
 
-const ease = [0.2, 0.8, 0.2, 1];
+const ease = [0.2, 0.8, 0.2, 1] as const;
 // The page's one orchestrated entrance: the hero copy rises out of the light.
-const heroStagger = { shown: { transition: { staggerChildren: 0.1, delayChildren: 0.2 } } };
-const heroRise = {
+const heroStagger: Variants = { shown: { transition: { staggerChildren: 0.1, delayChildren: 0.2 } } };
+const heroRise: Variants = {
   hidden: { opacity: 0, y: 28, filter: 'blur(8px)' },
   shown: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.95, ease } },
 };
 
-function Hero({ platform }) {
-  const [startFrame] = useState(requestedFrame);
-  const [lightOn, setLightOn] = useState(() => !reducedMotion() && startFrame === undefined
-    && new URLSearchParams(window.location.search).get('motion') !== 'off');
+function Hero({ platform }: { platform: Platform | null }) {
+  const search = route.useSearch();
+  const [startFrame] = useState(() => parseFrame(search.frame));
+  const [lightOn, setLightOn] = useState(() => !reducedMotion() && startFrame === undefined && search.motion !== 'off');
   const [lightSupported, setLightSupported] = useState(true);
-  const heroRef = useRef(null);
-  const copyRef = useRef(null);
+  const heroRef = useRef<HTMLElement>(null);
+  const copyRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
     const update = () => { if (media.matches) setLightOn(false); };
@@ -74,25 +86,34 @@ function Hero({ platform }) {
         <Link className="text-link" to="/download">Other downloads</Link>
       </motion.div>
     </motion.div>
-    {lightSupported && <button className="motion-control" onClick={() => setLightOn(value => !value)}
+    {lightSupported && <button type="button" className="motion-control" onClick={() => setLightOn(value => !value)}
       aria-label={lightOn ? 'Pause background animation' : 'Play background animation'}>
       {lightOn ? <Pause weight="fill" aria-hidden="true" /> : <Play weight="fill" aria-hidden="true" />}
     </button>}
   </section>;
 }
 
-const surfaces = [
+type SurfaceId = 'window' | 'island' | 'overlay';
+
+interface Surface {
+  id: SurfaceId;
+  name: string;
+  text: string;
+  detail: string;
+}
+
+const surfaces: Surface[] = [
   { id: 'window', name: 'Lyra window', text: 'The whole song: artwork, playback controls and the full lyric sheet, with the current line in focus. Click any line to jump there.', detail: 'The window takes its color from the artwork of whatever is playing.' },
   { id: 'island', name: 'Marquee', text: 'A dynamic panel docked to the top of your screen, above every app. The line being sung, and the one coming next.', detail: 'Hide it when the music pauses, or move it wherever you like.' },
   { id: 'overlay', name: 'Karaoke overlay', text: 'One or two large lines across your screen, filling word by word as they are sung.', detail: 'Give it a background so it reads over anything, even a bright page.' },
 ];
-const sceneLabels = {
+const sceneLabels: Record<SurfaceId, string> = {
   window: 'The Lyra window showing the demo song’s lyric sheet',
   island: 'The Marquee docked above an open document',
   overlay: 'The karaoke overlay over a bright desktop',
 };
 
-function useMediaQuery(query) {
+function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
   useEffect(() => {
     const media = window.matchMedia(query);
@@ -103,15 +124,15 @@ function useMediaQuery(query) {
   return matches;
 }
 
-function DemoToggle({ demo, compact = false }) {
+function DemoToggle({ demo, compact = false }: { demo: DemoPlayback; compact?: boolean }) {
   const label = demo.wantsPlay ? 'Pause demo' : 'Play demo';
-  return <button className={'demo-toggle' + (compact ? ' is-compact' : '')} onClick={demo.toggle} aria-label={compact ? label : undefined}>
+  return <button type="button" className={'demo-toggle' + (compact ? ' is-compact' : '')} onClick={demo.toggle} aria-label={compact ? label : undefined}>
     {demo.wantsPlay ? <Pause weight="fill" aria-hidden="true" /> : <Play weight="fill" aria-hidden="true" />}
     {!compact && <span>{label}</span>}
   </button>;
 }
 
-function SongPicker({ song, onChange, name }) {
+function SongPicker({ song, onChange, name }: { song: Song; onChange: (id: SongId) => void; name: string }) {
   return <fieldset className="song-picker">
     <legend className="visually-hidden">Demo song</legend>
     {songs.map(option => <label key={option.id} className="song-option" title={option.title} style={paletteStyle(option)}>
@@ -130,17 +151,23 @@ function WorkSheet() {
   </span>;
 }
 
-const spring = { type: 'spring', stiffness: 320, damping: 32 };
+const spring: Transition = { type: 'spring', stiffness: 320, damping: 32 };
 // Scene changes are meant to be seen: the old surface lifts away and the new
 // one rises in from the direction of travel, with a brief blur between them.
-const sceneVariants = {
-  enter: direction => ({ opacity: 0, y: `${direction * 14}%`, scale: 0.9, filter: 'blur(12px)' }),
+const sceneVariants: Variants = {
+  enter: (direction: number) => ({ opacity: 0, y: `${direction * 14}%`, scale: 0.9, filter: 'blur(12px)' }),
   center: { opacity: 1, y: '0%', scale: 1, filter: 'blur(0px)' },
-  exit: direction => ({ opacity: 0, y: `${direction * -10}%`, scale: 1.04, filter: 'blur(12px)', transition: { duration: 0.4, ease: [0.4, 0, 1, 1] } }),
+  exit: (direction: number) => ({ opacity: 0, y: `${direction * -10}%`, scale: 1.04, filter: 'blur(12px)', transition: { duration: 0.4, ease: [0.4, 0, 1, 1] } }),
 };
-const sceneTransition = { type: 'spring', stiffness: 150, damping: 22, mass: 0.9, opacity: { duration: 0.35 }, filter: { duration: 0.4 } };
+const sceneTransition: Transition = { type: 'spring', stiffness: 150, damping: 22, mass: 0.9, opacity: { duration: 0.35 }, filter: { duration: 0.4 } };
 
-function SceneContent({ surface, song, demo }) {
+interface SceneProps {
+  surface: SurfaceId;
+  song: Song;
+  demo: DemoPlayback;
+}
+
+function SceneContent({ surface, song, demo }: SceneProps) {
   if (surface === 'window') return <LyraWindow song={song} position={demo.position} playing={demo.playing} />;
   if (surface === 'island') return <><WorkSheet /><FloatingIsland song={song} position={demo.position} /></>;
   return <KaraokeOverlay song={song} position={demo.position} className="is-bottom" style={{ '--overlay-bg': 0.5 }} />;
@@ -152,7 +179,7 @@ function useTilt() {
   const y = useMotionValue(0);
   const rotateX = useSpring(useTransform(y, [-0.5, 0.5], [3, -3]), { stiffness: 140, damping: 18 });
   const rotateY = useSpring(useTransform(x, [-0.5, 0.5], [-4, 4]), { stiffness: 140, damping: 18 });
-  const onPointerMove = event => {
+  const onPointerMove = (event: PointerEvent<HTMLElement>) => {
     if (event.pointerType !== 'mouse') return;
     const box = event.currentTarget.getBoundingClientRect();
     x.set((event.clientX - box.left) / box.width - 0.5);
@@ -162,7 +189,11 @@ function useTilt() {
   return { style: { rotateX, rotateY }, onPointerMove, onPointerLeave };
 }
 
-function Scene({ surface, song, demo, onSongChange, pickerName, direction = 1 }) {
+function Scene({ surface, song, demo, onSongChange, pickerName, direction = 1 }: SceneProps & {
+  onSongChange: (id: SongId) => void;
+  pickerName: string;
+  direction?: number;
+}) {
   const tilt = useTilt();
   return <motion.figure className={'scene' + (demo.playing ? ' is-playing' : '')} style={tilt.style}
     onPointerMove={tilt.onPointerMove} onPointerLeave={tilt.onPointerLeave}>
@@ -191,7 +222,7 @@ function Scene({ surface, song, demo, onSongChange, pickerName, direction = 1 })
   </motion.figure>;
 }
 
-function StepText({ item, id }) {
+function StepText({ item, id }: { item: Surface; id: string }) {
   return <>
     <h3 id={id}>{item.name}</h3>
     <p>{item.text}</p>
@@ -199,39 +230,50 @@ function StepText({ item, id }) {
   </>;
 }
 
-function RailSegment({ progress, index, count, active, onSelect, children }) {
+interface RailSegmentProps {
+  progress: MotionValue<number>;
+  index: number;
+  count: number;
+  active: boolean;
+  onSelect: () => void;
+  children: ReactNode;
+}
+
+function RailSegment({ progress, index, count, active, onSelect, children }: RailSegmentProps) {
   const fill = useTransform(progress, [index / count, (index + 1) / count], [0, 1]);
   return <li>
-    <button aria-current={active ? 'step' : undefined} onClick={onSelect}>
+    <button type="button" aria-current={active ? 'step' : undefined} onClick={onSelect}>
       <span className="rail-track"><motion.span className="rail-fill" style={{ scaleX: fill }} /></span>
       {children}
     </button>
   </li>;
 }
 
-const textVariants = {
-  enter: direction => ({ opacity: 0, y: direction * 28 }),
+const textVariants: Variants = {
+  enter: (direction: number) => ({ opacity: 0, y: direction * 28 }),
   center: { opacity: 1, y: 0, transition: { duration: 0.45, ease } },
-  exit: direction => ({ opacity: 0, y: direction * -20, transition: { duration: 0.2, ease: 'easeIn' } }),
+  exit: (direction: number) => ({ opacity: 0, y: direction * -20, transition: { duration: 0.2, ease: 'easeIn' } }),
 };
 
 // Wide screens pin the section while it scrolls past. Scroll position picks
 // the surface directly: about forty percent of a screen moves to the next one.
-function PinnedStory({ song, demo, onSongChange }) {
-  const trackRef = useRef(null);
+function PinnedStory({ song, demo, onSongChange }: { song: Song; demo: DemoPlayback; onSongChange: (id: SongId) => void }) {
+  const trackRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: trackRef, offset: ['start start', 'end end'] });
   const [step, setStep] = useState({ index: 0, direction: 1 });
   useMotionValueEvent(scrollYProgress, 'change', value => {
     const index = Math.min(surfaces.length - 1, Math.max(0, Math.floor(value * surfaces.length)));
     setStep(current => (current.index === index ? current : { index, direction: index > current.index ? 1 : -1 }));
   });
-  const goTo = index => {
+  const goTo = (index: number) => {
     const track = trackRef.current;
+    if (!track) return;
     const top = track.getBoundingClientRect().top + window.scrollY;
     const travel = track.offsetHeight - window.innerHeight;
     window.scrollTo({ top: top + (travel * (index + 0.5)) / surfaces.length, behavior: reducedMotion() ? 'auto' : 'smooth' });
   };
-  const item = surfaces[step.index];
+  // The index is clamped to the list above.
+  const item = surfaces[step.index]!;
   return <div className="story-track" ref={trackRef} style={{ '--steps': surfaces.length }}>
     <div className="story-pin">
       <div className="story-copy">
@@ -255,9 +297,9 @@ function PinnedStory({ song, demo, onSongChange }) {
 }
 
 function Surfaces() {
-  const sectionRef = useRef(null);
-  const [songId, setSongId] = useState(songs[0].id);
-  const song = songs.find(option => option.id === songId);
+  const sectionRef = useRef<HTMLElement>(null);
+  const [songId, setSongId] = useState<SongId>('shenandoah');
+  const song = songById(songId);
   const demo = useDemoPlayback(sectionRef, song, 0.1);
   const pinned = useMediaQuery('(min-width: 960px) and (min-height: 620px)');
   return <section className="section surfaces" id="surfaces" aria-labelledby="surfaces-title" ref={sectionRef} style={paletteStyle(song)}>
@@ -279,8 +321,19 @@ function Surfaces() {
 
 // Players section: the same Lyra window follows whichever player is chosen,
 // and declines a video. Each player plays a different public-domain demo song.
-const neutralPalette = { palette: { deep: '#07090a', a: '#3d4b4d', b: '#1c2628', c: '#c7d5d3' } };
-const sources = [
+const neutralPalette: Pick<Song, 'palette'> = { palette: { deep: '#07090a', a: '#3d4b4d', b: '#1c2628', c: '#c7d5d3' } };
+
+interface Source {
+  id: string;
+  icon: PlayerName;
+  name: string;
+  where?: string;
+  song: SongId;
+  ignored?: IgnoredMedia;
+  detail: string;
+}
+
+const sources: Source[] = [
   { id: 'spotify', icon: 'spotify', name: 'Spotify', song: 'shenandoah',
     detail: 'Lyra reads Spotify directly. The mark on the artwork opens the track in Spotify.' },
   { id: 'apple-music', icon: 'appleMusic', name: 'Apple Music', song: 'greensleeves',
@@ -293,10 +346,9 @@ const sources = [
 ];
 
 function Players() {
-  const stageRef = useRef(null);
-  const [sourceId, setSourceId] = useState(sources[0].id);
-  const source = sources.find(option => option.id === sourceId);
-  const song = songs.find(option => option.id === source.song);
+  const stageRef = useRef<HTMLElement>(null);
+  const [source, setSource] = useState(sources[0]!);
+  const song = songById(source.song);
   const demo = useDemoPlayback(stageRef, song);
   const label = source.ignored
     ? 'The Lyra window not following a video playing in a browser'
@@ -324,9 +376,9 @@ function Players() {
         <fieldset className="player-picker">
           <legend>Playing in</legend>
           {sources.map(option => <label key={option.id} className="player-option">
-            <input type="radio" name="player-source" value={option.id} checked={option.id === sourceId}
-              onChange={() => setSourceId(option.id)} />
-            {option.id === sourceId && <motion.span className="player-option-indicator" layoutId="player-option" transition={spring} />}
+            <input type="radio" name="player-source" value={option.id} checked={option === source}
+              onChange={() => setSource(option)} />
+            {option === source && <motion.span className="player-option-indicator" layoutId="player-option" transition={spring} />}
             <PlayerIcon player={option.icon} />
             <span className="player-option-name">{option.name}{option.where && <span> {option.where}</span>}</span>
           </label>)}
@@ -341,14 +393,16 @@ function Players() {
   </section>;
 }
 
-const choices = {
-  position: [['top', 'Top'], ['bottom', 'Bottom']],
-  align: [['left', 'Left'], ['center', 'Center'], ['right', 'Right']],
-  lines: [['1', 'One line'], ['2', 'Two lines']],
-  scale: [['0.75', '75%'], ['1', '100%'], ['1.5', '150%']],
-  background: [['0', 'None'], ['0.25', '25%'], ['0.5', '50%'], ['0.75', '75%']],
-};
-const choiceLabels = { position: 'Position', align: 'Alignment', lines: 'Lines', scale: 'Text size', background: 'Background' };
+type OverlaySetting = 'position' | 'align' | 'lines' | 'scale' | 'background';
+type OverlaySettings = Record<OverlaySetting, string>;
+
+const choices: { name: OverlaySetting; label: string; options: [value: string, label: string][] }[] = [
+  { name: 'position', label: 'Position', options: [['top', 'Top'], ['bottom', 'Bottom']] },
+  { name: 'align', label: 'Alignment', options: [['left', 'Left'], ['center', 'Center'], ['right', 'Right']] },
+  { name: 'lines', label: 'Lines', options: [['1', 'One line'], ['2', 'Two lines']] },
+  { name: 'scale', label: 'Text size', options: [['0.75', '75%'], ['1', '100%'], ['1.5', '150%']] },
+  { name: 'background', label: 'Background', options: [['0', 'None'], ['0.25', '25%'], ['0.5', '50%'], ['0.75', '75%']] },
+];
 const moreSettings = [
   'Hide surfaces when the music pauses or nothing is playing',
   'Start Lyra with your computer',
@@ -359,17 +413,17 @@ const moreSettings = [
 ];
 
 function Customize() {
-  const previewRef = useRef(null);
-  const song = songs[2];
+  const previewRef = useRef<HTMLDivElement>(null);
+  const song = songById('dannyboy');
   const demo = useDemoPlayback(previewRef, song);
-  const [settings, setSettings] = useState({ position: 'bottom', align: 'center', lines: '2', scale: '1', background: '0.25' });
+  const [settings, setSettings] = useState<OverlaySettings>({ position: 'bottom', align: 'center', lines: '2', scale: '1', background: '0.25' });
   return <section className="section customize" aria-labelledby="customize-title" style={paletteStyle(song)}>
     <div className="customize-copy">
       <h2 id="customize-title">Make it fit<br />your desktop.</h2>
       <p className="lead">Every surface has its own settings. Try a few of the karaoke overlay’s here.</p>
       <form className="choice-groups" onSubmit={event => event.preventDefault()}>
-        {Object.entries(choices).map(([name, options]) => <fieldset className="choice-group" key={name}>
-          <legend>{choiceLabels[name]}</legend>
+        {choices.map(({ name, label: groupLabel, options }) => <fieldset className="choice-group" key={name}>
+          <legend>{groupLabel}</legend>
           <div className="segmented">
             {options.map(([value, label]) => <label key={value}>
               <input type="radio" name={name} value={value} checked={settings[name] === value}
@@ -397,7 +451,7 @@ function Customize() {
   </section>;
 }
 
-const steps = [
+const steps: [title: string, text: string][] = [
   ['Install Lyra', 'Download it for your computer and open it. Lyra sits in your menu bar or system tray.'],
   ['Press play', `Play something in ${playersOrOthers}. Lyra notices and looks up its synced lyrics.`],
   ['Follow along', 'Turn the window, the Marquee or the overlay on or off at any time from the tray.'],
@@ -422,7 +476,7 @@ function Steps() {
   </section>;
 }
 
-const credits = [
+const credits: [role: string, value: string][] = [
   ['Lyrics', 'LRCLIB, a community-maintained lyrics database'],
   ['Playback', `Read from the players on your computer: ${playersAndOthers}. Lyra doesn’t use any streaming service’s web API.`],
   ['Storage', 'Lyrics are cached on your computer. Your own .lrc file can replace any song’s lyrics.'],
@@ -453,7 +507,7 @@ function LinerNotes() {
   </section>;
 }
 
-const faqs = [
+const faqs: [question: string, answer: string][] = [
   ['What do I need to use Lyra?', `A Mac, a Windows PC or a Linux computer, and a music player: ${playersOrOthers}. Start a song and Lyra follows along.`],
   ['Does it work with every song?', 'Lyrics come from LRCLIB, a community database, so coverage varies. Songs with synced lyrics move with the music. If only plain lyrics exist, Lyra shows them without timing. If there are none, Lyra tells you, and you can retry or add your own .lrc file.'],
   ['What does Lyra send over the internet?', 'Only lyric lookups. To find lyrics, Lyra sends LRCLIB the song’s title, artist, album and length. For something playing in a browser, Lyra asks you first. Playback is read on your computer, and there is no account, telemetry or analytics.'],
@@ -477,7 +531,7 @@ function Faq() {
   </section>;
 }
 
-function Closing({ platform }) {
+function Closing({ platform }: { platform: Platform | null }) {
   return <section className="section closing" aria-labelledby="closing-title">
     <div className="closing-staff-band" aria-hidden="true">
       <StaffLines id="closing-staff" className="closing-staff"
@@ -493,7 +547,8 @@ function Closing({ platform }) {
   </section>;
 }
 
-export function LandingPage({ platform }) {
+export function LandingPage() {
+  const { platform } = route.useRouteContext();
   return <main id="main-content">
     <Hero platform={platform} />
     <Surfaces />
