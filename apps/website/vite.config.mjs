@@ -10,7 +10,9 @@ export default defineConfig({
   },
   server: {
     host: "0.0.0.0",
-    allowedHosts: ["terminal.local"],
+    // Cloudflare quick tunnels get a random subdomain each run; the leading
+    // dot allows any of them.
+    allowedHosts: ["terminal.local", ".trycloudflare.com"],
     warmup: {
       clientFiles: ["./src/main.jsx"],
     },
