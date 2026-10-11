@@ -6,38 +6,39 @@ export function useProgressRing({
   durationMs,
   pageVisible,
   surfaceVisible,
-  progressRingRef,
+  progressTargetRef,
   baselineRef,
 }: {
   isPlaying: boolean;
   durationMs: number;
   pageVisible: boolean;
   surfaceVisible: boolean;
-  progressRingRef: React.RefObject<SVGSVGElement | null>;
+  /** Element whose `--track-progress` the cover ring inherits. */
+  progressTargetRef: React.RefObject<HTMLElement | null>;
   baselineRef: React.RefObject<PositionBaseline>;
 }) {
   useEffect(() => {
-    const ring = progressRingRef.current;
-    if (!ring) return;
-    if (!isPlaying || durationMs <= 0 || !pageVisible || !surfaceVisible) {
-      if (baselineRef.current) {
-        const pos = interpolatePosition(baselineRef.current, performance.now(), isPlaying);
-        const pct = Math.max(0, Math.min(1, pos / durationMs));
-        ring.style.setProperty('--track-progress', String(pct));
-      }
-      return;
-    }
+    const ring = progressTargetRef.current;
+    if (!ring || durationMs <= 0) return;
 
-    let rafId: number;
-    const tick = () => {
+    // The ring is ~130 px long, so 0.1% steps stay sub-pixel. Stepping on a
+    // timer sized to that resolution (100–250 ms) instead of every display
+    // frame keeps the stroke repaint off the per-frame path.
+    let last = '';
+    const write = () => {
       if (!baselineRef.current) return;
       const pos = interpolatePosition(baselineRef.current, performance.now(), isPlaying);
-      const pct = Math.max(0, Math.min(1, pos / durationMs));
-      ring.style.setProperty('--track-progress', String(pct));
-      rafId = requestAnimationFrame(tick);
+      const pct = Math.max(0, Math.min(1, pos / durationMs)).toFixed(3);
+      if (pct === last) return;
+      last = pct;
+      ring.style.setProperty('--track-progress', pct);
     };
 
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [isPlaying, durationMs, pageVisible, surfaceVisible, progressRingRef, baselineRef]);
+    write();
+    if (!isPlaying || !pageVisible || !surfaceVisible) return;
+
+    const stepMs = Math.min(250, Math.max(100, durationMs / 1000));
+    const timer = globalThis.setInterval(write, stepMs);
+    return () => globalThis.clearInterval(timer);
+  }, [isPlaying, durationMs, pageVisible, surfaceVisible, progressTargetRef, baselineRef]);
 }

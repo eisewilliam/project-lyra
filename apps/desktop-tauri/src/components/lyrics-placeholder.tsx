@@ -5,6 +5,15 @@ import {
   type NotFoundReason,
 } from '@/utils/lyrics-state';
 import { LyricsPlaceholderIcon } from '@/utils/lyrics-placeholder-icon';
+import { BRAND_ICONS } from '@/utils/brand-icons';
+import { SourceIcon } from './source-icon';
+
+/** Players shown in the empty state; most others work through media controls. */
+const EMPTY_STATE_PLAYERS = [
+  { key: 'spotify', name: 'Spotify', brand: BRAND_ICONS.spotify },
+  { key: 'apple-music', name: 'Apple Music', brand: BRAND_ICONS.appleMusic },
+  { key: 'youtube-music', name: 'YouTube Music', brand: BRAND_ICONS.youtubeMusic },
+] as const;
 
 export function LyricsPlaceholder({
   state,
@@ -14,6 +23,8 @@ export function LyricsPlaceholder({
   ignored,
   onFollowIgnored,
   onFollowAutomatically,
+  automationDenied,
+  onOpenAutomationSettings,
 }: Readonly<{
   state: LyricsPlaceholderState;
   notFoundReason?: NotFoundReason | null;
@@ -26,12 +37,19 @@ export function LyricsPlaceholder({
   onFollowIgnored?: () => void;
   /** Return to automatic player selection when another player is pinned. */
   onFollowAutomatically?: () => void;
+  /** Players macOS refused to let Lyra read (Automation permission). */
+  automationDenied?: ReadonlyArray<string>;
+  onOpenAutomationSettings?: () => void;
 }>) {
   const loading = state === 'booting' || state === 'loading';
   const ignoredNow = state === 'idle' ? ignored ?? null : null;
-  const label = ignoredNow
-    ? `Not following “${ignoredNow.title}”`
-    : getPlaceholderLabel(state, notFoundReason ?? null);
+  const deniedNow = state === 'idle' && !ignoredNow && automationDenied && automationDenied.length > 0
+    ? automationDenied
+    : null;
+  const emptyNow = state === 'idle' && !ignoredNow && !deniedNow;
+  let label = getPlaceholderLabel(state, notFoundReason ?? null);
+  if (ignoredNow) label = `Not following “${ignoredNow.title}”`;
+  else if (deniedNow) label = `Lyra can't see ${deniedNow.join(' or ')}`;
 
   return (
     <div className={`lyrics-placeholder is-${state} ${loading ? 'is-loading' : ''}`}>
@@ -52,6 +70,36 @@ export function LyricsPlaceholder({
         ) : (
           <p className="lyrics-placeholder-label">{label}</p>
         )}
+
+        {deniedNow ? (
+          <>
+            <p className="lyrics-placeholder-note">
+              Allow Lyra under Privacy &amp; Security → Automation in System Settings.
+            </p>
+            {onOpenAutomationSettings ? (
+              <div className="lyrics-placeholder-actions">
+                <button type="button" className="lyrics-placeholder-retry" onClick={onOpenAutomationSettings}>
+                  Open Privacy Settings
+                </button>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+
+        {emptyNow ? (
+          <>
+            <p className="lyrics-placeholder-note">
+              Lyra follows Spotify, Apple Music and most players in your media controls.
+            </p>
+            <div className="lyrics-placeholder-players" aria-hidden="true">
+              {EMPTY_STATE_PLAYERS.map((player) => (
+                <span key={player.key} className="lyrics-placeholder-player" title={player.name}>
+                  <SourceIcon brand={player.brand} size={16} />
+                </span>
+              ))}
+            </div>
+          </>
+        ) : null}
 
         {ignoredNow ? (
           <p className="lyrics-placeholder-note">
@@ -110,7 +158,7 @@ function getPlaceholderLabel(
     case 'booting':
       return 'Looking for your music player';
     case 'idle':
-      return 'Waiting for playback';
+      return 'Play a song to see its lyrics';
     case 'loading':
       return 'Loading lyrics';
     case 'consent':

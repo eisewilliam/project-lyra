@@ -162,7 +162,10 @@ export type UiState = {
   island_visible: boolean;
   floating_visible: boolean;
   karaoke_visible: boolean;
+  /** Position lock: no dragging; hover and clicks still work. */
   island_locked: boolean;
+  /** The island ignores the mouse; clicks reach the app behind it. */
+  island_click_through: boolean;
   island_pos: [number, number] | null;
   island_width: number | null;
   island_height: number | null;
@@ -185,6 +188,8 @@ export type UiState = {
   karaoke_bold: boolean;
   autostart_enabled: boolean;
   preferred_monitor: string | null;
+  /** The first-run explanation has been acknowledged. */
+  onboarded: boolean;
 };
 
 export type WindowSettings = {
@@ -204,6 +209,8 @@ export type AppearanceSettings = {
   background_opacity: number;
   context_lines_above: number;
   context_lines_below: number;
+  /** Depth blur strength around the current line: 0 = off, 1 = standard. */
+  lyric_blur: number;
 };
 
 /** Whether lyrics may be looked up for media playing in a web browser. */
@@ -214,6 +221,7 @@ export type BehaviorSettings = {
   poll_interval_ms: number;
   hide_when_paused: boolean;
   browser_lyrics: BrowserLyrics;
+  battery_saver: boolean;
 };
 
 export type AppSettings = {

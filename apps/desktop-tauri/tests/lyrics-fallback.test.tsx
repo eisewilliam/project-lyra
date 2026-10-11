@@ -13,7 +13,8 @@ describe('unsynchronized lyrics', () => {
       karaokeMode={true} lyrics={[]} plainLyrics={'First line\n\nFinal line'}
       lyricsContainerRef={ref()} lyricsPaneRef={ref()} lyricsRef={{ current: [] }}
       lyricsViewState="unsynced" notFoundReason={null} paintRange={null}
-      screenEdgeMotion={{}} seekToLine={() => { throw new Error('Must not seek'); }} wordRefs={{ current: [] }} />);
+      screenEdgeMotion={{}} seekToLine={() => { throw new Error('Must not seek'); }} wordRefs={{ current: [] }}
+      isBrowsing={false} onReturnToCurrent={() => undefined} switching={false} onLineMenu={() => undefined} />);
     expect(html).toContain('Unsynchronized lyrics');
     expect(html).toContain('First line\n\nFinal line');
     expect(html).toContain('is-unsynced');

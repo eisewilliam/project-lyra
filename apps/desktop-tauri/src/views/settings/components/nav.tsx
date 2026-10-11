@@ -44,6 +44,7 @@ export function SettingsNav({
                 <button
                   key={item.id}
                   className={`nav-item relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left ${isActive ? 'active' : ''}`}
+                  aria-current={isActive ? 'page' : undefined}
                   onClick={() => onSectionChange(item.id)}
                 >
                   {isActive && (

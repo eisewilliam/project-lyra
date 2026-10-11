@@ -12,6 +12,10 @@ import type { PaintRange, ScreenEdgeMotion, ScreenEdgeMotionMap } from '../types
 const EDGE_MOTION_MS = 640;
 const REEL_TRANSITION_MS = 620;
 const PAINT_RANGE_BUFFER_VIEWPORTS = 0.6;
+/** Browsing ends and the reel returns to the current line after this idle. */
+const BROWSE_IDLE_MS = 4000;
+/** Line-mode wheel deltas (mice without smooth scrolling) to pixels. */
+const WHEEL_LINE_PX = 32;
 
 type LineMetric = {
   top: number;
@@ -49,6 +53,11 @@ export function useMainLyricReel({
   trackUri: string;
 }) {
   const [paintRange, setPaintRange] = useState<PaintRange | null>(null);
+  const [isBrowsing, setIsBrowsing] = useState(false);
+  /** Reel translate while the user scrolls freely; null when following. */
+  const browseTranslateRef = useRef<number | null>(null);
+  const browseTimerRef = useRef(0);
+  const browsePaintRafRef = useRef(0);
   const prevLineRef = useRef<number | null>(null);
   const prevTargetRef = useRef<number | null>(null);
   const targetCacheRef = useRef<number[]>([]);
@@ -286,6 +295,12 @@ export function useMainLyricReel({
     const songChanged = trackUri !== reelUriRef.current;
     reelUriRef.current = trackUri;
 
+    if (songChanged || karaokeMode) {
+      globalThis.clearTimeout(browseTimerRef.current);
+      browseTranslateRef.current = null;
+      setIsBrowsing(false);
+    }
+
     if (karaokeMode || activeLine === null) {
       container.style.transform = 'translate3d(0, 0px, 0)';
       prevTargetRef.current = 0;
@@ -316,6 +331,12 @@ export function useMainLyricReel({
         target = pane.clientHeight / 2 - container.offsetTop - el.offsetTop - el.offsetHeight / 2;
       }
       if (target === null) return;
+      // While browsing, keep the reader's position; remember where the
+      // current line is so returning glides to it.
+      if (browseTranslateRef.current !== null) {
+        prevTargetRef.current = target;
+        return;
+      }
       const noGlide = reduceMotion || songChanged;
 
       if (noGlide) {
@@ -365,6 +386,68 @@ export function useMainLyricReel({
     trackUri,
   ]);
 
+  /** Stop browsing and glide back to the current line. */
+  const returnToCurrent = useCallback(() => {
+    globalThis.clearTimeout(browseTimerRef.current);
+    if (browseTranslateRef.current === null) return;
+    browseTranslateRef.current = null;
+    setIsBrowsing(false);
+    const container = lyricsContainerRef.current;
+    const target = activeLine !== null ? targetCacheRef.current[activeLine] : undefined;
+    if (!container || target === undefined || !Number.isFinite(target)) return;
+    container.style.transition = '';
+    container.style.transform = `translate3d(0, ${target}px, 0)`;
+    prevTargetRef.current = target;
+    publishPaintRange(target);
+  }, [activeLine, lyricsContainerRef, publishPaintRange]);
+
+  const returnToCurrentRef = useRef(returnToCurrent);
+  useEffect(() => {
+    returnToCurrentRef.current = returnToCurrent;
+  }, [returnToCurrent]);
+
+  // Free scrolling: wheel/trackpad pans the reel directly. The current line
+  // keeps advancing underneath; the reel stops following until the reader
+  // returns (button) or stops scrolling for a few seconds.
+  useEffect(() => {
+    const pane = lyricsPaneRef.current;
+    const container = lyricsContainerRef.current;
+    if (!pane || !container || karaokeMode || lyricsCount === 0) return;
+
+    const onWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      const targets = targetCacheRef.current;
+      const first = targets[0];
+      const last = targets[lyricsCount - 1];
+      if (first === undefined || last === undefined || !Number.isFinite(first) || !Number.isFinite(last)) return;
+
+      const delta = event.deltaMode === 1 ? event.deltaY * WHEEL_LINE_PX : event.deltaY;
+      const from = browseTranslateRef.current ?? prevTargetRef.current ?? first;
+      const next = Math.min(first, Math.max(last, from - delta));
+      browseTranslateRef.current = next;
+      setIsBrowsing(true);
+
+      container.style.transition = 'none';
+      container.style.transform = `translate3d(0, ${next}px, 0)`;
+      browsePaintRafRef.current ||= requestAnimationFrame(() => {
+        browsePaintRafRef.current = 0;
+        if (browseTranslateRef.current !== null) publishPaintRange(browseTranslateRef.current);
+      });
+
+      globalThis.clearTimeout(browseTimerRef.current);
+      browseTimerRef.current = globalThis.setTimeout(() => returnToCurrentRef.current(), BROWSE_IDLE_MS);
+    };
+
+    pane.addEventListener('wheel', onWheel, { passive: true });
+    return () => {
+      pane.removeEventListener('wheel', onWheel);
+      cancelAnimationFrame(browsePaintRafRef.current);
+      browsePaintRafRef.current = 0;
+    };
+  }, [karaokeMode, lyricsContainerRef, lyricsCount, lyricsPaneRef, publishPaintRange]);
+
+  useEffect(() => () => globalThis.clearTimeout(browseTimerRef.current), []);
+
   useEffect(() => {
     const edgeTimers = edgeTimersRef.current;
     return () => {
@@ -376,5 +459,5 @@ export function useMainLyricReel({
     };
   }, []);
 
-  return { paintRange };
+  return { paintRange, isBrowsing, returnToCurrent };
 }

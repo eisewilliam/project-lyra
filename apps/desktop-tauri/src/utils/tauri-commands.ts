@@ -46,6 +46,18 @@ export function setIslandLocked(locked: boolean): Promise<void> {
   return invoke('set_island_locked', { locked });
 }
 
+export function setIslandClickThrough(enabled: boolean): Promise<void> {
+  return invoke('set_island_click_through', { enabled });
+}
+
+export function openMainWindow(): Promise<void> {
+  return invoke('open_main_window');
+}
+
+export function completeOnboarding(): Promise<void> {
+  return invoke('complete_onboarding');
+}
+
 export function setFontScale(surface: SurfaceLabel, scale: number): Promise<void> {
   return invoke('set_font_scale', { surface, scale });
 }
@@ -193,14 +205,26 @@ export function setAutostart(enabled: boolean): Promise<void> {
   return invoke('set_autostart', { enabled });
 }
 
-export function clearMainVibrancy(): Promise<void> {
-  return invoke('clear_main_vibrancy');
-}
-
-export function applyMainVibrancy(): Promise<void> {
-  return invoke('apply_main_vibrancy');
+export function setSurfaceOccluded(label: SurfaceLabel, occluded: boolean): Promise<void> {
+  return invoke('set_surface_occluded', { label, occluded });
 }
 
 export function getPlainLyrics(): Promise<string | null> {
   return invoke<string | null>('get_plain_lyrics');
+}
+
+export function copyText(text: string): Promise<void> {
+  return invoke('copy_text', { text });
+}
+
+export function getAutomationDenied(): Promise<string[]> {
+  return invoke('get_automation_denied');
+}
+
+export function openAutomationSettings(): Promise<void> {
+  return invoke('open_automation_settings');
+}
+
+export function islandPointerInside(): Promise<boolean> {
+  return invoke('island_pointer_inside');
 }

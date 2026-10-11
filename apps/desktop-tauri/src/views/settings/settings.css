@@ -64,11 +64,9 @@ body {
 }
 
 .nav-section {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .nav-item {
@@ -146,12 +144,12 @@ input[type="checkbox"]:focus-visible,
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Sentence-case section headers, as in System Settings and Windows 11
+   Settings; neither platform sets group labels in all caps. */
 .group-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--text-primary);
 }
 
 .group-card {
@@ -159,8 +157,6 @@ input[type="checkbox"]:focus-visible,
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--panel-radius);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.16);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
 }
 
 @media (prefers-color-scheme: light) {
@@ -181,6 +177,47 @@ input[type="checkbox"]:focus-visible,
 
 .row-label {
   color: var(--text-primary);
+}
+
+/* One line of explanation under a row label. */
+.row-hint {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+/* `<input switch>` renders as a native switch in WebKit (macOS 14.4+).
+   Engines without it (WebView2 on Windows, WebKitGTK, older macOS) would show
+   a bare checkbox; draw a matching switch there instead. The knob is a
+   background layer so it works where inputs can't have pseudo-elements. */
+@supports not selector(::thumb) {
+  input[type="checkbox"][switch] {
+    appearance: none;
+    -webkit-appearance: none;
+    flex-shrink: 0;
+    width: 32px;
+    height: 18px;
+    margin: 0;
+    border-radius: 999px;
+    background-color: rgba(120, 120, 128, 0.32);
+    background-image: radial-gradient(circle, #fff 0 6.5px, transparent 7px);
+    background-size: 18px 18px;
+    background-position: 0 50%;
+    background-repeat: no-repeat;
+    transition:
+      background-color var(--duration-fast) ease,
+      background-position var(--duration-fast) var(--ease-standard);
+  }
+
+  input[type="checkbox"][switch]:checked {
+    background-color: var(--accent);
+    background-position: 14px 50%;
+  }
+
+  input[type="checkbox"][switch]:disabled {
+    opacity: 0.4;
+  }
 }
 
 /* Secondary, read-only text in a row's control area. */
@@ -206,7 +243,7 @@ input[type="checkbox"]:focus-visible,
   align-items: center;
   gap: 12px;
   padding: 10px 14px 10px 12px;
-  cursor: pointer;
+  cursor: default;
   list-style: none;
   border-radius: 10px;
 }
@@ -288,6 +325,10 @@ input[type="checkbox"]:focus-visible,
 .player-session-status[data-tone='live']::before {
   background: #30d158;
   box-shadow: 0 0 0 3px rgba(48, 209, 88, 0.18);
+}
+
+.player-session-status[data-tone='following']::before {
+  background: var(--accent);
 }
 
 .player-session-status[data-tone='ignored'] {
@@ -390,7 +431,7 @@ input[type="checkbox"]:focus-visible,
   height: 22px;
   margin: 0;
   background: transparent;
-  cursor: pointer;
+  cursor: default;
   -webkit-appearance: none;
   appearance: none;
 }
@@ -406,7 +447,7 @@ input[type="checkbox"]:focus-visible,
   height: 18px;
   border-radius: 999px;
   background: #ffffff;
-  cursor: pointer;
+  cursor: default;
   z-index: 3;
   position: relative;
   border: none;
@@ -418,7 +459,7 @@ input[type="checkbox"]:focus-visible,
   height: 18px;
   border-radius: 999px;
   background: #ffffff;
-  cursor: pointer;
+  cursor: default;
   border: none;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
@@ -561,7 +602,7 @@ select {
   color: var(--text-primary);
   font-size: 13px;
   outline: none;
-  cursor: pointer;
+  cursor: default;
   background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-position: right 8px center;
   background-repeat: no-repeat;
@@ -582,7 +623,7 @@ select:hover {
   background: var(--input-bg);
   color: var(--text-primary);
   font-weight: 500;
-  cursor: pointer;
+  cursor: default;
   transition:
     background-color var(--duration-base) var(--ease-control),
     border-color var(--duration-base) var(--ease-control),
@@ -639,6 +680,9 @@ select:hover {
 
 body[data-os="macos"] {
   color-scheme: dark;
+  /* Near-opaque base over the native material: a hint of the desktop, not a
+     see-through page. */
+  --shell-bg: rgba(28, 28, 31, 0.93);
   --bg-sidebar: rgba(0, 0, 0, 0.14);
   --bg-pane: transparent;
   --bg-card: rgba(255, 255, 255, 0.045);
@@ -656,6 +700,7 @@ body[data-os="macos"] {
 @media (prefers-color-scheme: light) {
   body[data-os="macos"] {
     color-scheme: light;
+    --shell-bg: rgba(244, 244, 246, 0.94);
     --bg-sidebar: rgba(0, 0, 0, 0.035);
     --bg-pane: transparent;
     --text-primary: #000000;
@@ -671,11 +716,15 @@ body[data-os="macos"] {
 
 /* MacOS Layout adjustments */
 
+body[data-os="macos"] .settings-shell {
+  background: var(--shell-bg);
+}
+
 body[data-os="macos"] .settings-sidebar {
   border-right: 1px solid var(--border-color);
 }
 body[data-os="macos"] .nav-section {
-  display: none; /* Hide uppercase group headers for cleaner look */
+  display: none; /* System Settings' sidebar has no section headers */
 }
 body[data-os="macos"] .nav-item {
   color: var(--text-secondary);
@@ -688,15 +737,28 @@ body[data-os="macos"] .nav-item.active .nav-icon {
   color: var(--item-active-text) !important;
 }
 
+/* Toolbar title, as in System Settings: the page name sits in the title bar
+   band instead of leaving it empty, and stays put while the page scrolls. */
 body[data-os="macos"] .pane-header {
-  display: none;
-}
-body[data-os="macos"] .pane-body::before {
-  content: '';
-  display: block;
-  height: 48px;
+  display: flex;
+  align-items: center;
+  height: 52px;
+  padding: 0 40px;
   flex-shrink: 0;
-  -webkit-app-region: drag;
+}
+body[data-os="macos"] .pane-header h1 {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* Like a native toolbar: a hairline appears once content scrolls under it. */
+.pane-header {
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+.pane-header.is-scrolled {
+  border-bottom-color: var(--border-color);
 }
 
 /* Form Groups: Mac has Ventura-style rounded translucent cards */
@@ -708,20 +770,16 @@ body[data-os="macos"] .group:last-child {
 }
 body[data-os="macos"] .group-title {
   display: block;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
   margin: 16px 0 6px 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 body[data-os="macos"] .group-card {
-  background: rgba(255, 255, 255, 0.045);
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 10px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -1049,11 +1107,9 @@ body[data-os="windows"] .pane-body {
 }
 
 body[data-os="windows"] .group-title {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   margin: 0 0 0 4px;
 }
 
@@ -1128,7 +1184,7 @@ body[data-os="windows"] input[type="range"]:not(.native-snap-slider)::-webkit-sl
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   margin-top: -7px;
   -webkit-appearance: none;
-  cursor: pointer;
+  cursor: default;
 }
 body[data-os="windows"] input[type="range"]:not(.native-snap-slider)::-webkit-slider-thumb:hover {
   background: #ffffff;
@@ -1219,13 +1275,19 @@ body[data-os="windows"] .settings-ambient-bg {
 .settings-ambient-bg {
   border-radius: inherit;
 }
+/* A faint tint of the current artwork over the base. Same look as a
+   full-window 150 px blur, built cheaply: blur a small thumbnail and scale
+   it up, so the window never re-filters a full-size image. */
 .settings-ambient-bg img {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 64px;
+  height: 64px;
   object-fit: cover;
-  filter: blur(150px) saturate(130%);
-  transform: scale(1.4);
-  opacity: 0.18;
+  filter: blur(8px) saturate(130%);
+  transform: translate(-50%, -50%) scale(20);
+  opacity: 0.16;
 }
 .settings-ambient-dimmer {
   opacity: 1;
@@ -1236,7 +1298,7 @@ body[data-os="windows"] .settings-ambient-bg {
 @media (prefers-reduced-motion: reduce) {
   .settings-shell { backdrop-filter: none; -webkit-backdrop-filter: none; background: #252522; }
   body[data-os="windows"] .settings-shell { background: #242424; }
-  .settings-ambient-bg img { filter: none; opacity: 0.1; }
+  .settings-ambient-bg img { opacity: 0.1; }
   .segmented-indicator { transition: none !important; }
   .custom-select-dropdown { animation: none !important; }
 }
@@ -1264,7 +1326,7 @@ body[data-os="windows"] .settings-ambient-bg {
   position: relative;
   flex: 1;
   z-index: 1;
-  cursor: pointer;
+  cursor: default;
   padding: 4px 14px;
   font-size: 12.5px;
   font-weight: 500;
@@ -1305,7 +1367,7 @@ body[data-os="windows"] .settings-ambient-bg {
   color: var(--text-primary);
   font-size: 13px;
   font-family: inherit;
-  cursor: pointer;
+  cursor: default;
   transition: background-color 0.15s, border-color 0.15s;
   text-align: left;
 }
@@ -1370,7 +1432,7 @@ body[data-os="windows"] .settings-ambient-bg {
   border-radius: 6px;
   font-size: 13px;
   color: var(--text-primary);
-  cursor: pointer;
+  cursor: default;
   transition: background-color 0.1s;
 }
 .custom-select-option:hover {
@@ -1383,4 +1445,169 @@ body[data-os="windows"] .settings-ambient-bg {
 @keyframes select-dropdown-in {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Live previews ──────────────────────────────────────────────────────────
+   Shown at the top of Appearance, Dynamic Island and Karaoke. Purely visual
+   (aria-hidden); every control below still names its own effect. */
+.settings-preview {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--border-color);
+  background: #121216;
+  color: #fff;
+  user-select: none;
+}
+
+/* Main window: three lines over a wash of the current artwork. */
+.preview-main {
+  height: 148px;
+}
+
+.preview-ambient {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  filter: blur(5px) saturate(160%);
+  transform: translate(-50%, -50%) scale(14);
+  opacity: 0.65;
+}
+
+.preview-dimmer {
+  position: absolute;
+  inset: 0;
+  opacity: var(--bg-darkness, 0.6);
+  background:
+    radial-gradient(circle at center, rgba(10, 10, 12, 0.1) 0%, rgba(10, 10, 12, 0.65) 100%),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.5));
+}
+
+.preview-main-lines {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 28px;
+}
+
+.preview-line {
+  /* Shrink to the text so the wipe's percentage matches the words. */
+  align-self: flex-start;
+  max-width: 100%;
+  font-size: 1.15em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preview-line.is-passed {
+  color: rgba(255, 255, 255, 0.4);
+  opacity: 0.52;
+  filter: blur(calc(1.2px * var(--lyric-blur, 1)));
+}
+
+.preview-line.is-next {
+  color: rgba(255, 255, 255, 0.5);
+  opacity: 0.8;
+  filter: blur(calc(0.5px * var(--lyric-blur, 1)));
+}
+
+/* Static karaoke wipe shared by the previews. */
+.preview-line.is-active,
+.preview-island-wipe,
+.preview-karaoke-current {
+  color: transparent;
+  background-image: linear-gradient(
+    to right,
+    var(--lyric-color, #fff) 0%,
+    var(--lyric-color, #fff) calc(var(--word-progress, 0) * 100%),
+    color-mix(in srgb, var(--lyric-color, #fff) 55%, transparent) calc(var(--word-progress, 0) * 100%),
+    color-mix(in srgb, var(--lyric-color, #fff) 55%, transparent) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Island: the real island markup at its real size, scaled down. */
+.preview-island {
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.06), transparent 40%),
+    #1a1a1f;
+}
+
+.preview-island-frame {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%) scale(var(--preview-scale, 0.6));
+  transform-origin: top center;
+  pointer-events: none;
+}
+
+/* Karaoke: lines over a stand-in desktop, at the configured edge. */
+.preview-karaoke {
+  display: flex;
+  flex-direction: column;
+  height: 120px;
+  padding: 10px 0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(90, 120, 200, 0.35), transparent 55%),
+    radial-gradient(circle at 80% 70%, rgba(200, 110, 160, 0.3), transparent 55%),
+    #202027;
+}
+
+.preview-karaoke-band {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-self: center;
+  width: var(--preview-width, 100%);
+  padding: 6px 16px;
+  background: rgba(10, 10, 12, var(--karaoke-bg, 0));
+  text-align: inherit;
+}
+
+.preview-karaoke-band > * {
+  align-self: var(--preview-align, center);
+  max-width: 100%;
+}
+
+.preview-karaoke-current {
+  font-size: calc(1.6rem * var(--preview-scale, 1));
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.55));
+}
+
+.preview-karaoke-current.is-bold {
+  font-weight: 800;
+}
+
+.preview-karaoke-next {
+  font-size: calc(0.75rem * var(--preview-scale, 1));
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-preview .panel-art.is-spinning {
+    animation: none;
+  }
 }

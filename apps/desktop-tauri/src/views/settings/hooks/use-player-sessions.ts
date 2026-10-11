@@ -7,8 +7,8 @@ import { getPlayerSessions } from '@/utils/tauri-commands';
  * poll through the `get_player_sessions` command, for the Players
  * diagnostics section.
  *
- * - Fetches once on mount and again whenever `refresh` is called. It never
- *   polls; the list reflects the moment it was loaded.
+ * - Fetches once on mount and again whenever `refresh` is called; the
+ *   Players page calls it every few seconds while it is open.
  * - `sessions` is `null` until the first load settles and `[]` when no player
  *   is visible. `refresh` resolves after the list updates and rejects on
  *   failure so callers can show honest feedback.

@@ -14,7 +14,7 @@ export function DelayControl({
   return (
     <div className="delay-control-inline">
       <div className="delay-control-meta">
-        <span className="delay-control-title">Lyrics Delay</span>
+        <span className="delay-control-title">Lyrics delay</span>
         <span className="delay-control-value">{offsetLabel}</span>
       </div>
       <div className="delay-control-actions">

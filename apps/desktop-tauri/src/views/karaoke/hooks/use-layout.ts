@@ -11,7 +11,7 @@ function getPlaceholderAlignment(alignment: UiState['karaoke_alignment']) {
 
 function applyStyle(s: UiState) {
   const root = document.documentElement.style;
-  root.setProperty('--font-scale', String(s.karaoke_font_scale));
+  root.setProperty('--font-scale', String(Number.isFinite(s.karaoke_font_scale) ? s.karaoke_font_scale : 1));
   root.setProperty('--karaoke-align', s.karaoke_alignment);
   root.setProperty(
     '--karaoke-placeholder-align',

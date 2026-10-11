@@ -143,12 +143,14 @@ if (!isTauri) {
       background_opacity: 0.8,
       context_lines_above: 2,
       context_lines_below: 3,
+      lyric_blur: 1,
     },
     behavior: {
       karaoke_mode: false,
       poll_interval_ms: 300,
       hide_when_paused: false,
       browser_lyrics: 'Ask',
+      battery_saver: false,
     },
   };
 
@@ -157,6 +159,7 @@ if (!isTauri) {
     floating_visible: true,
     karaoke_visible: false,
     island_locked: false,
+    island_click_through: false,
     island_pos: null,
     island_width: null,
     island_height: null,
@@ -179,6 +182,7 @@ if (!isTauri) {
     karaoke_bold: true,
     autostart_enabled: false,
     preferred_monitor: null,
+    onboarded: true,
   };
 
   const LOCAL_STORAGE_SETTINGS_KEY = 'lyra-mock-settings';
@@ -385,6 +389,31 @@ if (!isTauri) {
       case 'set_island_locked': {
         const { locked } = args as { locked: boolean };
         uiState.island_locked = locked;
+        saveUiState();
+        void emit('ui-settings-changed', uiState);
+        return;
+      }
+
+      case 'set_island_click_through': {
+        const { enabled } = args as { enabled: boolean };
+        uiState.island_click_through = enabled;
+        saveUiState();
+        void emit('ui-settings-changed', uiState);
+        return;
+      }
+
+      case 'open_main_window':
+        return;
+
+      case 'get_automation_denied':
+        return [];
+
+      case 'open_automation_settings':
+      case 'copy_text':
+        return;
+
+      case 'complete_onboarding': {
+        uiState.onboarded = true;
         saveUiState();
         void emit('ui-settings-changed', uiState);
         return;
@@ -681,10 +710,7 @@ if (!isTauri) {
         return;
       }
 
-      case 'clear_main_vibrancy':
-        return;
-
-      case 'apply_main_vibrancy':
+      case 'set_surface_occluded':
         return;
 
       default:

@@ -1,4 +1,5 @@
 import { memo, type RefObject } from 'react';
+import { useCrossfadeSrc } from '@/hooks/use-crossfade-src';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { PlaybackCaps, TrackRef } from '@/types/tauri-contracts';
 import type { PositionBaseline } from '@/utils/playback-sync';
@@ -7,6 +8,8 @@ import { ProgressBar } from './progress-bar';
 import { SourceBadge } from './source-badge';
 import { TrackInfo } from './track-info';
 import { TransportControls } from './transport-controls';
+import type { SkipDirection } from '../hooks/use-track-skip';
+import type { LineRef } from '../types';
 
 const INLINE_CONTROL_EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -42,6 +45,8 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   selectValue,
   togglePlaying,
   track,
+  lyrics,
+  onSkip,
 }: Readonly<{
   artworkError: boolean;
   artworkSrc: string;
@@ -73,22 +78,38 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   selectValue: string;
   togglePlaying: () => void;
   track: TrackRef | null;
+  /** Lyric lines for the progress bar's scrub preview. */
+  lyrics: LineRef[];
+  onSkip: (direction: SkipDirection) => void;
 }>) {
   const prefersReducedMotion = useReducedMotion();
+  // Track changes crossfade the cover once the new one has decoded.
+  const art = useCrossfadeSrc(artworkSrc);
 
   return (
     <section className="player-sidebar">
       <div className="drag-region" data-tauri-drag-region />
 
       <div className="album-art-large">
-        <div className="album-art-frame">
+        <div className={`album-art-frame ${hasTrack && !isPlaying ? 'is-paused' : ''}`}>
+          {art.previous && (
+            <img
+              src={art.previous}
+              alt=""
+              className="album-cover album-cover-previous"
+              draggable={false}
+              decoding="async"
+            />
+          )}
           <img
-            src={artworkSrc}
+            key={art.id}
+            src={art.current}
             alt={hasTrack && !artworkError ? 'Album cover' : ''}
-            className={`album-cover ${hasArtwork ? '' : 'placeholder'}`}
+            className={`album-cover ${hasArtwork ? '' : 'placeholder'} ${art.previous ? 'is-entering' : ''}`}
             draggable={false}
             decoding="async"
             onError={onArtworkError}
+            onAnimationEnd={art.onEntered}
           />
           {track ? <SourceBadge track={track} canRaise={caps.raise} /> : null}
         </div>
@@ -135,6 +156,8 @@ export const PlayerSidebar = memo(function PlayerSidebar({
           durationMs={durationMs}
           handleMouseDown={handleMouseDown}
           hasTrack={hasTrack}
+          lyrics={lyrics}
+          lyricOffsetMs={lyricOffsetMs}
           positionLabelRef={positionLabelRef}
           progressFillRef={progressFillRef}
           progressPct={progressPct}
@@ -147,6 +170,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
           caps={caps}
           isPlaying={isPlaying}
           togglePlaying={togglePlaying}
+          onSkip={onSkip}
         />
       </div>
     </section>

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { SettingsSkeleton } from '@/components/settings-controls';
 import { TRANSPARENT_FALLBACK_ART } from '@/utils/artwork';
@@ -25,6 +26,7 @@ export default function Settings() {
   } = useSettings();
 
   const activeLabel = SETTINGS_SECTION_LABELS[section];
+  const [scrolled, setScrolled] = useState(false);
 
   const artworkSrcUrl = artworkSrc || TRANSPARENT_FALLBACK_ART;
 
@@ -38,10 +40,19 @@ export default function Settings() {
       <SettingsNav section={section} onSectionChange={setSection} />
 
       <main className="settings-pane flex min-w-0 flex-1 flex-col z-[1]">
-        <header className="pane-header shrink-0 px-10 pb-2.5 pt-[34px]" data-tauri-drag-region="deep">
+        <header
+          className={`pane-header shrink-0 px-10 pb-2.5 pt-[34px] ${scrolled ? 'is-scrolled' : ''}`}
+          data-tauri-drag-region="deep"
+        >
           <h1 className="m-0">{activeLabel}</h1>
         </header>
-        <div className="pane-body flex flex-1 flex-col gap-6 overflow-y-auto px-10 pb-10 pt-2">
+        <div
+          className="pane-body flex flex-1 flex-col gap-6 overflow-y-auto px-10 pb-10 pt-2"
+          onScroll={(event) => {
+            const next = event.currentTarget.scrollTop > 2;
+            if (next !== scrolled) setScrolled(next);
+          }}
+        >
           <AnimatePresence mode="wait" initial={false}>
             {state ? (
               <motion.div
@@ -59,6 +70,7 @@ export default function Settings() {
                   activeLabel={activeLabel}
                   autostartEnabled={autostartEnabled}
                   monitors={monitors}
+                  artworkSrc={artworkSrcUrl}
                 />
               </motion.div>
             ) : (

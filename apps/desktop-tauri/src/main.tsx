@@ -1,6 +1,6 @@
-import '@/utils/browser-mock';
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { installNativeFeel } from '@/utils/native-feel'
 import './index.css'
 import App from './views/app'
 import Island from './views/island'
@@ -27,6 +27,19 @@ if (surface === 'island') {
   view = <Settings />;
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>{view}</StrictMode>,
-)
+installNativeFeel();
+
+function mount() {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>{view}</StrictMode>,
+  );
+}
+
+// The IPC mock only serves `pnpm dev` previews in a plain browser. Loading it
+// dynamically keeps it out of the production bundle every window parses.
+const isTauri = '__TAURI_INTERNALS__' in globalThis;
+if (import.meta.env.DEV && !isTauri) {
+  import('@/utils/browser-mock').then(mount, mount);
+} else {
+  mount();
+}

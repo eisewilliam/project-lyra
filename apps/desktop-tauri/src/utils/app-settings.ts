@@ -3,7 +3,7 @@
 // CSS custom properties. Used by every lyric surface so font/colour/darkness
 // settings take effect uniformly.
 
-import type { AppearanceSettings } from '@/types/tauri-contracts';
+import type { AppearanceSettings, BehaviorSettings } from '@/types/tauri-contracts';
 
 export type { AppSettings, AppearanceSettings, BehaviorSettings, WindowSettings } from '@/types/tauri-contracts';
 
@@ -26,13 +26,36 @@ export function resolveFontFamily(value: string | undefined): string {
  *                            #root has its own font-family rule that would
  *                            otherwise win over an inherited body style)
  * - root `font-size`       → base px the rem-based lyric sizing scales from
+ * - `--lyric-blur`         → multiplier on the depth blur around the current
+ *                            line; `data-lyric-blur="off"` drops the filter
  */
 export function applyAppearance(a: AppearanceSettings) {
   const root = document.documentElement;
+  const blur = Math.max(0, Math.min(2, a.lyric_blur ?? 1));
+  root.style.setProperty('--lyric-blur', String(blur));
+  if (blur === 0) {
+    root.dataset.lyricBlur = 'off';
+  } else {
+    delete root.dataset.lyricBlur;
+  }
   root.style.setProperty('--lyric-color', a.text_color || '#ffffff');
   root.style.setProperty('--bg-darkness', String(Math.max(0, Math.min(1, a.background_opacity))));
   root.style.setProperty('--app-font-family', resolveFontFamily(a.font_family));
   if (a.font_size && a.font_size > 0) {
     root.style.fontSize = `${a.font_size}px`;
+  }
+}
+
+/**
+ * Battery saver halves the lyric blur and drops other GPU-heavy effects
+ * (backdrop blur, edge animations, compositing hints) through the
+ * `data-low-power` rules in each surface's CSS.
+ */
+export function applyBatterySaver(b: BehaviorSettings) {
+  const root = document.documentElement;
+  if (b.battery_saver) {
+    root.dataset.lowPower = 'true';
+  } else {
+    delete root.dataset.lowPower;
   }
 }

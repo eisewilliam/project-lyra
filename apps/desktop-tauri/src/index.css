@@ -11,6 +11,21 @@
   /* Easing Curves */
   --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-control: cubic-bezier(0.25, 1, 0.5, 1);
+
+  /* Lyric depth blur = base radius × `--lyric-blur` (Settings → Appearance →
+     Lyric blur, set by applyAppearance) × `--blur-power`. */
+  --blur-power: 1;
+}
+
+/* Battery saver keeps the depth look but halves its cost. */
+:root[data-low-power="true"] {
+  --blur-power: 0.5;
+}
+
+/* Lyric blur set to Off: drop the filter instead of blurring by 0. */
+:root[data-lyric-blur="off"] .lyric-line,
+:root[data-lyric-blur="off"] .panel-lyric-next {
+  filter: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -42,6 +57,75 @@ html, body, #root {
 
 img {
   -webkit-user-drag: none;
+}
+
+/* TransportGlyph: two pause bars fold into a play triangle. Both shapes are
+   4-point polygons, so clip-path interpolates between them; the gap and the
+   triangle's optical offset ease alongside. */
+.transport-glyph {
+  --glyph-size: 24px;
+  display: inline-flex;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: var(--glyph-size);
+  height: var(--glyph-size);
+  padding: calc(var(--glyph-size) * 0.12) calc(var(--glyph-size) * 0.17);
+  gap: calc(var(--glyph-size) * 0.2);
+  color: inherit;
+  transition:
+    gap var(--duration-base) var(--ease-standard),
+    padding var(--duration-base) var(--ease-standard);
+}
+
+.transport-glyph-half {
+  flex: 1;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+  transition: clip-path var(--duration-base) var(--ease-standard);
+}
+
+.transport-glyph[data-playing="false"] {
+  gap: 0px;
+  /* Nudge right so the triangle looks centred. */
+  padding: calc(var(--glyph-size) * 0.12) calc(var(--glyph-size) * 0.1)
+    calc(var(--glyph-size) * 0.12) calc(var(--glyph-size) * 0.22);
+}
+
+.transport-glyph[data-playing="false"] .transport-glyph-half.is-left {
+  clip-path: polygon(0 0, 100% 25%, 100% 75%, 0 100%);
+}
+
+.transport-glyph[data-playing="false"] .transport-glyph-half.is-right {
+  clip-path: polygon(0 25%, 100% 50%, 100% 50%, 0 75%);
+}
+
+/* Edge fades for lines that scroll horizontally (`GlidingLine`). The
+   registered properties let the fade width ease between playback ticks. */
+@property --glide-fade-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --glide-fade-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+.is-gliding {
+  --glide-mask: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--glide-fade-start),
+    #000 calc(100% - var(--glide-fade-end)),
+    transparent 100%
+  );
+  -webkit-mask-image: var(--glide-mask);
+  mask-image: var(--glide-mask);
+  transition:
+    --glide-fade-start var(--duration-base) var(--ease-standard),
+    --glide-fade-end var(--duration-base) var(--ease-standard);
 }
 
 :root[data-surface-visible="false"] *,

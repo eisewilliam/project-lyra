@@ -10,6 +10,7 @@ import {
   saveIslandPosition,
   setAutostart,
   setFontScale,
+  setIslandClickThrough,
   setIslandLocked,
   setIslandSize,
   setPreferredMonitor,
@@ -211,6 +212,12 @@ export function useSettings() {
     },
     setLock: async (locked: boolean) => {
       await optimisticUiAction({ island_locked: locked }, () => setIslandLocked(locked));
+    },
+    setIslandClickThrough: async (enabled: boolean) => {
+      await optimisticUiAction(
+        { island_click_through: enabled },
+        () => setIslandClickThrough(enabled),
+      );
     },
     setIslandSize: async (width: number, height: number) => {
       await optimisticUiAction(

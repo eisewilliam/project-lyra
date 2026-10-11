@@ -1,4 +1,5 @@
 import { runSettingsAction } from '@/utils/settings-action-runner';
+import { useRowAria } from './row-context';
 
 type MaybePromise<T> = T | Promise<T>;
 type SelectOption = Readonly<{ value: string; label: string }>;
@@ -29,8 +30,10 @@ function NativeSelect({
   onChange: (v: string) => MaybePromise<void>;
   label?: string | undefined;
 }>) {
+  const aria = useRowAria();
   return (
     <select
+      {...(label ? {} : aria)}
       value={value}
       aria-label={label}
       onChange={(e) => runSettingsAction(onChange(e.target.value))}

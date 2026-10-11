@@ -1,5 +1,6 @@
 import { useId, type ChangeEvent } from 'react';
 import { runSettingsAction } from '@/utils/settings-action-runner';
+import { useRowAria } from './row-context';
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -15,6 +16,7 @@ export function SnapSlider({
   info?: string;
 }>) {
   const reactId = useId();
+  const aria = useRowAria();
   const firstStep = steps[0];
   if (!firstStep) return null;
 
@@ -26,6 +28,11 @@ export function SnapSlider({
     0
   );
   const listId = `snap-slider-${reactId.replaceAll(':', '')}`;
+  const infoId = `${listId}-info`;
+  // The info tooltip is hover-only, so also expose it as the description.
+  const describedBy = [aria['aria-describedby'], info ? infoId : undefined]
+    .filter(Boolean)
+    .join(' ') || undefined;
   const snappedStep = steps[idx] ?? firstStep;
   const progress = steps.length > 1 ? (idx / (steps.length - 1)) * 100 : 0;
 
@@ -63,6 +70,8 @@ export function SnapSlider({
             max={steps.length - 1}
             step={1}
             value={idx}
+            aria-labelledby={aria['aria-labelledby']}
+            aria-describedby={describedBy}
             aria-valuetext={snappedStep?.label}
             title={snappedStep?.label}
             list={listId}
@@ -87,12 +96,12 @@ export function SnapSlider({
 
       {info && (
         <span className="snap-slider-info-wrapper">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" />
             <path d="M12 16v-4" />
             <path d="M12 8h.01" />
           </svg>
-          <span className="snap-slider-tooltip">{info}</span>
+          <span id={infoId} className="snap-slider-tooltip">{info}</span>
         </span>
       )}
 

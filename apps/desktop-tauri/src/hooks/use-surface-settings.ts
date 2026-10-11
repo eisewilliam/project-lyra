@@ -1,7 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import type { AppSettings, UiState } from '@/types/tauri-contracts';
-import { applyAppearance } from '@/utils/app-settings';
+import { applyAppearance, applyBatterySaver } from '@/utils/app-settings';
 import { syncSurfaceVisible } from '@/utils/playback-sync';
 import { getSettings, getUiState } from '@/utils/tauri-commands';
 
@@ -38,6 +38,7 @@ export function useSurfaceSettings(options: UseSurfaceSettingsOptions) {
       current.setHideWhenPaused(settings.behavior.hide_when_paused);
       current.setHideWhenIdle(settings.window.hide_when_idle);
       applyAppearance(settings.appearance);
+      applyBatterySaver(settings.behavior);
       current.onAppSettings?.(settings);
     };
 

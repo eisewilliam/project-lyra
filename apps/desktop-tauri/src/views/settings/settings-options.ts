@@ -20,13 +20,6 @@ export const BROWSER_LYRICS_OPTIONS: SelectOption[] = [
   { value: 'Deny', label: "Don't look up" },
 ];
 
-export const POLLING_INTERVAL_OPTIONS: SelectOption[] = [
-  { value: '250', label: 'Very Fast (250ms)' },
-  { value: '500', label: 'Fast (500ms)' },
-  { value: '1000', label: 'Normal (1s)' },
-  { value: '2000', label: 'Slow (2s)' },
-];
-
 export const FONT_FAMILY_OPTIONS: SelectOption[] = [
   { value: 'system-ui', label: 'System Default' },
   { value: "'SF Pro Rounded', sans-serif", label: 'SF Pro Rounded' },
@@ -41,6 +34,14 @@ export const FONT_SIZE_STEPS: SliderStep[] = [
   { value: 18, label: 'Large' },
   { value: 20, label: 'XL' },
   { value: 24, label: 'XXL' },
+];
+
+/** Multiplier on the depth blur around the current lyric line. */
+export const LYRIC_BLUR_STEPS: SliderStep[] = [
+  { value: 0, label: 'Off' },
+  { value: 0.5, label: 'Subtle' },
+  { value: 1, label: 'Standard' },
+  { value: 1.5, label: 'Strong' },
 ];
 
 export const BACKGROUND_OPACITY_STEPS: SliderStep[] = [
@@ -89,8 +90,8 @@ export const KARAOKE_ALIGNMENT_OPTIONS: SelectOption[] = [
 ];
 
 export const KARAOKE_LINE_OPTIONS: SelectOption[] = [
-  { value: '1', label: 'Single' },
-  { value: '2', label: 'Double' },
+  { value: '1', label: 'Current only' },
+  { value: '2', label: 'Current and next' },
 ];
 
 export const KARAOKE_BACKGROUND_STEPS: SliderStep[] = [
@@ -98,14 +99,6 @@ export const KARAOKE_BACKGROUND_STEPS: SliderStep[] = [
   { value: 0.25, label: '25%' },
   { value: 0.5, label: '50%' },
   { value: 0.75, label: '75%' },
-];
-
-export const MAIN_CONTEXT_LINE_OPTIONS: SelectOption[] = [
-  { value: '1', label: '1 Line' },
-  { value: '2', label: '2 Lines' },
-  { value: '3', label: '3 Lines' },
-  { value: '4', label: '4 Lines' },
-  { value: '5', label: '5 Lines' },
 ];
 
 export const ISLAND_WIDTH_STEPS: SliderStep[] = [

@@ -7,7 +7,7 @@ import { snapToTopEdge, setIslandPanelPosition } from './use-move';
 const noop = (...args: unknown[]) => { if (args) return; };
 
 function applyIslandFont(scale: number) {
-  document.documentElement.style.setProperty('--font-scale', String(scale));
+  document.documentElement.style.setProperty('--font-scale', String(Number.isFinite(scale) ? scale : 1));
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -27,6 +27,7 @@ export function useIslandSettings({
   setCoverSpin,
   setIslandHeight,
   setIsDocked,
+  setBatterySaver,
 }: {
   ensureWindowReady: () => Promise<void>;
   desiredVisibleRef: RefObject<boolean>;
@@ -40,6 +41,7 @@ export function useIslandSettings({
   setCoverSpin: Dispatch<SetStateAction<boolean>>;
   setIslandHeight: Dispatch<SetStateAction<number>>;
   setIsDocked: Dispatch<SetStateAction<boolean>>;
+  setBatterySaver: Dispatch<SetStateAction<boolean>>;
 }) {
   useSurfaceSettings({
     ensureWindowReady,
@@ -96,6 +98,7 @@ export function useIslandSettings({
         ).catch(noop);
       }
     },
+    onAppSettings: (settings) => setBatterySaver(settings.behavior.battery_saver),
     shouldReleaseAutoHide: (settings) => (
       !settings.behavior.hide_when_paused && !settings.window.hide_when_idle
     ),

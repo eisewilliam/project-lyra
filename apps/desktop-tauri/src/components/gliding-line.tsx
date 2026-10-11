@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
+const GLIDE_FADE_PX = 40;
+
 export function GlidingLine({
   className,
   contentClassName,
@@ -48,15 +50,28 @@ export function GlidingLine({
     normalizedReveal = (syncProgress - 0.06) / 0.72;
   }
   const revealProgress = normalizedReveal * normalizedReveal * (3 - 2 * normalizedReveal);
+  const shiftPx = overflowPx * revealProgress;
   const style = isGliding
     ? {
       '--glide-shift': `${overflowPx}px`,
-      transform: `translateX(${-overflowPx * revealProgress}px)`,
+      transform: `translateX(${-shiftPx}px)`,
+    } as CSSProperties
+    : undefined;
+  // Fade only the edge(s) where text is cut off, scaled by how much is hidden
+  // there, so a clipped word reads as scrolling rather than truncated.
+  const viewportStyle = isGliding
+    ? {
+      '--glide-fade-start': `${Math.min(GLIDE_FADE_PX, shiftPx)}px`,
+      '--glide-fade-end': `${Math.min(GLIDE_FADE_PX, overflowPx - shiftPx)}px`,
     } as CSSProperties
     : undefined;
 
   return (
-    <div className={`${className} ${isGliding ? 'is-gliding' : ''}`} ref={viewportRef}>
+    <div
+      className={`${className} ${isGliding ? 'is-gliding' : ''}`}
+      ref={viewportRef}
+      style={viewportStyle}
+    >
       <div className={contentClassName} ref={contentRef} style={style}>
         {children}
       </div>

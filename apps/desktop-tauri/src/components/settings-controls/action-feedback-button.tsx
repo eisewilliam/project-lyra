@@ -3,7 +3,7 @@ import { reportSettingsActionError } from '@/utils/settings-action-runner';
 
 export function ActionFeedbackButton({
   label,
-  pendingLabel = 'Working...',
+  pendingLabel = 'Working…',
   feedbackLabel,
   failureLabel = 'Failed',
   onClick,
