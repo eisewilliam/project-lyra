@@ -364,6 +364,14 @@ pub struct AppearanceSettings {
     pub background_opacity: f32,
     pub context_lines_above: u32,
     pub context_lines_below: u32,
+    /// Strength of the depth blur on lyric lines around the current one:
+    /// 0 turns it off, 1 is the standard look.
+    #[serde(default = "default_lyric_blur")]
+    pub lyric_blur: f32,
+}
+
+fn default_lyric_blur() -> f32 {
+    1.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -377,6 +385,31 @@ pub struct BehaviorSettings {
     /// media can be any video or page.
     #[serde(default)]
     pub browser_lyrics: BrowserLyrics,
+    /// Check the player less often and let surfaces drop GPU-heavy effects.
+    #[serde(default)]
+    pub battery_saver: bool,
+}
+
+impl BehaviorSettings {
+    /// Player poll interval with battery saver on. Lyric line changes stay on
+    /// time because the host schedules them from the extrapolated position;
+    /// only drift correction and track-change detection slow down.
+    pub const BATTERY_SAVER_POLL_MS: u64 = 1_000;
+    /// Fastest and slowest normal intervals. Settings no longer offer an
+    /// interval picker, so a slow value saved by an older build is capped
+    /// rather than left with no way to change it.
+    const MIN_POLL_MS: u64 = 100;
+    const MAX_POLL_MS: u64 = 500;
+
+    /// How often the host polls players.
+    pub fn effective_poll_interval_ms(&self) -> u64 {
+        if self.battery_saver {
+            Self::BATTERY_SAVER_POLL_MS
+        } else {
+            self.poll_interval_ms
+                .clamp(Self::MIN_POLL_MS, Self::MAX_POLL_MS)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -440,6 +473,7 @@ impl Default for AppearanceSettings {
             background_opacity: 0.6,
             context_lines_above: 1,
             context_lines_below: 1,
+            lyric_blur: default_lyric_blur(),
         }
     }
 }
@@ -451,6 +485,7 @@ impl Default for BehaviorSettings {
             poll_interval_ms: 300,
             hide_when_paused: false,
             browser_lyrics: BrowserLyrics::Ask,
+            battery_saver: false,
         }
     }
 }
@@ -458,6 +493,36 @@ impl Default for BehaviorSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn poll_interval_follows_battery_saver_and_caps_legacy_values() {
+        let mut behavior = BehaviorSettings::default();
+        assert_eq!(behavior.effective_poll_interval_ms(), 300);
+        behavior.poll_interval_ms = 2_000; // "Slow (2s)" from an older build
+        assert_eq!(behavior.effective_poll_interval_ms(), 500);
+        behavior.poll_interval_ms = 10;
+        assert_eq!(behavior.effective_poll_interval_ms(), 100);
+        behavior.battery_saver = true;
+        assert_eq!(
+            behavior.effective_poll_interval_ms(),
+            BehaviorSettings::BATTERY_SAVER_POLL_MS
+        );
+    }
+
+    #[test]
+    fn appearance_saved_before_lyric_blur_keeps_standard_blur() {
+        let json = r##"{"font_family":"System","font_size":16,"text_color":"#ffffff","background_opacity":0.6,"context_lines_above":1,"context_lines_below":1}"##;
+        let appearance: AppearanceSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(appearance.lyric_blur, 1.0);
+    }
+
+    #[test]
+    fn settings_saved_before_battery_saver_still_load() {
+        let json = r#"{"karaoke_mode":false,"poll_interval_ms":250,"hide_when_paused":true}"#;
+        let behavior: BehaviorSettings = serde_json::from_str(json).unwrap();
+        assert!(!behavior.battery_saver);
+        assert_eq!(behavior.effective_poll_interval_ms(), 250);
+    }
 
     #[test]
     fn settings_saved_before_browser_consent_still_load() {

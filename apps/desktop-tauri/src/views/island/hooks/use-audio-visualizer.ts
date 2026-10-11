@@ -1,8 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { interpolatePosition, type PositionBaseline } from '@/utils/playback-sync';
 import type { LyricWord } from '@/types/tauri-contracts';
-
-const VISUALIZER_BARS = 8;
 
 function hashString(value: string) {
   let hash = 2166136261;
@@ -31,7 +29,6 @@ export function musicAwareLevel(
   barIndex: number,
   posMs: number,
   seed: number,
-  _lineProgress: number,
   words: LyricWord[],
 ) {
   const baseFreq = 0.005 + (seed % 4) * 0.0008;
@@ -52,7 +49,6 @@ export function useAudioVisualizer({
   trackKey,
   trackTitle,
   trackArtist,
-  activeLineProgress,
   activeLineWords,
   visualizerRefs,
   baselineRef,
@@ -63,11 +59,17 @@ export function useAudioVisualizer({
   trackKey: string;
   trackTitle: string;
   trackArtist: string;
-  activeLineProgress: number;
   activeLineWords: LyricWord[];
   visualizerRefs: React.RefObject<(HTMLSpanElement | null)[]>;
   baselineRef: React.RefObject<PositionBaseline>;
 }) {
+  // Read the active words through a ref so a new line doesn't tear down and
+  // restart the animation loop (which used to happen on every playback tick).
+  const wordsRef = useRef(activeLineWords);
+  useEffect(() => {
+    wordsRef.current = activeLineWords;
+  }, [activeLineWords]);
+
   useEffect(() => {
     const bars = visualizerRefs.current;
     if (!bars) return;
@@ -86,17 +88,28 @@ export function useAudioVisualizer({
 
     const seed = hashString(trackKey || `${trackTitle}|${trackArtist}`);
     let rafId = 0;
+    const lastHeight: number[] = [];
+    const lastOpacity: number[] = [];
     const tick = () => {
       if (!baselineRef.current) return;
       const pos = interpolatePosition(baselineRef.current, performance.now(), true);
-      for (let i = 0; i < VISUALIZER_BARS; i++) {
-        const level = musicAwareLevel(i, pos, seed, activeLineProgress, activeLineWords);
-        const height = 3 + Math.pow(level, 1.1) * 15;
-        const opacity = 0.35 + level * 0.65;
+      const words = wordsRef.current;
+      for (let i = 0; i < bars.length; i++) {
         const bar = bars[i];
         if (!bar) continue;
-        bar.style.setProperty('--meter-height', `${height}px`);
-        bar.style.setProperty('--meter-opacity', opacity.toFixed(3));
+        const level = musicAwareLevel(i, pos, seed, words);
+        // Quantize to half-pixel / 1% steps so frames with no visible change
+        // skip the style write and the relayout behind it.
+        const height = Math.round((3 + Math.pow(level, 1.1) * 15) * 2) / 2;
+        const opacity = Math.round((0.35 + level * 0.65) * 100) / 100;
+        if (height !== lastHeight[i]) {
+          lastHeight[i] = height;
+          bar.style.setProperty('--meter-height', `${height}px`);
+        }
+        if (opacity !== lastOpacity[i]) {
+          lastOpacity[i] = opacity;
+          bar.style.setProperty('--meter-opacity', String(opacity));
+        }
       }
       rafId = requestAnimationFrame(tick);
     };
@@ -104,8 +117,6 @@ export function useAudioVisualizer({
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
   }, [
-    activeLineProgress,
-    activeLineWords,
     isPlaying,
     pageVisible,
     surfaceVisible,

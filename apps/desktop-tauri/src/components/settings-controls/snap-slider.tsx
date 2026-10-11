@@ -1,5 +1,6 @@
 import { useId, type ChangeEvent } from 'react';
 import { runSettingsAction } from '@/utils/settings-action-runner';
+import { useRowAria } from './row-context';
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -7,14 +8,13 @@ export function SnapSlider({
   steps,
   value,
   onChange,
-  info,
 }: Readonly<{
   steps: ReadonlyArray<Readonly<{ value: number; label: string }>>;
   value: number;
   onChange: (v: number) => MaybePromise<void>;
-  info?: string;
 }>) {
   const reactId = useId();
+  const aria = useRowAria();
   const firstStep = steps[0];
   if (!firstStep) return null;
 
@@ -63,38 +63,18 @@ export function SnapSlider({
             max={steps.length - 1}
             step={1}
             value={idx}
+            aria-labelledby={aria['aria-labelledby']}
+            aria-describedby={aria['aria-describedby']}
             aria-valuetext={snappedStep?.label}
             title={snappedStep?.label}
             list={listId}
             onChange={handleInput}
           />
         </span>
-        <span className="snap-slider-labels">
-          {steps.map((s, i) => {
-            const tickProgress = steps.length > 1 ? (i / (steps.length - 1)) * 100 : 0;
-            return (
-              <span
-                key={`${s.value}-${s.label}-label`}
-                className={`snap-slider-label${i === idx ? ' active' : ''}`}
-                style={{ left: `${tickProgress}%` }}
-              >
-                {s.label}
-              </span>
-            );
-          })}
-        </span>
       </span>
 
-      {info && (
-        <span className="snap-slider-info-wrapper">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 16v-4" />
-            <path d="M12 8h.01" />
-          </svg>
-          <span className="snap-slider-tooltip">{info}</span>
-        </span>
-      )}
+      {/* One value label instead of a label under every stop. */}
+      <span className="snap-slider-value" aria-hidden="true">{snappedStep.label}</span>
 
       <datalist id={listId}>
         {steps.map((s, i) => (

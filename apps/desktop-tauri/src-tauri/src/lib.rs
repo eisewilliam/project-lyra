@@ -1,6 +1,7 @@
 mod commands;
 mod linux;
 mod macos;
+mod menu;
 mod tray;
 mod ui_state;
 
@@ -32,11 +33,40 @@ pub struct AppState {
     /// tauri.conf.json, and auto-hide can hide a surface without changing the
     /// user's persisted "show this surface" preference.
     pub surface_visibility: RuntimeSurfaceVisibility,
+    /// Wakes the poll loop for an immediate adapter poll.
+    pub poll: PollTrigger,
+}
+
+/// Lets commands request an immediate adapter poll — after a transport
+/// control or when a surface becomes visible again — instead of waiting for
+/// the next scheduled tick (up to 10 s while everything is hidden).
+#[derive(Default)]
+pub struct PollTrigger {
+    wake: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
+}
+
+impl PollTrigger {
+    pub fn request_poll(&self) {
+        if let Ok(wake) = self.wake.lock() {
+            if let Some(wake) = wake.as_ref() {
+                wake();
+            }
+        }
+    }
+
+    fn install(&self, wake: impl Fn() + Send + Sync + 'static) {
+        if let Ok(mut slot) = self.wake.lock() {
+            *slot = Some(Box::new(wake));
+        }
+    }
 }
 
 pub struct RuntimeSurfaceVisibility {
     hidden_surfaces: Mutex<HashSet<String>>,
     ready_surfaces: Mutex<HashSet<String>>,
+    /// Surfaces whose page reports itself hidden: minimized, fully covered,
+    /// on another Space, or behind a locked screen.
+    occluded_surfaces: Mutex<HashSet<String>>,
 }
 
 impl RuntimeSurfaceVisibility {
@@ -49,6 +79,18 @@ impl RuntimeSurfaceVisibility {
                     .collect(),
             ),
             ready_surfaces: Mutex::new(HashSet::new()),
+            occluded_surfaces: Mutex::new(HashSet::new()),
+        }
+    }
+
+    pub fn set_occluded(&self, label: &str, occluded: bool) {
+        let Ok(mut set) = self.occluded_surfaces.lock() else {
+            return;
+        };
+        if occluded {
+            set.insert(label.to_string());
+        } else {
+            set.remove(label);
         }
     }
 
@@ -72,6 +114,15 @@ impl RuntimeSurfaceVisibility {
 
     pub fn is_visible(&self, label: &str, configured_visible: bool) -> bool {
         if !configured_visible {
+            return false;
+        }
+
+        let is_occluded = self
+            .occluded_surfaces
+            .lock()
+            .map(|set| set.contains(label))
+            .unwrap_or(false);
+        if is_occluded {
             return false;
         }
 
@@ -359,13 +410,17 @@ pub(crate) fn apply_main_window_settings(
     }
 }
 
-/// Track key, state, lyric status, active line, and the ignored media shown
-/// when idle.
+/// Track key, state, lyric status, active line, the ignored media shown when
+/// idle, and the metadata a player may fill in after a track change
+/// (duration, artwork). Paused/stopped ticks are only emitted when this
+/// changes, so late metadata must be part of it.
 type PollSignature = (
     Option<String>,
     PlaybackState,
     u8,
     Option<usize>,
+    Option<String>,
+    u64,
     Option<String>,
 );
 
@@ -443,9 +498,9 @@ fn process_tick(
         if let Some(snap) = snapshot {
             rt.set_playback_snapshot(snap);
         }
-        // User-configured base cadence. Clamped so a misconfigured value can't
-        // peg the CPU (too low) or make track changes feel laggy (too high).
-        let base = rt.settings().behavior.poll_interval_ms.clamp(100, 2000);
+        // Base cadence from core: the saved interval (bounded) or the
+        // battery-saver interval.
+        let base = rt.settings().behavior.effective_poll_interval_ms();
         let render = rt.tick();
         let current_pos = render.playback.position_ms.unwrap_or(0);
         let next_t = rt.next_transition_playback_ms(current_pos);
@@ -453,6 +508,13 @@ fn process_tick(
     };
 
     let mut lyrics_ready = false;
+
+    if let (Some(render), Some(refs)) = (
+        render_opt.as_ref(),
+        handle.try_state::<tray::TrayMenuRefs>(),
+    ) {
+        refs.sync_now_playing(render);
+    }
 
     if let Some(render) = render_opt.as_ref() {
         lyrics_ready = matches!(render.lyrics_status, lyra_core::domain::LyricsStatus::Ready);
@@ -467,8 +529,9 @@ fn process_tick(
         // observable changes from the frontend's POV until URI, state,
         // lyrics status, or active line shifts. Heartbeat every 10s
         // anyway so a re-subscribed window converges quickly.
+        let track = render.playback.track.as_ref();
         let signature: PollSignature = (
-            render.playback.track.as_ref().map(|t| t.uri.clone()),
+            track.map(|t| t.uri.clone()),
             render.playback.state.clone(),
             lyrics_status_disc(&render.lyrics_status),
             render.active_line_index,
@@ -477,6 +540,8 @@ fn process_tick(
                 .ignored
                 .as_ref()
                 .map(|i| format!("{}:{:?}", i.track_key, i.reason)),
+            track.map(|t| t.duration_ms).unwrap_or(0),
+            track.and_then(|t| t.artwork_url.clone()),
         );
         let changed =
             ctx.last_signature.lock().ok().and_then(|g| g.clone()) != Some(signature.clone());
@@ -527,7 +592,7 @@ fn process_tick(
         }
     }
 
-    // Cadence is anchored to the user-configured `poll_interval_ms`
+    // Cadence is anchored to the configured base interval
     // (`base_interval_ms`, already clamped). When lyrics are ready we poll at
     // that base for tight line sync; other states back off relative to it
     // since nothing on screen is animating, but never poll *faster* than the
@@ -590,6 +655,8 @@ where
         ctx: PollContext,
         timer: std::sync::Mutex<Option<dispatch2::DispatchRetained<DispatchSource>>>,
         last_player_poll_ms: std::sync::Mutex<u64>,
+        /// Set by `PollTrigger`; forces the next fire to poll the adapters.
+        force_poll: std::sync::atomic::AtomicBool,
     }
 
     extern "C" fn handler(raw_ctx: *mut c_void) {
@@ -609,7 +676,7 @@ where
         let poll_interval_ms = {
             if let Some(app_state) = state.handle.try_state::<AppState>() {
                 let rt = app_state.runtime.lock().unwrap_or_else(|e| e.into_inner());
-                rt.settings().behavior.poll_interval_ms.clamp(100, 2000)
+                rt.settings().behavior.effective_poll_interval_ms()
             } else {
                 300
             }
@@ -620,9 +687,14 @@ where
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let elapsed = now_ms.saturating_sub(last_poll);
-        let poll_due = player_poll_due(&state.handle, elapsed, poll_interval_ms);
+        let forced = state
+            .force_poll
+            .swap(false, std::sync::atomic::Ordering::AcqRel);
+        let poll_due = forced || player_poll_due(&state.handle, elapsed, poll_interval_ms);
 
-        if poll_due {
+        // Forced polls answer a user action (transport control, surface
+        // shown), so they get the same latency treatment as line transitions.
+        if poll_due && !forced {
             set_thread_qos_utility();
         } else {
             set_thread_qos_user_initiated();
@@ -640,7 +712,12 @@ where
         } else {
             None
         };
-        let next_ms = process_tick(&state.handle, &state.ctx, snapshot);
+        let mut next_ms = process_tick(&state.handle, &state.ctx, snapshot);
+        // A poll request that landed while this handler ran must not be
+        // overwritten by the re-arm below.
+        if state.force_poll.load(std::sync::atomic::Ordering::Acquire) {
+            next_ms = 0;
+        }
 
         // Re-arm the one-shot timer for the next fire.
         // For transitions (next_ms < poll_interval_ms), we use zero leeway for precise wakeups.
@@ -672,14 +749,34 @@ where
         ctx: PollContext::new(),
         timer: std::sync::Mutex::new(Some(timer.retain())),
         last_player_poll_ms: std::sync::Mutex::new(0),
+        force_poll: std::sync::atomic::AtomicBool::new(false),
     }));
+    let state: &'static State = state;
 
     timer.set_event_handler_f(handler);
     // SAFETY: `state` is a `'static` pointer to a leaked `State`. The
     // dispatch object holds the context for the lifetime of the source,
     // which is itself stored inside `State` — both live forever.
     unsafe {
-        timer.set_context(state as *mut State as *mut c_void);
+        timer.set_context(state as *const State as *mut c_void);
+    }
+
+    if let Some(app_state) = state.handle.try_state::<AppState>() {
+        app_state.poll.install(move || {
+            state
+                .force_poll
+                .store(true, std::sync::atomic::Ordering::Release);
+            // dispatch_source_set_timer is thread-safe; fire as soon as the
+            // queue is free.
+            if let Some(timer) = state
+                .timer
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+            {
+                timer.set_timer(DispatchTime::NOW, u64::MAX, 0);
+            }
+        });
     }
 
     // Schedule the first fire immediately, then the handler self-reschedules.
@@ -698,6 +795,18 @@ where
 {
     let ctx = PollContext::new();
     let mut last_player_poll_ms = 0u64;
+    let wake = std::sync::Arc::new((Mutex::new(false), std::sync::Condvar::new()));
+    if let Some(app_state) = handle.try_state::<AppState>() {
+        let wake = wake.clone();
+        app_state.poll.install(move || {
+            let (flag, cvar) = &*wake;
+            if let Ok(mut requested) = flag.lock() {
+                *requested = true;
+                cvar.notify_one();
+            }
+        });
+    }
+    let mut forced = false;
     loop {
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -707,7 +816,7 @@ where
         let poll_interval_ms = {
             if let Some(app_state) = handle.try_state::<AppState>() {
                 let rt = app_state.runtime.lock().unwrap_or_else(|e| e.into_inner());
-                rt.settings().behavior.poll_interval_ms.clamp(100, 2000)
+                rt.settings().behavior.effective_poll_interval_ms()
             } else {
                 300
             }
@@ -716,7 +825,7 @@ where
         let elapsed = now_ms.saturating_sub(last_player_poll_ms);
 
         let snapshot = if any_surface_visible(&handle)
-            && player_poll_due(&handle, elapsed, poll_interval_ms)
+            && (forced || player_poll_due(&handle, elapsed, poll_interval_ms))
         {
             last_player_poll_ms = now_ms;
             poll_fn()
@@ -725,7 +834,16 @@ where
         };
 
         let next_ms = process_tick(&handle, &ctx, snapshot);
-        std::thread::sleep(std::time::Duration::from_millis(next_ms));
+        // Sleep until the next tick or an explicit poll request.
+        let (flag, cvar) = &*wake;
+        let mut requested = flag.lock().unwrap_or_else(|e| e.into_inner());
+        if !*requested {
+            requested = cvar
+                .wait_timeout(requested, std::time::Duration::from_millis(next_ms))
+                .map(|(guard, _)| guard)
+                .unwrap_or_else(|e| e.into_inner().0);
+        }
+        forced = std::mem::take(&mut *requested);
     }
 }
 
@@ -774,7 +892,10 @@ fn set_thread_qos_utility() {}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(menu::build).on_menu_event(menu::handle_event);
+    builder
         .register_uri_scheme_protocol(ARTWORK_SCHEME, |ctx, request| {
             artwork_response(ctx.app_handle(), &request)
         })
@@ -786,6 +907,9 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            app.handle()
+                .plugin(tauri_plugin_clipboard_manager::init())?;
 
             // Register the autostart plugin for all builds (macOS LaunchAgent /
             // Windows registry). This must be registered before any command that
@@ -799,6 +923,10 @@ pub fn run() {
             let dir = app_support_dir();
             let ui = UiStateStore::load(&dir);
             let initial = ui.snapshot();
+            // Until the first-run explanation is acknowledged, don't script
+            // Spotify or Music: that is what triggers macOS's permission prompt.
+            #[cfg(target_os = "macos")]
+            lyra_core::player::set_automation_enabled(initial.onboarded);
 
             let runtime = LyraRuntime::new_in(dir.clone());
             let players = Arc::new(
@@ -816,6 +944,7 @@ pub fn run() {
                 players: Arc::clone(&players),
                 ui,
                 surface_visibility: RuntimeSurfaceVisibility::new_all_hidden(),
+                poll: PollTrigger::default(),
             });
 
             #[cfg(target_os = "macos")]
@@ -868,14 +997,9 @@ pub fn run() {
                 }
             }
 
-            // Karaoke is a display-only overlay — always click-through.
-            // Island is click-through when locked (persisted across restarts).
-            // if let Some(karaoke) = app.get_webview_window("karaoke") {
-            //     let _ = karaoke.set_ignore_cursor_events(true);
-            // }
-            // if let Some(island) = app.get_webview_window("island") {
-            //     let _ = island.set_ignore_cursor_events(initial.island_locked);
-            // }
+            // Click-through for karaoke (always) and the island (when the user
+            // turned it on) is applied in `window_ready`, once each window is
+            // realized.
 
             // Apply persisted main-window flags (click-through / always-on-top).
             {
@@ -891,19 +1015,14 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             {
                 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
-                // Apply native window vibrancy to the settings window
+                // Settings sits on the sidebar material (what System Settings
+                // uses; it follows light/dark, unlike the always-dark HUD
+                // material). The page itself is near-opaque on top, so only a
+                // hint of the desktop shows through.
                 if let Some(settings_win) = app.get_webview_window("settings") {
-                    let _ = apply_vibrancy(
-                        &settings_win,
-                        NSVisualEffectMaterial::HudWindow,
-                        None,
-                        None,
-                    );
+                    let _ =
+                        apply_vibrancy(&settings_win, NSVisualEffectMaterial::Sidebar, None, None);
                 }
-                // Apply native window vibrancy to the main window
-                // if let Some(main_win) = app.get_webview_window("main") {
-                //     let _ = apply_vibrancy(&main_win, NSVisualEffectMaterial::HudWindow, None, None);
-                // }
 
                 // GCD-driven poll loop with leeway timer. Runs on its own
                 // queue thread; full player polls use QoS_UTILITY, while
@@ -954,6 +1073,13 @@ pub fn run() {
             commands::toggle_surface,
             commands::set_show_on_fullscreen,
             commands::set_island_locked,
+            commands::set_island_click_through,
+            commands::open_main_window,
+            commands::island_pointer_inside,
+            commands::complete_onboarding,
+            commands::copy_text,
+            commands::get_automation_denied,
+            commands::open_automation_settings,
             commands::set_font_scale,
             commands::set_theme,
             commands::update_karaoke_settings,
@@ -992,8 +1118,7 @@ pub fn run() {
             commands::get_autostart_status,
             commands::set_autostart,
             commands::window_ready,
-            commands::clear_main_vibrancy,
-            commands::apply_main_vibrancy,
+            commands::set_surface_occluded,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -1051,6 +1176,18 @@ mod tests {
         assert!(visibility.is_visible("main", true));
         visibility.set_visible("main", false);
         assert!(!visibility.is_visible("main", true));
+    }
+
+    #[test]
+    fn occluded_surface_is_not_visible_until_revealed() {
+        let visibility = RuntimeSurfaceVisibility::new_all_hidden();
+        visibility.set_ready("main");
+        visibility.set_visible("main", true);
+
+        visibility.set_occluded("main", true);
+        assert!(!visibility.is_visible("main", true));
+        visibility.set_occluded("main", false);
+        assert!(visibility.is_visible("main", true));
     }
 
     #[test]

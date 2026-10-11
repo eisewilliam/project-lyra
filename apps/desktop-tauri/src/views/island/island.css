@@ -14,7 +14,7 @@ html, body {
   color: white;
   display: flex;
   align-items: center;
-  cursor: grab;
+  cursor: default;
   border: 1px solid rgba(255, 255, 255, 0.1);
   user-select: none;
   position: relative;
@@ -27,13 +27,10 @@ html, body {
 /* See `app.css` for the rationale. Same flag triggers, same fall-backs. */
 @media (prefers-reduced-motion: reduce) {
   .floating-panel { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(18, 18, 22, 0.86); }
-  .island-bg-img { filter: none; transform: none; opacity: 0.2; }
-  .panel-lyric-next { filter: none; color: rgba(255, 255, 255, 0.32); }
+  .island-bg-img { filter: none; width: 100%; height: 100%; transform: translate(-50%, -50%); opacity: 0.2; }
   .panel-art.is-spinning { animation: none; }
 }
 :root[data-low-power="true"] .floating-panel { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(18, 18, 22, 0.86); }
-:root[data-low-power="true"] .island-bg-img { filter: blur(20px) saturate(150%); transform: scale(1.2); opacity: 0.5; }
-:root[data-low-power="true"] .panel-lyric-next { filter: none; color: rgba(255, 255, 255, 0.32); }
 :root[data-low-power="true"] .panel-art.is-spinning { animation: none; }
 
 .floating-panel.docked {
@@ -41,46 +38,48 @@ html, body {
   border-top: none;
 }
 
-.floating-panel:active {
+/* Click opens Lyra; dragging (when unlocked) moves the island. */
+.floating-panel.is-dragging {
   cursor: grabbing;
-}
-
-.panel-drag-button {
-  all: unset;
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  cursor: grab;
-}
-
-.panel-drag-button:active {
-  cursor: grabbing;
-}
-
-.floating-panel.locked {
-  cursor: default;
 }
 
 .island-background {
   position: absolute;
   inset: 0;
   z-index: 0;
+  overflow: hidden;
   pointer-events: none;
 }
 
+/* Same look as a 100% image with blur(40px) and scale(1.6), built like the
+   main window's ambient wash: blur a 10% copy by 4px and scale it 16x. The
+   heavy blur then runs over a tiny texture on its own compositor layer, so
+   the per-frame meter and lyric updates never re-filter the artwork. */
 .island-bg-img {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10%;
+  height: 10%;
   object-fit: cover;
-  filter: blur(40px) saturate(160%);
-  transform: scale(1.6);
+  filter: blur(4px) saturate(160%);
+  transform: translate(-50%, -50%) scale(16);
   opacity: 0.65;
+  will-change: transform;
 }
 
 .island-bg-dimmer {
+  /* Appearance → Background darkness (`--bg-darkness`, 0..1) scales the dim.
+     The default 0.6 reproduces the original gradient exactly; 0 lets the
+     artwork wash show fully, 1 deepens it (alpha caps at 1). */
+  --island-dim: calc(var(--bg-darkness, 0.6) / 0.6);
   position: absolute;
   inset: 0;
-  background: linear-gradient(to bottom, rgba(10,10,12,0.2), rgba(10,10,12,0.7));
+  background: linear-gradient(
+    to bottom,
+    rgba(10, 10, 12, calc(0.2 * var(--island-dim))),
+    rgba(10, 10, 12, calc(0.7 * var(--island-dim)))
+  );
 }
 
 .panel-content {
@@ -194,8 +193,8 @@ html, body {
     to right,
     var(--lyric-color, #ffffff) 0%,
     var(--lyric-color, #ffffff) calc(var(--word-progress, 0) * 100%),
-    color-mix(in srgb, var(--lyric-color, #ffffff) 40%, transparent) calc(var(--word-progress, 0) * 100%),
-    color-mix(in srgb, var(--lyric-color, #ffffff) 40%, transparent) 100%
+    color-mix(in srgb, var(--lyric-color, #ffffff) 55%, transparent) calc(var(--word-progress, 0) * 100%),
+    color-mix(in srgb, var(--lyric-color, #ffffff) 55%, transparent) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
@@ -205,11 +204,13 @@ html, body {
 .panel-lyric-next {
   font-size: calc(0.85rem * var(--font-scale, 1));
   font-weight: 600;
+  /* The only read-ahead line: readable at a glance, but kept below the
+     current line's unsung words (55%) so it never competes with them. */
   color: rgba(255, 255, 255, 0.45);
+  filter: blur(calc(0.75px * var(--lyric-blur, 1) * var(--blur-power, 1)));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  filter: blur(1.5px);
   letter-spacing: -0.01em;
   animation: lyric-line-enter 360ms cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -290,6 +291,8 @@ html, body {
 }
 
 .audio-bars {
+  /* Own layer: per-frame meter changes repaint only this small box. */
+  will-change: transform;
   display: flex;
   gap: 2px;
   align-items: center; /* Centered animation (grows from both top and bottom) */
@@ -399,8 +402,8 @@ html, body {
 .floating-panel.is-compact .panel-placeholder-line {
   height: 5px !important;
 }
-.floating-panel.is-compact .audio-bars {
-  transform: scale(0.75);
+.floating-panel.is-compact .island-meter {
+  transform: scale(0.8);
   transform-origin: center right;
   margin-left: -4px;
 }
@@ -414,6 +417,7 @@ html, body {
   z-index: 10;
   pointer-events: none;
   transform: rotate(-90deg); /* Start from the top center */
+  will-change: transform;
   overflow: visible;
 }
 
@@ -439,4 +443,107 @@ html, body {
 .rect-fill {
   stroke-dasharray: 146.27;
   stroke-dashoffset: calc(146.27 * (1 - var(--track-progress, 0)));
+}
+
+/* ── Hover controls ─────────────────────────────────────────────────────────
+   The meter and the transport glyph share a slot. On hover the bars fold down
+   and the glyph rises in their place over a soft disc; leaving reverses it
+   just as quickly (every hover transition here is ≤ 250 ms). Pointer-driven
+   state only, so it costs nothing until the pointer arrives. */
+.island-meter {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+}
+
+.island-meter::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity var(--duration-base) var(--ease-standard),
+    transform var(--duration-base) var(--ease-standard);
+}
+
+.island-meter .audio-bars {
+  justify-content: center;
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    transform var(--duration-base) var(--ease-standard);
+}
+
+.island-glyph {
+  --glyph-size: 18px;
+  position: absolute;
+  color: #fff;
+  opacity: 0;
+  transform: scale(0.5);
+  transition:
+    opacity var(--duration-base) var(--ease-standard),
+    transform var(--duration-base) cubic-bezier(0.34, 1.56, 0.64, 1),
+    gap var(--duration-base) var(--ease-standard),
+    padding var(--duration-base) var(--ease-standard);
+}
+
+.floating-panel.is-hovered .island-meter.can-toggle::before {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.floating-panel.is-hovered .island-meter.can-toggle .audio-bars {
+  opacity: 0;
+  transform: scaleY(0.2);
+}
+
+.floating-panel.is-hovered .island-meter.can-toggle .island-glyph {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.island-meter.can-toggle:active .island-glyph {
+  transform: scale(0.86);
+  transition-duration: 80ms;
+}
+
+
+/* Edge handles (unlocked only): drag to resize the island around its centre.
+   Each appears only while the pointer is near its edge. */
+.island-resize-handle {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  width: 10px;
+  height: 60%;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.island-resize-handle.is-left { left: 0; }
+.island-resize-handle.is-right { right: 0; }
+
+.island-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  left: 50%;
+  width: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.45);
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-standard);
+}
+
+.island-resize-handle.is-near::after,
+.floating-panel.is-dragging .island-resize-handle.is-near::after {
+  opacity: 1;
 }

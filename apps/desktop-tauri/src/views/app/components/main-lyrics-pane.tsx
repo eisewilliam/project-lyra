@@ -27,6 +27,12 @@ export const MainLyricsPane = memo(function MainLyricsPane({
   screenEdgeMotion,
   seekToLine,
   wordRefs,
+  isBrowsing,
+  onReturnToCurrent,
+  switching,
+  onLineMenu,
+  automationDenied,
+  onOpenAutomationSettings,
 }: Readonly<{
   activeLine: number | null;
   activeLineWords: ReadonlyArray<LyricWord>;
@@ -47,6 +53,16 @@ export const MainLyricsPane = memo(function MainLyricsPane({
   screenEdgeMotion: ScreenEdgeMotionMap;
   seekToLine: (index: number, ts: number) => void;
   wordRefs: RefObject<(HTMLSpanElement | null)[]>;
+  /** The reader scrolled away from the current line. */
+  isBrowsing: boolean;
+  onReturnToCurrent: () => void;
+  /** A skip was requested and the next track hasn't arrived yet. */
+  switching: boolean;
+  /** Right-click: `index` is the line pressed, or null outside a line. */
+  onLineMenu: (index: number | null) => void;
+  /** Players macOS refused to let Lyra read; shown when nothing plays. */
+  automationDenied?: ReadonlyArray<string>;
+  onOpenAutomationSettings?: () => void;
 }>) {
   const placeholderProps = onRetryLyrics ? { onRetry: onRetryLyrics } : {};
   const [keyboardLineIndex, setKeyboardLineIndex] = useState<number | null>(null);
@@ -115,12 +131,21 @@ export const MainLyricsPane = memo(function MainLyricsPane({
     }
   }, [hasLyrics, lyrics.length, moveKeyboardLine, seekToLine, selectedLineIndex]);
 
+  const handleContextMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    if (lyricsViewState !== 'ready' && lyricsViewState !== 'unsynced') return;
+    event.preventDefault();
+    const line = event.target instanceof Element ? event.target.closest('button.lyric-line') : null;
+    const index = line ? lyricsRef.current.indexOf(line as HTMLButtonElement) : -1;
+    onLineMenu(index >= 0 ? index : null);
+  }, [lyricsRef, lyricsViewState, onLineMenu]);
+
   return (
     <section
-      className={`lyrics-pane ${lyricsViewState === 'unsynced' ? 'is-unsynced' : ''} ${lyricsViewState === 'ready' || lyricsViewState === 'unsynced' ? '' : 'is-placeholder'}`}
+      className={`lyrics-pane ${lyricsViewState === 'unsynced' ? 'is-unsynced' : ''} ${lyricsViewState === 'ready' || lyricsViewState === 'unsynced' ? '' : 'is-placeholder'} ${isBrowsing ? 'is-browsing' : ''} ${switching ? 'is-switching' : ''}`}
       aria-label="Lyrics"
       onFocus={handleLyricsPaneFocus}
       onKeyDown={handleLyricsPaneKeyDown}
+      onContextMenu={handleContextMenu}
       ref={lyricsPaneRef}
       tabIndex={(lyricsViewState === 'ready' && hasLyrics) || lyricsViewState === 'unsynced' ? 0 : undefined}
     >
@@ -167,8 +192,15 @@ export const MainLyricsPane = memo(function MainLyricsPane({
           ignored={ignoredMedia}
           onFollowIgnored={onFollowIgnored}
           onFollowAutomatically={onFollowAutomatically}
+          automationDenied={automationDenied ?? []}
+          {...(onOpenAutomationSettings ? { onOpenAutomationSettings } : {})}
           {...placeholderProps}
         />
+      )}
+      {isBrowsing && lyricsViewState === 'ready' && (
+        <button type="button" className="lyrics-return" onClick={onReturnToCurrent}>
+          Back to current line
+        </button>
       )}
     </section>
   );

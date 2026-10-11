@@ -7,7 +7,10 @@ use crate::domain::{
     MediaKind, PlaybackCaps, PlaybackSnapshot, PlaybackState, PlayerApp, PositionQuality, TrackRef,
     Transport,
 };
-use crate::player::applescript::{parse_number, run_once, Script};
+use crate::player::applescript::{
+    automation_enabled, note_permission, parse_number, run_once, RunError, Script,
+};
+use crate::player::metadata::MetaRefresh;
 use crate::player::{
     now_ms, sniff_image_mime, ArtworkBytes, ControlError, PlayerAdapter, PlayerCommand,
     SessionObservation,
@@ -15,6 +18,7 @@ use crate::player::{
 
 const MUSIC_BUNDLE_ID: &str = "com.apple.Music";
 const SESSION_ID: &str = "applescript:com.apple.Music";
+const PLAYER_NAME: &str = "Apple Music";
 /// ASCII unit separator: never appears in titles, unlike `|`.
 const SEP: char = '\u{1f}';
 /// Larger images are skipped rather than copied into the artwork store.
@@ -141,12 +145,20 @@ struct CachedTrack {
     duration_ms: u64,
     file_path: Option<String>,
     artwork: Option<Arc<[u8]>>,
+    refresh: MetaRefresh,
+}
+
+impl CachedTrack {
+    fn is_complete(&self) -> bool {
+        self.duration_ms > 0 && self.artwork.is_some()
+    }
 }
 
 pub struct AppleMusicMacOsAdapter {
     /// Returned again when an AppleScript call fails transiently.
     last: Mutex<Vec<SessionObservation>>,
-    /// Metadata and artwork for the current track, refreshed on change.
+    /// Metadata and artwork for the current track, read on change and again
+    /// while incomplete or unsettled (streamed artwork can arrive late).
     cached: Mutex<Option<CachedTrack>>,
 }
 
@@ -158,17 +170,44 @@ impl AppleMusicMacOsAdapter {
         }
     }
 
-    fn track_for(&self, persistent_id: &str) -> Option<CachedTrack> {
+    fn track_for(&self, persistent_id: &str, now_ms: u64) -> Option<CachedTrack> {
         let mut cached = self.cached.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(track) = cached.as_ref().filter(|t| t.persistent_id == persistent_id) {
-            return Some(track.clone());
+        let prev = cached
+            .as_ref()
+            .filter(|t| t.persistent_id == persistent_id)
+            .cloned();
+        if let Some(track) = prev.as_ref() {
+            if !track.refresh.due(now_ms, track.is_complete()) {
+                return Some(track.clone());
+            }
         }
-        let fresh = parse_meta(&META.run()?)?;
+        let Some(fresh) = META
+            .run()
+            .as_deref()
+            .and_then(|raw| parse_meta(raw, now_ms))
+        else {
+            // Keep the earlier read and wait a retry interval.
+            let mut prev = prev?;
+            prev.refresh.reread(now_ms);
+            *cached = Some(prev.clone());
+            return Some(prev);
+        };
         let artwork = ARTWORK
             .run_data()
             .filter(|data| !data.is_empty() && data.len() <= MAX_ARTWORK_BYTES)
             .map(Arc::from);
-        let track = CachedTrack { artwork, ..fresh };
+        let mut track = CachedTrack { artwork, ..fresh };
+        if let Some(prev) = prev.filter(|p| p.persistent_id == track.persistent_id) {
+            // Never regress a field an earlier read already filled.
+            track.refresh = prev.refresh;
+            if track.duration_ms == 0 {
+                track.duration_ms = prev.duration_ms;
+            }
+            if track.artwork.is_none() {
+                track.artwork = prev.artwork;
+            }
+            track.refresh.reread(now_ms);
+        }
         *cached = Some(track.clone());
         Some(track)
     }
@@ -209,7 +248,7 @@ fn parse_lite(raw: &str) -> Option<Lite> {
     })
 }
 
-fn parse_meta(raw: &str) -> Option<CachedTrack> {
+fn parse_meta(raw: &str, now_ms: u64) -> Option<CachedTrack> {
     let fields: Vec<&str> = raw.splitn(6, SEP).collect();
     let [persistent_id, title, artist, album, duration, location] = fields.as_slice() else {
         return None;
@@ -227,6 +266,7 @@ fn parse_meta(raw: &str) -> Option<CachedTrack> {
         duration_ms: parse_number(duration).map_or(0, |s| (s * 1000.0) as u64),
         file_path: text(location),
         artwork: None,
+        refresh: MetaRefresh::new(now_ms),
     })
 }
 
@@ -244,7 +284,23 @@ impl PlayerAdapter for AppleMusicMacOsAdapter {
 
     fn sessions(&self) -> Vec<SessionObservation> {
         let observed_at_ms = now_ms();
-        let Some(lite) = LITE.run().as_deref().and_then(parse_lite) else {
+        if !automation_enabled() {
+            return Vec::new();
+        }
+        let raw = match LITE.run_checked() {
+            Ok(raw) => {
+                note_permission(PLAYER_NAME, false);
+                raw
+            }
+            Err(RunError::NotPermitted) => {
+                note_permission(PLAYER_NAME, true);
+                return Vec::new();
+            }
+            Err(RunError::Failed) => {
+                return self.last.lock().map(|g| g.clone()).unwrap_or_default()
+            }
+        };
+        let Some(lite) = parse_lite(&raw) else {
             return self.last.lock().map(|g| g.clone()).unwrap_or_default();
         };
 
@@ -260,7 +316,7 @@ impl PlayerAdapter for AppleMusicMacOsAdapter {
                 persistent_id,
                 position_ms,
             } => self
-                .track_for(&persistent_id)
+                .track_for(&persistent_id, observed_at_ms)
                 .map(|t| {
                     let uri = format!("applemusic:{}", t.persistent_id);
                     SessionObservation {
@@ -376,7 +432,7 @@ mod tests {
         let raw = format!(
             "ABC123{SEP}Hello | World{SEP}Adele{SEP}missing value{SEP}295,5{SEP}/Users/me/Music/hello.m4a"
         );
-        let track = parse_meta(&raw).unwrap();
+        let track = parse_meta(&raw, 0).unwrap();
         assert_eq!(track.title, "Hello | World");
         assert_eq!(track.artist, "Adele");
         assert_eq!(track.album, None);
@@ -385,6 +441,6 @@ mod tests {
             track.file_path.as_deref(),
             Some("/Users/me/Music/hello.m4a")
         );
-        assert!(parse_meta(&format!("ABC{SEP}{SEP}a{SEP}b{SEP}1{SEP}")).is_none());
+        assert!(parse_meta(&format!("ABC{SEP}{SEP}a{SEP}b{SEP}1{SEP}"), 0).is_none());
     }
 }

@@ -1,4 +1,5 @@
-import { ActionFeedbackButton, CustomSelect, Group, Row, Toggle } from '@/components/settings-controls';
+import { useEffect } from 'react';
+import { CustomSelect, Group, Row, Toggle } from '@/components/settings-controls';
 import type {
   BrowserLyrics,
   FollowRule,
@@ -21,6 +22,7 @@ import { KnownPlayerRow } from './known-player-row';
 import { PlayerSessionRow } from './player-session-row';
 
 const AUTOMATIC = '';
+const PLAYER_LIST_REFRESH_MS = 3000;
 
 function isBrowserLyrics(value: string): value is BrowserLyrics {
   return value === 'Ask' || value === 'Allow' || value === 'Deny';
@@ -52,6 +54,16 @@ export function PlayersSection({
   const refresh = async () => {
     await Promise.all([refreshSessions(), refreshKnown()]);
   };
+
+  // Keep the lists current while this page is open and visible, instead of a
+  // manual refresh button. Cheap reads of the host's latest poll.
+  useEffect(() => {
+    const timer = globalThis.setInterval(() => {
+      if (document.hidden) return;
+      Promise.all([refreshSessions(), refreshKnown()]).catch(() => undefined);
+    }, PLAYER_LIST_REFRESH_MS);
+    return () => globalThis.clearInterval(timer);
+  }, [refreshSessions, refreshKnown]);
   /** Policy commands resolve after players are re-polled; refresh then. */
   const applyAndRefresh = async (change: Promise<MediaPolicyView>) => {
     applyPolicy(await change);
@@ -84,7 +96,7 @@ export function PlayersSection({
         </Row>
       </Group>
 
-      <Group title="Active players">
+      <Group title="Now playing">
         {sessions === null && <Row label="Looking for players…">{null}</Row>}
         {sessions?.length === 0 && <Row label="Nothing is playing right now">{null}</Row>}
         {sessions?.map((session) => (
@@ -98,7 +110,7 @@ export function PlayersSection({
         ))}
       </Group>
 
-      <Group title="Detected players">
+      <Group title="Remembered players">
         {known === null && <Row label="Loading…">{null}</Row>}
         {known?.length === 0 && <Row label="Players appear here once they play something">{null}</Row>}
         {known?.map((player) => (
@@ -111,17 +123,6 @@ export function PlayersSection({
         ))}
       </Group>
 
-      <Group title="Diagnostics">
-        <Row label="Player lists">
-          <ActionFeedbackButton
-            label="Refresh"
-            pendingLabel="Refreshing..."
-            feedbackLabel="Updated"
-            failureLabel="Failed"
-            onClick={refresh}
-          />
-        </Row>
-      </Group>
     </>
   );
 }

@@ -2,15 +2,18 @@ import { useCallback, useRef, useState } from 'react';
 import { usePlaybackSnapshot } from '@/hooks/use-playback-snapshot';
 import {
   BLEND_MS,
+  NO_PLAYBACK_CAPS,
   interpolatePosition,
+  sameCaps,
   wordsKey,
   type PositionBaseline,
 } from '@/utils/playback-sync';
-import type { LyricWord, RenderSnapshot } from '@/types/tauri-contracts';
+import type { LyricWord, PlaybackCaps, RenderSnapshot } from '@/types/tauri-contracts';
 import { refreshLyrics } from '@/utils/tauri-commands';
 import type { LyricsStatus } from '@/utils/lyrics-state';
 
 const noop = (...args: unknown[]) => { if (args) return; };
+const PLAY_TOGGLE_GUARD_MS = 800;
 
 export function useIslandPlayback({
   ensureWindowReady,
@@ -25,6 +28,10 @@ export function useIslandPlayback({
   const [hasTrack, setHasTrack] = useState(false);
   const [hasVisibleLyrics, setHasVisibleLyrics] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [caps, setCaps] = useState<PlaybackCaps>(NO_PLAYBACK_CAPS);
+  // A play/pause click flips the icon at once; snapshots inside this window
+  // can still carry the old state and must not flip it back.
+  const playToggleAtRef = useRef(0);
   const [lyricsStatus, setLyricsStatus] = useState<LyricsStatus>('Loading');
   const [snapshotReady, setSnapshotReady] = useState(false);
   const [hasActiveLyric, setHasActiveLyric] = useState(false);
@@ -61,7 +68,10 @@ export function useIslandPlayback({
     setHasTrack(Boolean(track));
     setHasVisibleLyrics(hasActiveLine);
     const playingNow = snap.playback.state === 'Playing';
-    setIsPlaying(playingNow);
+    if (performance.now() - playToggleAtRef.current > PLAY_TOGGLE_GUARD_MS) {
+      setIsPlaying(playingNow);
+    }
+    setCaps((prev) => (sameCaps(prev, snap.playback.caps) ? prev : snap.playback.caps));
     setLyricsStatus(snap.lyrics_status);
     setArtworkUrl(track?.artwork_url ?? null);
     setTrackTitle(track?.title ?? '');
@@ -114,6 +124,11 @@ export function useIslandPlayback({
     onSnapshot: applyPlaybackSnapshot,
   });
 
+  const togglePlaying = useCallback(() => {
+    playToggleAtRef.current = performance.now();
+    setIsPlaying((playing) => !playing);
+  }, []);
+
   return {
     activeLine,
     nextLine,
@@ -123,6 +138,8 @@ export function useIslandPlayback({
     hasTrack,
     hasVisibleLyrics,
     isPlaying,
+    togglePlaying,
+    caps,
     lyricsStatus,
     snapshotReady,
     hasActiveLyric,

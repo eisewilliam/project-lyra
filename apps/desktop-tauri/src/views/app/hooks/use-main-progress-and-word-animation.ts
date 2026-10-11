@@ -33,7 +33,13 @@ export function useMainProgressAndWordAnimation({
     if (!isPlaying && activeLineWords.length === 0) {
       return;
     }
+    // Word wipes need every frame. Without them only the progress bar and
+    // clock move, so step on a timer sized to ~0.1% of the track (well under
+    // a pixel of the bar) instead of waking the page for every display frame.
+    const animateWords = activeLineWords.length > 0;
+    const progressStepMs = Math.min(250, Math.max(100, durationMs / 1000));
     let raf = 0;
+    let timer = 0;
     let lastProgressTransform = progressFillRef.current?.style.transform ?? '';
     let lastTimeLabel = positionLabelRef.current?.textContent ?? '';
     const lastWordCls: string[] = new Array(activeLineWords.length);
@@ -51,7 +57,9 @@ export function useMainProgressAndWordAnimation({
       const fill = progressFillRef.current;
       const label = positionLabelRef.current;
       if (isPlaying && durationMs > 0 && fill) {
-        const scale = Math.min(1, Math.max(0, Math.min(pos, durationMs) / durationMs)).toFixed(4);
+        // 0.1% steps: sub-pixel on any realistic bar width, and an unchanged
+        // value skips the style write (and the compositor commit) entirely.
+        const scale = Math.min(1, Math.max(0, Math.min(pos, durationMs) / durationMs)).toFixed(3);
         const nextTransform = `scaleX(${scale})`;
         if (nextTransform !== lastProgressTransform) {
           lastProgressTransform = nextTransform;
@@ -103,10 +111,18 @@ export function useMainProgressAndWordAnimation({
       const pos = interpolatePosition(baselineRef.current, performance.now(), isPlaying);
       updateProgressBar(pos);
       updateWordColors(pos);
-      if (isPlaying) raf = requestAnimationFrame(tick);
+      if (!isPlaying) return;
+      if (animateWords) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        timer = globalThis.setTimeout(tick, progressStepMs);
+      }
     };
     tick();
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      globalThis.clearTimeout(timer);
+    };
   }, [
     activeLineWords,
     baselineRef,

@@ -42,7 +42,8 @@ AppState {
     lyrics: LyricsRefresh,        // core HTTP client + in-flight fetch claims
     players: Arc<PlayerHub>,       // core player adapters + session registry
     ui: UiStateStore,              // host window preferences
-    surface_visibility: RuntimeSurfaceVisibility, // transient host visibility
+    surface_visibility: RuntimeSurfaceVisibility, // transient host visibility + page occlusion
+    poll: PollTrigger,             // wakes the poll loop for an immediate adapter read
 }
 ```
 
@@ -50,7 +51,11 @@ AppState {
 
 ### Playback delivery
 
-The host poll driver calls `PlayerHub::poll()`, which queries every platform adapter and lets the session registry choose the followed session. macOS uses a GCD leeway timer; Windows and Linux use the generic sleep loop. Adapter calls run outside the runtime Mutex. Playback commands (`playback_*`) are async and call `PlayerHub::control()` on the blocking pool; they return an error when no session is followed or the session does not support the control. Cadence follows the configured interval (clamped to 100–2000 ms), backs off for paused/stopped/missing-lyrics states, and skips adapter calls while all playback surfaces are hidden. Earlier wakeups can target the next lyric transition without polling the adapter again.
+The host poll driver calls `PlayerHub::poll()`, which queries every platform adapter and lets the session registry choose the followed session. macOS uses a GCD leeway timer; Windows and Linux use the generic loop (a condvar wait). Adapter calls run outside the runtime Mutex. Playback commands (`playback_*`) are async and call `PlayerHub::control()` on the blocking pool; they return an error when no session is followed or the session does not support the control. Playback changes then call `PollTrigger::request_poll`, so every surface reflects them without waiting for the next tick. Cadence follows the configured interval (clamped to 100–2000 ms), backs off for paused/stopped/missing-lyrics states, and skips adapter calls while all playback surfaces are hidden. Earlier wakeups can target the next lyric transition without polling the adapter again.
+
+A surface counts as hidden when its persisted preference is off, auto-hide hid it, or its page reports `document.hidden` (minimized, fully covered, another Space, locked screen) through `set_surface_occluded`. Hidden surfaces receive no ticks. Revealing one requests an immediate poll and pushes the current snapshot to that window. The paused/stopped coalescing signature includes duration and artwork, so metadata a player fills in late is still delivered.
+
+The AppleScript adapters (Spotify, Music.app) cache metadata per track. `player::metadata::MetaRefresh` re-reads it about 2 s after a track change and keeps retrying while the duration or artwork is missing: Spotify reports `duration = 0` for 1–2 s while a music video loads.
 
 `usePlaybackSnapshot` requests an initial `get_render_snapshot`, then listens for `playback-tick` events. It does not poll every 300 ms. The host sends events to visible playback surfaces, coalesces unchanged paused/stopped state, and provides a 10-second heartbeat. `LyraRuntime::tick()` computes a fresh render from the latest observation, extrapolating playing position without mutating the adapter snapshot; it has no debounce.
 
@@ -133,5 +138,39 @@ Important Linux behavior:
 `RenderSnapshot` contains both `active_line_index` (used by the `app` view via `get_all_lyrics`) and `visible_lines` (used by `island` and `karaoke`). The `app` view fetches the full lyric array separately via `get_all_lyrics` and highlights by index; the other views use the pre-windowed `visible_lines` directly.
 
 UI-layer state (window lock, position, font scale) flows through `ui-settings-changed` Tauri events. Playback state arrives through the initial `get_render_snapshot` call and `playback-tick` events.
+
+Per-frame work stays on surfaces that need it. Word wipes use `requestAnimationFrame`. Progress bars and rings step on a 100–250 ms timer quantized to 0.1% and skip unchanged style writes. Animating island elements (meter, ring, artwork wash) sit on their own compositor layers so they do not repaint each other. A track with `duration_ms == 0` renders an inert progress rail with a `–:––` total.
+
+Battery saver (`BehaviorSettings::battery_saver`) is core policy: `effective_poll_interval_ms()` returns 1 s while it is on, and otherwise the saved interval capped to 100–500 ms. Settings no longer offers an interval picker, so a slow value saved by an older build is capped. `useSurfaceSettings` mirrors the setting to `<html data-low-power>`. Each surface's CSS then drops backdrop blur, edge animations and compositing hints, halves the lyric depth blur, and the island rests its decorative meter.
+
+The lyric depth blur is user-controlled: `AppearanceSettings::lyric_blur` (0 off, 0.5 subtle, 1 standard, 1.5 strong) becomes `--lyric-blur`. Every lyric blur radius is `base × --lyric-blur × --blur-power`, and `data-lyric-blur="off"` removes the filter. Battery saver sets `--blur-power` to 0.5; Reduce Motion leaves blur alone because blur is not motion.
+
+Settings rows name their controls. `Row` publishes its label (and optional `hint`) ids through `RowContext`, and every control (`Toggle`, `SnapSlider`, `CustomSelect`, `Segmented`) spreads `useRowAria()`, so new rows get accessible names without extra props.
+
+Island interaction (`views/island/hooks/use-interaction.ts`):
+- `island_locked` is a position lock only. `island_click_through` (`set_island_click_through`) makes the panel ignore the mouse.
+- On macOS, hover and edge proximity come only from a native `NSTrackingArea` (ActiveAlways; enter/exit/move) that emits `island-hover` and `island-edge`, on edge changes only. A non-activating panel's WebKit page can get an enter without the matching leave, so DOM hover is not used there. While hovered, the page re-checks `island_pointer_inside` every 400 ms so effects never linger. DOM pointer events drive hover and edges on the other platforms.
+- A press that moves more than 4 px drags the island by setting its position each frame (only when unlocked). Otherwise it is a click: the cover raises the player and the meter (on hover the `TransportGlyph`) toggles playback. Opening the main window (`open_main_window`) takes a double-click (within 450 ms and 6 px) anywhere else, so a stray click on the lyrics does nothing.
+- The edge handles appear only near their edge, resize the island around its centre, and persist once on release. A horizontal trackpad swipe skips tracks.
+- Hover transitions are 250 ms or shorter in both directions.
+
+`components/transport-glyph.tsx` is the shared play/pause mark: two bars that fold into a triangle by interpolating `clip-path`. It is used by the island control, the main play button and the shortcut confirmation.
+
+Main window feedback:
+- `useTrackSkip` dims the lyrics as soon as a skip is requested; native menu skips announce themselves with `transport-skip`.
+- Track changes crossfade the cover and the ambient wash through `useCrossfadeSrc`, which decodes the incoming image before fading it over the outgoing one.
+- The paused cover scales to 0.92.
+- The lyric reel supports free scrolling (`isBrowsing`, `returnToCurrent`, 4 s idle return).
+- The progress bar shows a scrub preview with the time and the lyric line at that point.
+- Lyric lines have a native context menu (`useLineMenu`, with `copy_text` through the clipboard plugin).
+- Keyboard shortcuts show a brief on-screen confirmation.
+
+First run and permission (macOS): `UiState::onboarded` (a fresh install starts with false; saved states without the field count as true) gates `player::set_automation_enabled`. Until the user continues past `FirstRunCard`, the AppleScript readers stay idle, so macOS's Automation prompt follows Lyra's explanation. The readers record `errAEEventNotPermitted` (-1743) per player. `get_automation_denied` feeds the empty state's "Open Privacy Settings" guidance (`open_automation_settings`).
+
+The menu-bar menu mirrors the followed track (title – artist, Play/Pause, Next Track) through `TrayMenuRefs::sync_now_playing`, which only writes when something visible changed.
+
+Settings pages show live previews (`views/settings/components/previews.tsx`) built from the same values the surfaces read. The island preview reuses the real island markup, scaled. The Players page refreshes itself every 3 s while open.
+
+Native chrome: macOS has an app menu (`src-tauri/src/menu.rs`) with Settings… (⌘,) and Playback key equivalents (⌘←/⌘→). The main window handles Space and ←/→ in-page (`use-main-keyboard-shortcuts.ts`). Production builds suppress the WebView context menu outside editable fields (`utils/native-feel.ts`). The browser IPC mock is loaded only in dev outside Tauri.
 
 Frontend OS styling is selected through `body[data-os]`. Linux must be detected as `linux` instead of falling through to macOS styles; shared playback UI should stay platform-neutral and consume `RenderSnapshot`.

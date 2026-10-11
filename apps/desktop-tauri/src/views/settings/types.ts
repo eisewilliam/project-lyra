@@ -13,6 +13,7 @@ export type Actions = {
   toggleVisible: (surface: Surface) => Promise<void>;
   setFullscreen: (surface: Surface, value: boolean) => Promise<void>;
   setLock: (locked: boolean) => Promise<void>;
+  setIslandClickThrough: (enabled: boolean) => Promise<void>;
   setIslandSize: (width: number, height: number) => Promise<void>;
   resetIslandPosition: () => Promise<void>;
   setFont: (surface: Surface, scale: number) => Promise<void>;
@@ -37,4 +38,6 @@ export type SettingsBodyProps = {
   activeLabel: string | undefined;
   autostartEnabled: boolean;
   monitors: MonitorInfo[];
+  /** Current track artwork (or a transparent placeholder) for previews. */
+  artworkSrc: string;
 };

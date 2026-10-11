@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import {
   ActionFeedbackButton,
   CustomSelect,
@@ -23,12 +22,12 @@ import {
   KARAOKE_OFFSET_STEPS,
   KARAOKE_POSITION_OPTIONS,
   KARAOKE_WIDTH_STEPS,
-  MAIN_CONTEXT_LINE_OPTIONS,
-  POLLING_INTERVAL_OPTIONS,
+  LYRIC_BLUR_STEPS,
   THEME_OPTIONS,
 } from '../settings-options';
 import type { FloatingSurface, SettingsBodyProps } from '../types';
 import { PlayersSection } from './players-section';
+import { AppearancePreview, IslandPreview, KaraokePreview } from './previews';
 
 function monitorLabel(m: MonitorInfo, idx: number): string {
   const res = `${m.width}×${m.height}`;
@@ -44,6 +43,7 @@ export function Body({
   activeLabel,
   autostartEnabled,
   monitors,
+  artworkSrc,
 }: Readonly<SettingsBodyProps>) {
   const { ui, app } = state;
 
@@ -58,14 +58,10 @@ export function Body({
               onChange={(val) => actions.setTheme(val)}
             />
           </Row>
-          <Row label="Polling interval">
-            <CustomSelect
-              value={String(app.behavior.poll_interval_ms)}
-              options={POLLING_INTERVAL_OPTIONS}
-              onChange={(val) => actions.updateAppSetting('behavior', 'poll_interval_ms', Number.parseInt(val, 10))}
-            />
+          <Row label="Battery saver" hint="Checks the player once a second and lightens blur effects.">
+            <Toggle value={app.behavior.battery_saver} onChange={(v: boolean) => actions.updateAppSetting('behavior', 'battery_saver', v)} />
           </Row>
-          <Row label="Hide all displays when paused">
+          <Row label="Hide when paused" hint="Hides every Lyra window while playback is paused.">
             <Toggle value={app.behavior.hide_when_paused} onChange={(v: boolean) => actions.updateAppSetting('behavior', 'hide_when_paused', v)} />
           </Row>
         </Group>
@@ -77,12 +73,12 @@ export function Body({
         </Group>
 
         <Group title="Storage">
-          <Row label="Lyrics cache">
+          <Row label="Lyrics cache" hint="Cleared lyrics download again the next time each song plays.">
             <ActionFeedbackButton
               label="Clear cache"
-              pendingLabel="Clearing..."
-              feedbackLabel="Cleared!"
-              failureLabel="Failed"
+              pendingLabel="Clearing…"
+              feedbackLabel="Cleared"
+              failureLabel="Couldn't clear"
               onClick={() => actions.clearCache()}
             />
           </Row>
@@ -121,7 +117,8 @@ export function Body({
   if (section === 'appearance') {
     return (
       <>
-        <Group title="Typography">
+        <AppearancePreview appearance={app.appearance} artworkSrc={artworkSrc} />
+        <Group title="Text">
           <Row label="Font face">
             <CustomSelect
               value={app.appearance.font_family}
@@ -129,18 +126,17 @@ export function Body({
               onChange={(val) => actions.updateAppSetting('appearance', 'font_family', val)}
             />
           </Row>
-          <Row label="Base font size">
+          <Row label="Text size">
             <SnapSlider
               steps={FONT_SIZE_STEPS}
               value={app.appearance.font_size}
               onChange={(v) => actions.updateAppSetting('appearance', 'font_size', v, 'font-size')}
-              info="Scales the base text size across the entire application interface."
             />
           </Row>
-          <Row label="Primary text color">
+          <Row label="Lyric color">
             <input
               type="color"
-              style={{ width: 28, height: 28, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
+              className="color-well"
               value={app.appearance.text_color || '#ffffff'}
               onChange={(e) =>
                 actions.updateAppSetting('appearance', 'text_color', e.target.value, 'text-color')
@@ -149,13 +145,19 @@ export function Body({
           </Row>
         </Group>
 
-        <Group title="Color & Dimming">
-          <Row label="Background darkness">
+        <Group title="Background">
+          <Row label="Background darkness" hint="Main window and Dynamic Island.">
             <SnapSlider
               steps={BACKGROUND_OPACITY_STEPS}
               value={app.appearance.background_opacity}
               onChange={(v) => actions.updateAppSetting('appearance', 'background_opacity', v)}
-              info="Sets the darkness level of the translucent window backdrop."
+            />
+          </Row>
+          <Row label="Lyric blur" hint="Softens the lines around the current one.">
+            <SnapSlider
+              steps={LYRIC_BLUR_STEPS}
+              value={app.appearance.lyric_blur}
+              onChange={(v) => actions.updateAppSetting('appearance', 'lyric_blur', v, 'lyric-blur')}
             />
           </Row>
         </Group>
@@ -166,8 +168,9 @@ export function Body({
   if (section === 'karaoke') {
     return (
       <>
+        <KaraokePreview ui={ui} appearance={app.appearance} />
         <Group title="Visibility">
-          <Row label="Show Karaoke">
+          <Row label="Show Karaoke Lyrics">
             <Toggle value={ui.karaoke_visible} onChange={() => actions.toggleVisible('karaoke')} />
           </Row>
           <Row label="Show over full-screen apps">
@@ -179,38 +182,35 @@ export function Body({
         </Group>
 
         <Group title="Layout">
-          <Row label="Anchor position">
+          <Row label="Position">
             <Segmented
               value={ui.karaoke_position}
               options={KARAOKE_POSITION_OPTIONS}
               onChange={(v: string) => actions.karaoke('karaoke_position', v)}
             />
           </Row>
-          <Row label="Screen edge offset">
+          <Row label="Distance from edge">
             <SnapSlider
               steps={KARAOKE_OFFSET_STEPS}
               value={ui.karaoke_offset_px}
               onChange={(v) => actions.karaoke('karaoke_offset_px', v, 'k-offset')}
-              info="Defines the spacing between the karaoke overlay and the edge of your screen."
             />
           </Row>
-          <Row label="Line width">
+          <Row label="Width">
             <SnapSlider
               steps={KARAOKE_WIDTH_STEPS}
               value={ui.karaoke_width_pct}
               onChange={(v) => actions.karaoke('karaoke_width_pct', v, 'k-width')}
-              info="Sets the width of the karaoke overlay as a percentage of the screen."
             />
           </Row>
         </Group>
 
-        <Group title="Typography & Styling">
-          <Row label="Text size">
+        <Group title="Text">
+          <Row label="Text scale" hint="Relative to Text size in Appearance.">
             <SnapSlider
               steps={FONT_SCALE_STEPS}
               value={ui.karaoke_font_scale}
               onChange={(v) => actions.setFont('karaoke', v)}
-              info="Adjusts the text size of the karaoke lyrics window."
             />
           </Row>
           <Row label="Alignment">
@@ -220,7 +220,7 @@ export function Body({
               onChange={(v: string) => actions.karaoke('karaoke_alignment', v)}
             />
           </Row>
-          <Row label="Displayed lines">
+          <Row label="Lines">
             <Segmented
               value={String(ui.karaoke_lines)}
               options={KARAOKE_LINE_OPTIONS}
@@ -233,12 +233,11 @@ export function Body({
               onChange={(v: boolean) => actions.karaoke('karaoke_bold', v)}
             />
           </Row>
-          <Row label="Background shading">
+          <Row label="Shade behind lyrics">
             <SnapSlider
               steps={KARAOKE_BACKGROUND_STEPS}
               value={ui.karaoke_bg_opacity}
               onChange={(v) => actions.karaoke('karaoke_bg_opacity', v, 'k-bg')}
-              info="Controls the shading opacity of the karaoke overlay backdrop."
             />
           </Row>
         </Group>
@@ -246,128 +245,108 @@ export function Body({
     );
   }
 
-  const surface = section;
+  const textScale = (surface: FloatingSurface, value: number) => (
+    <Row label="Text scale" hint="Relative to Text size in Appearance.">
+      <SnapSlider steps={FONT_SCALE_STEPS} value={value} onChange={(v) => actions.setFont(surface, v)} />
+    </Row>
+  );
 
-  const config: Record<FloatingSurface, {
-    visible: boolean;
-    fontScale: number;
-    showFullscreen: boolean;
-    extraVisibility?: ReactNode;
-    extraLayout?: ReactNode;
-  }> = {
-    main: {
-      visible: ui.floating_visible,
-      fontScale: ui.floating_font_scale,
-      showFullscreen: ui.floating_show_on_fullscreen,
-      extraVisibility: (
-        <>
-          <Row label="Click-through (no interactions)">
-            <Toggle value={app.window.click_through} onChange={(v: boolean) => actions.updateAppSetting('window', 'click_through', v)} />
+  if (section === 'main') {
+    return (
+      <>
+        <Group title="Visibility">
+          <Row label={`Show ${activeLabel}`}>
+            <Toggle value={ui.floating_visible} onChange={() => actions.toggleVisible('main')} />
           </Row>
-          <Row label="Hide window when idle">
+          <Row label="Show over full-screen apps">
+            <Toggle value={ui.floating_show_on_fullscreen} onChange={(v: boolean) => actions.setFullscreen('main', v)} />
+          </Row>
+          <Row label="Hide when nothing is playing">
             <Toggle value={app.window.hide_when_idle} onChange={(v: boolean) => actions.updateAppSetting('window', 'hide_when_idle', v)} />
           </Row>
+        </Group>
+
+        <Group title="Window">
           <Row label="Keep window on top">
             <Toggle value={app.window.always_on_top} onChange={(v: boolean) => actions.updateAppSetting('window', 'always_on_top', v)} />
           </Row>
-          <Row label="Karaoke-style lyrics (active line only)">
+          <Row label="Click-through" hint="Clicks pass to the window behind Lyra.">
+            <Toggle value={app.window.click_through} onChange={(v: boolean) => actions.updateAppSetting('window', 'click_through', v)} />
+          </Row>
+        </Group>
+
+        <Group title="Lyrics">
+          <Row label="Focus on current line" hint="Shows only the current and next line, centered.">
             <Toggle value={app.behavior.karaoke_mode} onChange={(v: boolean) => actions.updateAppSetting('behavior', 'karaoke_mode', v)} />
           </Row>
-        </>
-      ),
-      extraLayout: (
-        <>
-          <Row label="Buffer lines above">
-            <CustomSelect
-              value={String(app.appearance.context_lines_above)}
-              options={MAIN_CONTEXT_LINE_OPTIONS}
-              onChange={(val) => actions.updateAppSetting('appearance', 'context_lines_above', Number.parseInt(val, 10))}
-            />
-          </Row>
-          <Row label="Buffer lines below">
-            <CustomSelect
-              value={String(app.appearance.context_lines_below)}
-              options={MAIN_CONTEXT_LINE_OPTIONS}
-              onChange={(val) => actions.updateAppSetting('appearance', 'context_lines_below', Number.parseInt(val, 10))}
-            />
-          </Row>
-        </>
-      )
-    },
-    island: {
-      visible: ui.island_visible,
-      fontScale: ui.island_font_scale,
-      showFullscreen: ui.island_show_on_fullscreen,
-      extraVisibility: (
-        <Row label="Lock screen position">
-          <Toggle value={ui.island_locked} onChange={(v: boolean) => actions.setLock(v)} />
-        </Row>
-      ),
-      extraLayout: (
-        <>
-          <Row label="Show cover art">
-            <Toggle value={ui.island_show_cover ?? true} onChange={(v: boolean) => actions.island('island_show_cover', v)} />
-          </Row>
-          <Row label="Circular cover art">
-            <Toggle value={ui.island_cover_circle ?? false} onChange={(v: boolean) => actions.island('island_cover_circle', v)} />
-          </Row>
-          <Row label="Spinning cover art">
-            <Toggle value={ui.island_cover_spin ?? false} onChange={(v: boolean) => actions.island('island_cover_spin', v)} />
-          </Row>
-          <Row label="Overlay width">
-            <SnapSlider
-              steps={ISLAND_WIDTH_STEPS}
-              value={ui.island_width ?? 600}
-              onChange={(v) => actions.setIslandSize(v, ui.island_height ?? 72)}
-              info="Controls the width of the Dynamic Island overlay window."
-            />
-          </Row>
-          <Row label="Overlay height">
-            <SnapSlider
-              steps={ISLAND_HEIGHT_STEPS}
-              value={ui.island_height ?? 72}
-              onChange={(v) => actions.setIslandSize(ui.island_width ?? 600, v)}
-              info="Controls the height of the Dynamic Island overlay window."
-            />
-          </Row>
-          <Row label="Position">
-            <button
-              type="button"
-              className="action-btn"
-              onClick={() => runSettingsAction(actions.resetIslandPosition())}
-            >
-              Reset to top-center
-            </button>
-          </Row>
-        </>
-      ),
-    },
-  };
+          {textScale('main', ui.floating_font_scale)}
+        </Group>
+      </>
+    );
+  }
 
-  const c = config[surface];
+  const showCover = ui.island_show_cover ?? true;
+  const islandWidth = ui.island_width ?? 600;
+  const islandHeight = ui.island_height ?? 72;
 
   return (
     <>
-      <Group title="Status & Visibility">
-        <Row label={`Enable ${activeLabel}`}>
-          <Toggle value={c.visible} onChange={() => actions.toggleVisible(surface)} />
+      <IslandPreview ui={ui} appearance={app.appearance} artworkSrc={artworkSrc} />
+      <Group title="Visibility">
+        <Row label={`Show ${activeLabel}`}>
+          <Toggle value={ui.island_visible} onChange={() => actions.toggleVisible('island')} />
         </Row>
         <Row label="Show over full-screen apps">
-          <Toggle value={c.showFullscreen} onChange={(v: boolean) => actions.setFullscreen(surface, v)} />
+          <Toggle value={ui.island_show_on_fullscreen} onChange={(v: boolean) => actions.setFullscreen('island', v)} />
         </Row>
-        {c.extraVisibility}
       </Group>
 
-      <Group title="Layout & Appearance">
-        <Row label="Font scaling">
+      <Group title="Window">
+        <Row label="Lock position" hint="Unlock to drag the island anywhere.">
+          <Toggle value={ui.island_locked} onChange={(v: boolean) => actions.setLock(v)} />
+        </Row>
+        <Row label="Click-through" hint="Clicks pass to the app behind the island, and its controls turn off.">
+          <Toggle value={ui.island_click_through} onChange={(v: boolean) => actions.setIslandClickThrough(v)} />
+        </Row>
+        <Row label="Position">
+          <button
+            type="button"
+            className="action-btn"
+            onClick={() => runSettingsAction(actions.resetIslandPosition())}
+          >
+            Move to top center
+          </button>
+        </Row>
+      </Group>
+
+      <Group title="Size">
+        <Row label="Width">
           <SnapSlider
-            steps={FONT_SCALE_STEPS}
-            value={c.fontScale}
-            onChange={(v) => actions.setFont(surface, v)}
-            info="Adjusts the size of lyrics inside this specific surface."
+            steps={ISLAND_WIDTH_STEPS}
+            value={islandWidth}
+            onChange={(v) => actions.setIslandSize(v, islandHeight)}
           />
         </Row>
-        {c.extraLayout}
+        <Row label="Height">
+          <SnapSlider
+            steps={ISLAND_HEIGHT_STEPS}
+            value={islandHeight}
+            onChange={(v) => actions.setIslandSize(islandWidth, v)}
+          />
+        </Row>
+        {textScale('island', ui.island_font_scale)}
+      </Group>
+
+      <Group title="Cover art">
+        <Row label="Show cover art">
+          <Toggle value={showCover} onChange={(v: boolean) => actions.island('island_show_cover', v)} />
+        </Row>
+        <Row label="Circular" disabled={!showCover}>
+          <Toggle value={ui.island_cover_circle ?? false} onChange={(v: boolean) => actions.island('island_cover_circle', v)} />
+        </Row>
+        <Row label="Spin while playing" disabled={!showCover}>
+          <Toggle value={ui.island_cover_spin ?? false} onChange={(v: boolean) => actions.island('island_cover_spin', v)} />
+        </Row>
       </Group>
     </>
   );

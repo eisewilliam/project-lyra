@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { motion } from 'motion/react';
 import { SETTINGS_SECTION_LABELS } from '../settings-sections';
 import type { Section } from '../types';
 
@@ -34,29 +33,27 @@ export function SettingsNav({
   return (
     <aside className="settings-sidebar flex w-[220px] shrink-0 flex-col box-border p-2.5 z-[1]">
       <div className="sidebar-traffic-spacer h-12 shrink-0" data-tauri-drag-region="deep" />
-      <nav className="flex flex-col gap-4">
+      <nav className="flex flex-col gap-3" aria-label="Settings sections">
         {NAV_GROUPS.map((group) => (
-          <div className="nav-group flex flex-col gap-1" key={group.header || 'general-group'}>
+          <div className="nav-group flex flex-col gap-0.5" key={group.header || 'general-group'}>
             {group.header && <div className="nav-section px-2.5 py-1">{group.header}</div>}
             {group.items.map((item) => {
               const isActive = section === item.id;
               return (
                 <button
                   key={item.id}
-                  className={`nav-item relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left ${isActive ? 'active' : ''}`}
+                  type="button"
+                  className={`nav-item relative flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left ${isActive ? 'active' : ''}`}
+                  aria-current={isActive ? 'page' : undefined}
                   onClick={() => onSectionChange(item.id)}
                 >
-                  {isActive && (
-                    <motion.div
-                      layoutId="active-nav-indicator"
-                      className="nav-item-indicator"
-                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                    />
-                  )}
-                  <span className="nav-icon relative z-10 inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center">
+                  <span
+                    className="nav-icon inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center"
+                    aria-hidden="true"
+                  >
                     {item.icon}
                   </span>
-                  <span className="nav-label relative z-10">{item.label}</span>
+                  <span className="nav-label">{item.label}</span>
                 </button>
               );
             })}
@@ -78,8 +75,9 @@ function IconAppearance() {
 
 function IconGear() {
   return (
-    <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-      <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Zm-6.5 2.5c0-.4.04-.78.11-1.16L0 5.6l1.5-2.6 1.7.85a6.5 6.5 0 0 1 2-1.16L5.5 1h3l.3 1.7a6.5 6.5 0 0 1 2 1.15L12.5 3 14 5.6l-1.6 1.24c.07.38.1.76.1 1.16 0 .4-.03.78-.1 1.16L14 10.4 12.5 13l-1.7-.84a6.5 6.5 0 0 1-2 1.15L8.5 15h-3l-.3-1.7a6.5 6.5 0 0 1-2-1.15L1.5 13 0 10.4l1.6-1.24c-.07-.38-.1-.76-.1-1.16Z" />
+    <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15.48 8.42 L17.23 8.41 L17.23 11.59 L15.48 11.58 L14.99 12.76 L16.23 13.99 L13.99 16.23 L12.76 14.99 L11.58 15.48 L11.59 17.23 L8.41 17.23 L8.42 15.48 L7.24 14.99 L6.01 16.23 L3.77 13.99 L5.01 12.76 L4.52 11.58 L2.77 11.59 L2.77 8.41 L4.52 8.42 L5.01 7.24 L3.77 6.01 L6.01 3.77 L7.24 5.01 L8.42 4.52 L8.41 2.77 L11.59 2.77 L11.58 4.52 L12.76 5.01 L13.99 3.77 L16.23 6.01 L14.99 7.24 Z" />
+      <circle cx="10" cy="10" r="2.4" />
     </svg>
   );
 }

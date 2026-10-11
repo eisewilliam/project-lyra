@@ -2,7 +2,7 @@
 // island, karaoke). These were previously copy-pasted into each view; keeping
 // one definition means a sync/interpolation fix lands everywhere at once.
 import type { LyricWord, PlaybackCaps } from '@/types/tauri-contracts';
-import { windowReady, type SurfaceLabel } from '@/utils/tauri-commands';
+import { setSurfaceOccluded, windowReady, type SurfaceLabel } from '@/utils/tauri-commands';
 
 export const BLEND_MS = 500;
 
@@ -75,15 +75,38 @@ export function syncSurfaceVisible(
   return visible;
 }
 
+// Report page visibility (minimized, fully covered, other Space, locked
+// screen) so the host stops ticking a surface nobody can see — and stops
+// polling the player when every surface is hidden. Installed once per window.
+function reportSurfaceOcclusion(label: SurfaceLabel) {
+  let last: boolean | null = null;
+  const report = () => {
+    const occluded = document.hidden;
+    if (occluded === last) return;
+    last = occluded;
+    setSurfaceOccluded(label, occluded).catch(() => {
+      last = null;
+    });
+  };
+  document.addEventListener('visibilitychange', report);
+  if (document.hidden) report();
+}
+
 // Build a memoized `window_ready` invoker for a surface. The backend shows the
 // native window per persisted visibility before the frontend issues further
 // IPC — a hidden WKWebView queues `evaluateJavaScript`, so this must resolve
 // before any other invoke()/listen() call. Resets on failure so a retry works.
-export function makeWindowReady(label: string): () => Promise<void> {
+export function makeWindowReady(label: SurfaceLabel): () => Promise<void> {
   let promise: Promise<void> | null = null;
+  let occlusionInstalled = false;
   return () => {
-    promise ??= windowReady(label as SurfaceLabel)
-      .then(() => undefined)
+    promise ??= windowReady(label)
+      .then(() => {
+        if (!occlusionInstalled) {
+          occlusionInstalled = true;
+          reportSurfaceOcclusion(label);
+        }
+      })
       .catch((err) => {
         promise = null;
         throw err;

@@ -1,5 +1,9 @@
+use std::sync::Mutex;
+
+use lyra_core::domain::{PlaybackState, RenderSnapshot};
+use lyra_core::player::PlayerCommand;
 use tauri::menu::{
-    CheckMenuItem, CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem,
+    CheckMenuItem, CheckMenuItemBuilder, MenuBuilder, MenuItem, MenuItemBuilder, PredefinedMenuItem,
 };
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, Wry};
@@ -12,6 +16,40 @@ pub struct TrayMenuRefs {
     pub show_island: CheckMenuItem<Wry>,
     pub show_karaoke: CheckMenuItem<Wry>,
     pub lock_island: CheckMenuItem<Wry>,
+    now_playing: MenuItem<Wry>,
+    play_pause: MenuItem<Wry>,
+    next: MenuItem<Wry>,
+    /// Last now-playing state written to the menu, so ticks that change
+    /// nothing visible don't touch it.
+    shown: Mutex<Option<NowPlaying>>,
+}
+
+#[derive(Clone, PartialEq)]
+struct NowPlaying {
+    label: String,
+    playing: bool,
+    can_play_pause: bool,
+    can_next: bool,
+}
+
+/// Menu titles can't wrap; keep long "title — artist" strings readable.
+const NOW_PLAYING_MAX_CHARS: usize = 44;
+
+fn now_playing_label(render: &RenderSnapshot) -> String {
+    let Some(track) = render.playback.track.as_ref() else {
+        return "Not playing".to_string();
+    };
+    let label = if track.artist.is_empty() {
+        track.title.clone()
+    } else {
+        format!("{} — {}", track.title, track.artist)
+    };
+    if label.chars().count() <= NOW_PLAYING_MAX_CHARS {
+        return label;
+    }
+    let mut short: String = label.chars().take(NOW_PLAYING_MAX_CHARS - 1).collect();
+    short.push('…');
+    short
 }
 
 impl TrayMenuRefs {
@@ -20,9 +58,48 @@ impl TrayMenuRefs {
         let _ = self.show_karaoke.set_checked(state.karaoke_visible);
         let _ = self.lock_island.set_checked(state.island_locked);
     }
+
+    /// Mirror the followed track and transport state into the menu-bar menu.
+    pub fn sync_now_playing(&self, render: &RenderSnapshot) {
+        let has_track = render.playback.track.is_some();
+        let next = NowPlaying {
+            label: now_playing_label(render),
+            playing: render.playback.state == PlaybackState::Playing,
+            can_play_pause: has_track && render.playback.caps.play_pause,
+            can_next: has_track && render.playback.caps.next,
+        };
+        let Ok(mut shown) = self.shown.lock() else {
+            return;
+        };
+        if shown.as_ref() == Some(&next) {
+            return;
+        }
+        let _ = self.now_playing.set_text(&next.label);
+        let _ = self
+            .play_pause
+            .set_text(if next.playing { "Pause" } else { "Play" });
+        let _ = self.play_pause.set_enabled(next.can_play_pause);
+        let _ = self.next.set_enabled(next.can_next);
+        *shown = Some(next);
+    }
 }
 
 pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
+    // Now playing: a read-only title line, then the two controls people reach
+    // for from the menu bar.
+    let now_playing = MenuItemBuilder::new("Not playing")
+        .id("now_playing")
+        .enabled(false)
+        .build(app)?;
+    let play_pause = MenuItemBuilder::new("Play")
+        .id("tray_play_pause")
+        .enabled(false)
+        .build(app)?;
+    let next = MenuItemBuilder::new("Next Track")
+        .id("tray_next")
+        .enabled(false)
+        .build(app)?;
+
     let show_lyra = MenuItemBuilder::new("Open Lyra")
         .id("show_lyra")
         .build(app)?;
@@ -39,7 +116,7 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
         .checked(initial.island_locked)
         .build(app)?;
 
-    let settings = MenuItemBuilder::new("Settings...")
+    let settings = MenuItemBuilder::new("Settings…")
         .id("settings")
         .accelerator("CmdOrCtrl+,")
         .build(app)?;
@@ -50,6 +127,10 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
 
     let menu = MenuBuilder::new(app)
         .items(&[
+            &now_playing,
+            &play_pause,
+            &next,
+            &PredefinedMenuItem::separator(app)?,
             &show_lyra,
             &show_island,
             &show_karaoke,
@@ -66,6 +147,10 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
         show_island,
         show_karaoke,
         lock_island,
+        now_playing,
+        play_pause,
+        next,
+        shown: Mutex::new(None),
     });
 
     let mut tray = TrayIconBuilder::new()
@@ -77,6 +162,8 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
             "toggle_karaoke" => toggle_surface(app, "karaoke"),
             "toggle_island_lock" => toggle_island_lock(app),
             "settings" => open_settings(app),
+            "tray_play_pause" => send_command(app, PlayerCommand::PlayPause),
+            "tray_next" => send_command(app, PlayerCommand::Next),
             "quit" => app.exit(0),
             _ => {}
         });
@@ -96,6 +183,14 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
     let _tray = tray.build(app)?;
 
     Ok(())
+}
+
+fn send_command(app: &AppHandle, command: PlayerCommand) {
+    crate::commands::announce_skip(app, command);
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = crate::commands::send_player_command(app.state(), command).await;
+    });
 }
 
 pub fn open_lyra(app: &AppHandle) {

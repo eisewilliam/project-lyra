@@ -58,8 +58,8 @@ export function TrackInfo({
       <div className="track-meta">
         {hasTrack ? (
           <>
-            <h2 className="track-title">{track?.title}</h2>
-            <p className="track-artist">{track?.artist}</p>
+            <h2 className="track-title" title={track?.title}>{track?.title}</h2>
+            <p className="track-artist" title={track?.artist}>{track?.artist}</p>
           </>
         ) : (
           <div className="track-meta-skeleton" aria-hidden="true">
@@ -79,10 +79,10 @@ export function TrackInfo({
               aria-label="Track actions"
             >
               <option value="" disabled hidden>Actions</option>
-              <option value="delay" disabled={!hasSyncedLyrics}>☰ Lyrics delay</option>
-              <option value="refresh">↻ Refresh lyrics</option>
-              <option value="not-music">⊘ Not music — stop following</option>
-              <option value="settings">⛭ Settings</option>
+              <option value="delay" disabled={!hasSyncedLyrics}>Lyrics Delay…</option>
+              <option value="refresh">Refresh Lyrics</option>
+              <option value="not-music">Mark as Not Music</option>
+              <option value="settings">Settings…</option>
             </select>
           )}
           <button

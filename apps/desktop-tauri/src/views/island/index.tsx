@@ -1,6 +1,6 @@
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { GlidingLine } from '@/components/gliding-line';
+import { TransportGlyph } from '@/components/transport-glyph';
 import {
   resolveLyricsSurfaceState,
   type LyricsPlaceholderState,
@@ -18,6 +18,7 @@ import { useArtworkFallback } from '@/hooks/use-artwork-fallback';
 import { useSurfaceAutoHide } from '@/hooks/use-surface-auto-hide';
 import { useWordColouring } from '@/hooks/use-word-colouring';
 import { makeWindowReady, applySurfaceVisible } from '@/utils/playback-sync';
+import { useIslandInteraction } from './hooks/use-interaction';
 import { useIslandMove } from './hooks/use-move';
 import { useAudioVisualizer } from './hooks/use-audio-visualizer';
 import { useProgressRing } from './hooks/use-progress-ring';
@@ -25,8 +26,6 @@ import { useIslandPlayback } from './hooks/use-playback';
 import { useIslandSettings } from './hooks/use-settings';
 import { TRANSPARENT_FALLBACK_ART } from '@/utils/artwork';
 import './island.css';
-
-const noop = (...args: unknown[]) => { if (args) return; };
 
 const SURFACE_LABEL = 'island';
 const ensureIslandWindowReady = makeWindowReady(SURFACE_LABEL);
@@ -98,6 +97,7 @@ export default function Island() {
   const [islandHeight, setIslandHeight] = useState(72);
   const [hideWhenPaused, setHideWhenPaused] = useState(false);
   const [hideWhenIdle, setHideWhenIdle] = useState(false);
+  const [batterySaver, setBatterySaver] = useState(false);
 
   const {
     activeLine,
@@ -108,6 +108,8 @@ export default function Island() {
     hasTrack,
     hasVisibleLyrics,
     isPlaying,
+    togglePlaying,
+    caps,
     lyricsStatus,
     snapshotReady,
     hasActiveLyric,
@@ -119,7 +121,7 @@ export default function Island() {
     wordRefs,
   } = useIslandPlayback({ ensureWindowReady: ensureIslandWindowReady });
 
-  const progressRingRef = useRef<SVGSVGElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const visualizerRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const pageVisible = usePageVisible();
   const desiredVisibleRef = useRef(true);
@@ -141,6 +143,7 @@ export default function Island() {
     setCoverSpin,
     setIslandHeight,
     setIsDocked,
+    setBatterySaver,
   });
 
   useIslandMove({
@@ -160,14 +163,14 @@ export default function Island() {
     setSurfaceVisible,
   });
 
+  // The meter is decorative; battery saver keeps it at rest.
   useAudioVisualizer({
-    isPlaying,
+    isPlaying: isPlaying && !batterySaver,
     pageVisible,
     surfaceVisible,
     trackKey,
     trackTitle,
     trackArtist,
-    activeLineProgress,
     activeLineWords,
     visualizerRefs,
     baselineRef,
@@ -178,9 +181,17 @@ export default function Island() {
     durationMs,
     pageVisible,
     surfaceVisible,
-    progressRingRef,
+    progressTargetRef: panelRef,
     baselineRef,
   });
+
+  const { hovered, edge, dragging, handlers } = useIslandInteraction({
+    ensureWindowReady: ensureIslandWindowReady,
+    locked,
+    caps,
+    onTogglePlaying: togglePlaying,
+  });
+  const canToggle = hasTrack && caps.play_pause;
 
   useWordColouring({
     words: activeLineWords,
@@ -226,22 +237,12 @@ export default function Island() {
 
   return (
     <div
-      className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${isDocked ? 'docked' : 'floating'} ${panelState !== 'ready' && !showTrackIntro ? 'has-placeholder' : ''} ${isCompactLayout ? 'is-compact' : ''}`}
+      ref={panelRef}
+      className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${isDocked ? 'docked' : 'floating'} ${panelState !== 'ready' && !showTrackIntro ? 'has-placeholder' : ''} ${isCompactLayout ? 'is-compact' : ''} ${hovered ? 'is-hovered' : ''} ${dragging ? 'is-dragging' : ''}`}
       role="application"
       aria-label="Dynamic Island panel"
+      {...handlers}
     >
-      {!locked && (
-        <button
-          type="button"
-          className="panel-drag-button"
-          aria-label="Drag Dynamic Island panel"
-          onMouseDown={(e) => {
-            if (e.button !== 0) return;
-            e.preventDefault();
-            getCurrentWindow().startDragging().catch(noop);
-          }}
-        />
-      )}
       <div className="island-background">
         <img src={artSrc} alt="" className="island-bg-img" decoding="async" onError={() => setArtworkError(true)} />
         <div className="island-bg-dimmer"></div>
@@ -249,7 +250,11 @@ export default function Island() {
 
       <div className="panel-content">
         {showCover && (
-          <div className="panel-art-container" style={{ position: 'relative', flexShrink: 0 }}>
+          <div
+            className="panel-art-container"
+            style={{ position: 'relative', flexShrink: 0 }}
+            data-island-action={caps.raise ? 'raise' : undefined}
+          >
             <div className={`panel-art ${coverCircle ? 'is-circle' : ''} ${coverSpin ? 'is-spinning' : ''} ${isPlaying ? '' : 'is-paused'}`}>
               <img
                 src={artSrc}
@@ -261,7 +266,7 @@ export default function Island() {
               />
             </div>
             {hasTrack && durationMs > 0 && (
-              <svg ref={progressRingRef} className="progress-ring-svg" viewBox="0 0 44 44">
+              <svg className="progress-ring-svg" viewBox="0 0 44 44">
                 {coverCircle ? (
                   <>
                     <circle className="progress-ring-bg" cx="22" cy="22" r="20" />
@@ -282,25 +287,48 @@ export default function Island() {
           {panelContent}
         </div>
 
+        {/* The meter doubles as the play/pause control: on hover its bars
+            fold away and the transport glyph takes their place. */}
         <div
-          className={`audio-bars ${barsActive ? 'is-playing' : 'is-paused'}`}
-          aria-hidden="true"
+          className={`island-meter ${canToggle ? 'can-toggle' : ''}`}
+          data-island-action={canToggle ? 'toggle' : undefined}
         >
-          {BAR_KEYS.map((key, i) => {
-            return (
-              <span
-                key={key}
-                ref={(el) => { visualizerRefs.current[i] = el; }}
-                className="bar"
-                style={{
-                  '--meter-height': '3px',
-                  '--meter-opacity': '0.36',
-                } as CSSProperties}
-              />
-            );
-          })}
+          <div
+            className={`audio-bars ${barsActive ? 'is-playing' : 'is-paused'}`}
+            aria-hidden="true"
+          >
+            {BAR_KEYS.map((key, i) => {
+              return (
+                <span
+                  key={key}
+                  ref={(el) => { visualizerRefs.current[i] = el; }}
+                  className="bar"
+                  style={{
+                    '--meter-height': '3px',
+                    '--meter-opacity': '0.36',
+                  } as CSSProperties}
+                />
+              );
+            })}
+          </div>
+          {canToggle && <TransportGlyph playing={isPlaying} className="island-glyph" />}
         </div>
       </div>
+
+      {!locked && (
+        <>
+          <span
+            className={`island-resize-handle is-left ${edge === -1 ? 'is-near' : ''}`}
+            data-island-resize="left"
+            aria-hidden="true"
+          />
+          <span
+            className={`island-resize-handle is-right ${edge === 1 ? 'is-near' : ''}`}
+            data-island-resize="right"
+            aria-hidden="true"
+          />
+        </>
+      )}
     </div>
   );
 }

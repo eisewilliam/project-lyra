@@ -52,11 +52,13 @@ function detectedAsLabel(session: PlayerSessionInfo): string {
   }
 }
 
-type Status = { text: string; tone: 'live' | 'idle' | 'ignored' };
+type Status = { text: string; tone: 'live' | 'following' | 'idle' | 'ignored' };
 
 function status(session: PlayerSessionInfo): Status {
   if (session.active) {
-    return { text: 'Following', tone: session.state === 'Playing' ? 'live' : 'idle' };
+    // The followed player keeps its accent while paused, so it stays
+    // distinguishable from other paused players.
+    return { text: 'Following', tone: session.state === 'Playing' ? 'live' : 'following' };
   }
   if (session.ignored) return { text: IGNORE_REASON_SHORT[session.ignored], tone: 'ignored' };
   return { text: session.state, tone: 'idle' };
@@ -135,18 +137,18 @@ export function PlayerSessionRow({
           {player ? (
             <ActionFeedbackButton
               label={pinned ? 'Follow any player' : 'Follow only this player'}
-              pendingLabel="Saving..."
+              pendingLabel="Saving…"
               feedbackLabel="Saved"
-              failureLabel="Failed"
+              failureLabel="Couldn't save"
               onClick={() => onPin(pinned ? null : player.id)}
             />
           ) : null}
           {action && trackKey ? (
             <ActionFeedbackButton
               label={action.label}
-              pendingLabel="Saving..."
+              pendingLabel="Saving…"
               feedbackLabel="Saved"
-              failureLabel="Failed"
+              failureLabel="Couldn't save"
               onClick={() => onTrackOverride(trackKey, action.value)}
             />
           ) : null}

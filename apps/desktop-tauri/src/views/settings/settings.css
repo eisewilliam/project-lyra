@@ -14,6 +14,10 @@
   --item-active-text: #ffffff;
   --knob-shadow: 0 2px 6px rgba(0, 0, 0, 0.18), 0 1px 2px rgba(0, 0, 0, 0.12);
   --accent: #0A84FF;
+  --slider-rail: rgba(0, 0, 0, 0.1);
+  --slider-fill: rgba(0, 0, 0, 0.42);
+  --nav-hover: rgba(0, 0, 0, 0.04);
+  --nav-selected: rgba(0, 0, 0, 0.09);
   --panel-radius: 12px;
 }
 
@@ -31,6 +35,10 @@
     --item-active: rgba(255, 255, 255, 0.1);
     --item-active-bg: #0A84FF;
     --knob-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+    --slider-rail: rgba(255, 255, 255, 0.14);
+    --slider-fill: rgba(255, 255, 255, 0.6);
+    --nav-hover: rgba(255, 255, 255, 0.05);
+    --nav-selected: rgba(255, 255, 255, 0.13);
   }
 }
 
@@ -64,13 +72,15 @@ body {
 }
 
 .nav-section {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
+/* Sidebar rows: monochrome outline icons in the text colour, like the rest
+   of Lyra. The selected row is a solid neutral fill with its icon at full
+   strength; hover is a fainter wash, so the two never read alike. The
+   selection moves instantly, like a native source list. */
 .nav-item {
   background: transparent;
   border: none;
@@ -78,35 +88,27 @@ body {
   cursor: default;
   font-family: inherit;
   font-size: 13px;
-  font-weight: 600;
-  transition:
-    color var(--duration-base) var(--ease-control);
+  font-weight: 500;
 }
 
-.nav-item-indicator {
-  position: absolute;
-  inset: 0;
-  border-radius: 8px;
-  background: var(--item-active-bg);
-  box-shadow: 0 1px 3px rgba(10, 132, 255, 0.25);
-  z-index: 0;
-  pointer-events: none;
+.nav-icon {
+  color: var(--text-secondary);
 }
 
 .nav-item:hover:not(.active) {
-  background: var(--item-active);
+  background: var(--nav-hover);
 }
 
 .nav-item:active:not(.active) {
-  background: var(--border-color);
+  background: var(--nav-selected);
 }
 
 .nav-item.active {
-  color: var(--item-active-text);
+  background: var(--nav-selected);
 }
 
 .nav-item.active .nav-icon {
-  filter: brightness(0) invert(1);
+  color: var(--text-primary);
 }
 
 .nav-item:focus-visible,
@@ -116,6 +118,7 @@ input[type="checkbox"]:focus-visible,
 .native-snap-slider:focus-visible,
 .segmented-option:focus-visible,
 .custom-select-trigger:focus-visible,
+.color-well:focus-visible,
 .settings-win-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -136,22 +139,27 @@ input[type="checkbox"]:focus-visible,
   color: var(--text-primary);
 }
 
-/* Form Groups */
-.group {
-  animation: fade-in 0.3s ease-out;
+/* A section swaps in place with a short fade; nothing slides. */
+.settings-section {
+  animation: section-in 0.14s ease-out;
 }
 
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes section-in {
+  from { opacity: 0; }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .settings-section {
+    animation: none;
+  }
+}
+
+/* Sentence-case section headers, as in System Settings and Windows 11
+   Settings; neither platform sets group labels in all caps. */
 .group-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--text-primary);
 }
 
 .group-card {
@@ -159,8 +167,6 @@ input[type="checkbox"]:focus-visible,
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--panel-radius);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.16);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
 }
 
 @media (prefers-color-scheme: light) {
@@ -183,6 +189,81 @@ input[type="checkbox"]:focus-visible,
   color: var(--text-primary);
 }
 
+/* One line of explanation under a row label. */
+.row-hint {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+/* An option that depends on another one being on. */
+.row.is-disabled .row-label {
+  opacity: 0.45;
+}
+
+/* Lyric colour: a rounded colour well instead of the bare system input. */
+.color-well {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 44px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  /* A ring that shows on any swatch, white included, in either theme. */
+  box-shadow: 0 0 0 1px rgba(128, 128, 128, 0.35);
+  cursor: default;
+}
+
+.color-well::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-well::-webkit-color-swatch {
+  border: none;
+  border-radius: 6px;
+}
+
+.color-well::-moz-color-swatch {
+  border: none;
+  border-radius: 6px;
+}
+
+/* `<input switch>` renders as a native switch in WebKit (macOS 14.4+).
+   Engines without it (WebView2 on Windows, WebKitGTK, older macOS) would show
+   a bare checkbox; draw a matching switch there instead. The knob is a
+   background layer so it works where inputs can't have pseudo-elements. */
+@supports not selector(::thumb) {
+  input[type="checkbox"][switch] {
+    appearance: none;
+    -webkit-appearance: none;
+    flex-shrink: 0;
+    width: 32px;
+    height: 18px;
+    margin: 0;
+    border-radius: 999px;
+    background-color: rgba(120, 120, 128, 0.32);
+    background-image: radial-gradient(circle, #fff 0 6.5px, transparent 7px);
+    background-size: 18px 18px;
+    background-position: 0 50%;
+    background-repeat: no-repeat;
+    transition:
+      background-color var(--duration-fast) ease,
+      background-position var(--duration-fast) var(--ease-standard);
+  }
+
+  input[type="checkbox"][switch]:checked {
+    background-color: var(--accent);
+    background-position: 14px 50%;
+  }
+
+  input[type="checkbox"][switch]:disabled {
+    opacity: 0.4;
+  }
+}
+
 /* Secondary, read-only text in a row's control area. */
 .row-detail {
   color: var(--text-secondary);
@@ -190,8 +271,9 @@ input[type="checkbox"]:focus-visible,
   text-align: right;
 }
 
-/* Detected players: song and artist on the left, status and source on the
-   right; details and overrides open below. */
+/* Now playing: song and artist on the left, status and source on the
+   right; details and overrides open below. Rows share the 16 px inset of
+   every other settings row (on macOS the card provides it). */
 .player-session {
   border-bottom: 1px solid var(--border-row);
 }
@@ -205,10 +287,10 @@ input[type="checkbox"]:focus-visible,
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px 10px 12px;
-  cursor: pointer;
+  padding: 10px 16px;
+  cursor: default;
   list-style: none;
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .player-session-summary::-webkit-details-marker {
@@ -290,6 +372,10 @@ input[type="checkbox"]:focus-visible,
   box-shadow: 0 0 0 3px rgba(48, 209, 88, 0.18);
 }
 
+.player-session-status[data-tone='following']::before {
+  background: var(--accent);
+}
+
 .player-session-status[data-tone='ignored'] {
   color: var(--text-secondary);
 }
@@ -314,7 +400,8 @@ input[type="checkbox"]:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 2px 16px 14px 52px;
+  /* Indented to the title column: icon (28) + gap (12). */
+  padding: 0 16px 14px 56px;
 }
 
 .player-session-facts {
@@ -347,7 +434,7 @@ input[type="checkbox"]:focus-visible,
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px 10px 12px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--border-row);
 }
 
@@ -361,6 +448,20 @@ input[type="checkbox"]:focus-visible,
   gap: 8px;
 }
 
+body[data-os="macos"] .player-session-summary,
+body[data-os="macos"] .known-player {
+  padding-inline: 0;
+}
+
+body[data-os="macos"] .player-session-body {
+  padding: 0 0 14px 40px;
+}
+
+/* No side padding there, so draw the focus ring just outside the row. */
+body[data-os="macos"] .player-session-summary:focus-visible {
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .player-session-chevron {
     transition: none;
@@ -369,9 +470,9 @@ input[type="checkbox"]:focus-visible,
 
 .snap-slider-control {
   display: inline-flex;
-  align-items: flex-start;
-  gap: 12px;
-  width: clamp(300px, 42vw, 460px);
+  align-items: center;
+  gap: 10px;
+  width: clamp(220px, 34vw, 340px);
   max-width: 100%;
 }
 
@@ -390,7 +491,7 @@ input[type="checkbox"]:focus-visible,
   height: 22px;
   margin: 0;
   background: transparent;
-  cursor: pointer;
+  cursor: default;
   -webkit-appearance: none;
   appearance: none;
 }
@@ -402,25 +503,30 @@ input[type="checkbox"]:focus-visible,
 .native-snap-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 8px;
+  width: 18px;
   height: 18px;
-  border-radius: 999px;
+  border-radius: 50%;
   background: #ffffff;
-  cursor: pointer;
+  cursor: default;
   z-index: 3;
   position: relative;
-  border: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+.native-snap-slider:active::-webkit-slider-thumb {
+  transform: scale(1.08);
 }
 
 .native-snap-slider::-moz-range-thumb {
-  width: 8px;
+  width: 18px;
   height: 18px;
-  border-radius: 999px;
+  border-radius: 50%;
   background: #ffffff;
-  cursor: pointer;
-  border: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  cursor: default;
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .snap-slider-range {
@@ -431,37 +537,39 @@ input[type="checkbox"]:focus-visible,
   align-items: center;
 }
 
+/* Inset by the thumb radius so stops line up with the thumb's centre. */
 .snap-slider-track-container {
   position: absolute;
-  left: 4px;
-  right: 4px;
-  top: 50%;
-  height: 8px;
-  transform: translateY(-50%);
+  left: 9px;
+  right: 9px;
+  top: 0;
+  bottom: 0;
   pointer-events: none;
   z-index: 1;
 }
 
-.snap-slider-rail {
+.snap-slider-rail,
+.snap-slider-fill {
   position: absolute;
-  left: 0;
-  right: 0;
   top: 50%;
-  height: 6px;
+  height: 4px;
   transform: translateY(-50%);
   border-radius: 999px;
-  background: var(--text-secondary);
-  opacity: 0.2;
+}
+
+.snap-slider-rail {
+  left: -9px;
+  right: -9px;
+  background: var(--slider-rail);
 }
 
 .snap-slider-fill {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  height: 2px;
-  transform: translateY(-50%);
-  background: var(--text-secondary);
-  opacity: 0.2;
+  left: -9px;
+  /* Reach the thumb's centre from the rail's rounded start. */
+  padding-left: 9px;
+  box-sizing: content-box;
+  background: var(--slider-fill);
+  transition: width var(--duration-fast) var(--ease-standard);
 }
 
 .snap-slider-ticks {
@@ -469,86 +577,25 @@ input[type="checkbox"]:focus-visible,
   inset: 0;
 }
 
+/* Stops sit under the rail, as on a native ticked slider. */
 .snap-slider-tick {
   position: absolute;
-  top: 50%;
-  width: 1.5px;
-  height: 8px;
+  top: calc(50% + 6px);
+  width: 1px;
+  height: 4px;
   background: var(--text-secondary);
-  opacity: 0.35;
-  transform: translate(-50%, -50%);
-  border-radius: 1px;
-  transition: opacity var(--duration-fast) var(--ease-standard);
-}
-
-.snap-slider-tick.active {
-  opacity: 0.7;
-}
-
-.snap-slider-labels {
-  position: relative;
-  display: block;
-  height: 16px;
-  margin: 6px 4px 0 4px;
-}
-
-.snap-slider-label {
-  position: absolute;
-  top: 0;
+  opacity: 0.45;
   transform: translateX(-50%);
-  font-size: 11px;
+}
+
+.snap-slider-value {
+  flex: none;
+  min-width: 4.5em;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
+  text-align: right;
   white-space: nowrap;
-  transition: color var(--duration-fast) var(--ease-standard), font-weight var(--duration-fast) var(--ease-standard);
-}
-
-.snap-slider-label.active {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-.snap-slider-info-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 22px;
-  cursor: help;
-  color: var(--text-secondary);
-  transition: color 0.15s ease;
-  flex-shrink: 0;
-  position: relative;
-}
-
-.snap-slider-info-wrapper:hover {
-  color: var(--text-primary);
-}
-
-.snap-slider-tooltip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  right: 0;
-  width: 220px;
-  background: rgba(30, 30, 30, 0.95);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #ffffff;
-  padding: 8px 10px;
-  border-radius: 6px;
-  font-size: 11px;
-  line-height: 1.4;
-  z-index: 10;
-  pointer-events: none;
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  text-align: left;
-  white-space: normal;
-}
-
-.snap-slider-info-wrapper:hover .snap-slider-tooltip {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 /* Custom Controls */
@@ -561,10 +608,7 @@ select {
   color: var(--text-primary);
   font-size: 13px;
   outline: none;
-  cursor: pointer;
-  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-position: right 8px center;
-  background-repeat: no-repeat;
+  cursor: default;
   transition:
     background-color var(--duration-base) var(--ease-control),
     border-color var(--duration-base) var(--ease-control),
@@ -575,6 +619,61 @@ select:hover {
   background-color: var(--input-hover);
 }
 
+/* Pop-up menu arrow, drawn as a mask so it takes the secondary text colour
+   like every other chevron in Settings. */
+.select-control {
+  position: relative;
+  display: inline-flex;
+}
+
+.select-control::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  width: 10px;
+  height: 10px;
+  background: var(--text-secondary);
+  transform: translateY(-50%);
+  pointer-events: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5l3 3 3-3' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5l3 3 3-3' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* macOS pop-up buttons show the stacked up/down pair. */
+body[data-os="macos"] .select-control::after {
+  width: 8px;
+  height: 12px;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 12'%3E%3Cpath d='M1.5 4.5L4 2l2.5 2.5M1.5 7.5L4 10l2.5-2.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 12'%3E%3Cpath d='M1.5 4.5L4 2l2.5 2.5M1.5 7.5L4 10l2.5-2.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* One control height on macOS, so a menu and a button side by side line up. */
+body[data-os="macos"] select,
+body[data-os="macos"] .action-btn {
+  box-sizing: border-box;
+  height: 24px;
+  font-size: 13px;
+}
+
+body[data-os="macos"] select {
+  padding: 0 26px 0 10px;
+}
+
+/* A secondary action repeated on every row of a list: text only until
+   hovered, so the list isn't a column of identical buttons. */
+.settings-shell .action-btn.is-quiet {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--text-secondary);
+}
+
+.settings-shell .action-btn.is-quiet:hover {
+  background: var(--input-bg);
+  color: var(--text-primary);
+}
+
 .action-btn {
   padding: 6px 14px;
   border-radius: 6px;
@@ -582,7 +681,7 @@ select:hover {
   background: var(--input-bg);
   color: var(--text-primary);
   font-weight: 500;
-  cursor: pointer;
+  cursor: default;
   transition:
     background-color var(--duration-base) var(--ease-control),
     border-color var(--duration-base) var(--ease-control),
@@ -639,6 +738,9 @@ select:hover {
 
 body[data-os="macos"] {
   color-scheme: dark;
+  /* Near-opaque base over the native material: a hint of the desktop, not a
+     see-through page. */
+  --shell-bg: rgba(28, 28, 31, 0.93);
   --bg-sidebar: rgba(0, 0, 0, 0.14);
   --bg-pane: transparent;
   --bg-card: rgba(255, 255, 255, 0.045);
@@ -656,6 +758,7 @@ body[data-os="macos"] {
 @media (prefers-color-scheme: light) {
   body[data-os="macos"] {
     color-scheme: light;
+    --shell-bg: rgba(244, 244, 246, 0.94);
     --bg-sidebar: rgba(0, 0, 0, 0.035);
     --bg-pane: transparent;
     --text-primary: #000000;
@@ -669,59 +772,72 @@ body[data-os="macos"] {
   }
 }
 
+/* Follow the user's macOS accent colour where WebKit exposes it. */
+@supports (color: -apple-system-control-accent) {
+  body[data-os="macos"] {
+    --accent: -apple-system-control-accent;
+  }
+}
+
 /* MacOS Layout adjustments */
+
+body[data-os="macos"] .settings-shell {
+  background: var(--shell-bg);
+}
 
 body[data-os="macos"] .settings-sidebar {
   border-right: 1px solid var(--border-color);
 }
 body[data-os="macos"] .nav-section {
-  display: none; /* Hide uppercase group headers for cleaner look */
+  display: none; /* System Settings' sidebar has no section headers */
 }
 body[data-os="macos"] .nav-item {
-  color: var(--text-secondary);
-}
-body[data-os="macos"] .nav-item.active {
-  box-shadow: none;
-}
-body[data-os="macos"] .nav-item.active .nav-icon {
-  filter: none;
-  color: var(--item-active-text) !important;
+  color: var(--text-primary);
 }
 
+/* Toolbar title, as in System Settings: the page name sits in the title bar
+   band instead of leaving it empty, and stays put while the page scrolls. */
 body[data-os="macos"] .pane-header {
-  display: none;
-}
-body[data-os="macos"] .pane-body::before {
-  content: '';
-  display: block;
-  height: 48px;
+  display: flex;
+  align-items: center;
+  height: 52px;
+  padding: 0 40px;
   flex-shrink: 0;
-  -webkit-app-region: drag;
+}
+body[data-os="macos"] .pane-header h1 {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* Like a native toolbar: a hairline appears once content scrolls under it. */
+.pane-header {
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+.pane-header.is-scrolled {
+  border-bottom-color: var(--border-color);
 }
 
 /* Form Groups: Mac has Ventura-style rounded translucent cards */
 body[data-os="macos"] .group {
-  padding-bottom: 8px;
+  padding-bottom: 0;
 }
 body[data-os="macos"] .group:last-child {
   border-bottom: none;
 }
 body[data-os="macos"] .group-title {
   display: block;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin: 16px 0 6px 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 6px 12px;
 }
 body[data-os="macos"] .group-card {
-  background: rgba(255, 255, 255, 0.045);
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 10px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -772,9 +888,8 @@ body[data-os="macos"] .segmented-option.active {
 body[data-os="macos"] .action-btn {
   background: rgba(255, 255, 255, 0.1);
   border: 0.5px solid rgba(255, 255, 255, 0.08);
-  border-radius: 5px;
-  font-size: 12px;
-  padding: 4px 12px;
+  border-radius: 6px;
+  padding: 0 12px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 body[data-os="macos"] .action-btn:hover {
@@ -884,8 +999,8 @@ body[data-os="macos"] .row {
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 0;
-  min-height: 56px;
+  padding: 7px 0;
+  min-height: 44px;
   border-bottom: 1px solid var(--border-row);
   box-sizing: border-box;
 }
@@ -1020,12 +1135,22 @@ body[data-os="windows"] .nav-item {
   color: var(--text-primary);
 }
 
+/* Windows 11 Settings marks the selected row with a short bar as well. */
 body[data-os="windows"] .nav-item.active {
-  box-shadow: none;
+  background: var(--nav-selected);
+  color: var(--text-primary);
 }
 
-body[data-os="windows"] .nav-item.active .nav-icon {
-  filter: brightness(0) invert(1);
+body[data-os="windows"] .nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--accent);
+  transform: translateY(-50%);
 }
 
 body[data-os="windows"] .pane-header {
@@ -1049,11 +1174,9 @@ body[data-os="windows"] .pane-body {
 }
 
 body[data-os="windows"] .group-title {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   margin: 0 0 0 4px;
 }
 
@@ -1066,8 +1189,8 @@ body[data-os="windows"] .group-card {
 }
 
 body[data-os="windows"] .row {
-  padding: 6px 16px;
-  min-height: 56px;
+  padding: 8px 16px;
+  min-height: 52px;
   box-sizing: border-box;
 }
 
@@ -1128,7 +1251,7 @@ body[data-os="windows"] input[type="range"]:not(.native-snap-slider)::-webkit-sl
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   margin-top: -7px;
   -webkit-appearance: none;
-  cursor: pointer;
+  cursor: default;
 }
 body[data-os="windows"] input[type="range"]:not(.native-snap-slider)::-webkit-slider-thumb:hover {
   background: #ffffff;
@@ -1219,13 +1342,19 @@ body[data-os="windows"] .settings-ambient-bg {
 .settings-ambient-bg {
   border-radius: inherit;
 }
+/* A faint tint of the current artwork over the base. Same look as a
+   full-window 150 px blur, built cheaply: blur a small thumbnail and scale
+   it up, so the window never re-filters a full-size image. */
 .settings-ambient-bg img {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 64px;
+  height: 64px;
   object-fit: cover;
-  filter: blur(150px) saturate(130%);
-  transform: scale(1.4);
-  opacity: 0.18;
+  filter: blur(8px) saturate(130%);
+  transform: translate(-50%, -50%) scale(20);
+  opacity: 0.16;
 }
 .settings-ambient-dimmer {
   opacity: 1;
@@ -1233,10 +1362,17 @@ body[data-os="windows"] .settings-ambient-bg {
               linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.5));
 }
 
+/* In light mode the tint washes towards white; a dark vignette would turn
+   the whole window grey and sink the secondary text. */
+@media (prefers-color-scheme: light) {
+  .settings-ambient-dimmer {
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.6));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .settings-shell { backdrop-filter: none; -webkit-backdrop-filter: none; background: #252522; }
-  body[data-os="windows"] .settings-shell { background: #242424; }
-  .settings-ambient-bg img { filter: none; opacity: 0.1; }
+  .settings-shell { backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .settings-ambient-bg img { opacity: 0.1; }
   .segmented-indicator { transition: none !important; }
   .custom-select-dropdown { animation: none !important; }
 }
@@ -1264,7 +1400,7 @@ body[data-os="windows"] .settings-ambient-bg {
   position: relative;
   flex: 1;
   z-index: 1;
-  cursor: pointer;
+  cursor: default;
   padding: 4px 14px;
   font-size: 12.5px;
   font-weight: 500;
@@ -1305,7 +1441,7 @@ body[data-os="windows"] .settings-ambient-bg {
   color: var(--text-primary);
   font-size: 13px;
   font-family: inherit;
-  cursor: pointer;
+  cursor: default;
   transition: background-color 0.15s, border-color 0.15s;
   text-align: left;
 }
@@ -1370,7 +1506,7 @@ body[data-os="windows"] .settings-ambient-bg {
   border-radius: 6px;
   font-size: 13px;
   color: var(--text-primary);
-  cursor: pointer;
+  cursor: default;
   transition: background-color 0.1s;
 }
 .custom-select-option:hover {
@@ -1383,4 +1519,169 @@ body[data-os="windows"] .settings-ambient-bg {
 @keyframes select-dropdown-in {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Live previews ──────────────────────────────────────────────────────────
+   Shown at the top of Appearance, Dynamic Island and Karaoke. Purely visual
+   (aria-hidden); every control below still names its own effect. */
+.settings-preview {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--border-color);
+  background: #121216;
+  color: #fff;
+  user-select: none;
+}
+
+/* Main window: three lines over a wash of the current artwork. */
+.preview-main {
+  height: 148px;
+}
+
+.preview-ambient {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  filter: blur(5px) saturate(160%);
+  transform: translate(-50%, -50%) scale(14);
+  opacity: 0.65;
+}
+
+.preview-dimmer {
+  position: absolute;
+  inset: 0;
+  opacity: var(--bg-darkness, 0.6);
+  background:
+    radial-gradient(circle at center, rgba(10, 10, 12, 0.1) 0%, rgba(10, 10, 12, 0.65) 100%),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.5));
+}
+
+.preview-main-lines {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 28px;
+}
+
+.preview-line {
+  /* Shrink to the text so the wipe's percentage matches the words. */
+  align-self: flex-start;
+  max-width: 100%;
+  font-size: 1.15em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preview-line.is-passed {
+  color: rgba(255, 255, 255, 0.4);
+  opacity: 0.52;
+  filter: blur(calc(1.2px * var(--lyric-blur, 1)));
+}
+
+.preview-line.is-next {
+  color: rgba(255, 255, 255, 0.5);
+  opacity: 0.8;
+  filter: blur(calc(0.5px * var(--lyric-blur, 1)));
+}
+
+/* Static karaoke wipe shared by the previews. */
+.preview-line.is-active,
+.preview-island-wipe,
+.preview-karaoke-current {
+  color: transparent;
+  background-image: linear-gradient(
+    to right,
+    var(--lyric-color, #fff) 0%,
+    var(--lyric-color, #fff) calc(var(--word-progress, 0) * 100%),
+    color-mix(in srgb, var(--lyric-color, #fff) 55%, transparent) calc(var(--word-progress, 0) * 100%),
+    color-mix(in srgb, var(--lyric-color, #fff) 55%, transparent) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Island: the real island markup at its real size, scaled down. */
+.preview-island {
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.06), transparent 40%),
+    #1a1a1f;
+}
+
+.preview-island-frame {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%) scale(var(--preview-scale, 0.6));
+  transform-origin: top center;
+  pointer-events: none;
+}
+
+/* Karaoke: lines over a stand-in desktop, at the configured edge. */
+.preview-karaoke {
+  display: flex;
+  flex-direction: column;
+  height: 120px;
+  padding: 10px 0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(90, 120, 200, 0.35), transparent 55%),
+    radial-gradient(circle at 80% 70%, rgba(200, 110, 160, 0.3), transparent 55%),
+    #202027;
+}
+
+.preview-karaoke-band {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-self: center;
+  width: var(--preview-width, 100%);
+  padding: 6px 16px;
+  background: rgba(10, 10, 12, var(--karaoke-bg, 0));
+  text-align: inherit;
+}
+
+.preview-karaoke-band > * {
+  align-self: var(--preview-align, center);
+  max-width: 100%;
+}
+
+.preview-karaoke-current {
+  font-size: calc(1.6rem * var(--preview-scale, 1));
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.55));
+}
+
+.preview-karaoke-current.is-bold {
+  font-weight: 800;
+}
+
+.preview-karaoke-next {
+  font-size: calc(0.75rem * var(--preview-scale, 1));
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-preview .panel-art.is-spinning {
+    animation: none;
+  }
 }

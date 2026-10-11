@@ -1,6 +1,7 @@
 import { useId } from 'react';
 import { motion } from 'motion/react';
 import { runSettingsAction } from '@/utils/settings-action-runner';
+import { useRowAria } from './row-context';
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -14,9 +15,10 @@ export function Segmented({
   onChange: (v: string) => MaybePromise<void>;
 }>) {
   const layoutId = useId();
+  const aria = useRowAria();
 
   return (
-    <div className="segmented">
+    <div className="segmented" role="group" {...aria}>
       {options.map((opt) => {
         const isActive = value === opt.value;
         return (
@@ -24,6 +26,7 @@ export function Segmented({
             key={opt.value}
             type="button"
             className={`segmented-option ${isActive ? 'active' : ''}`}
+            aria-pressed={isActive}
             onClick={() => runSettingsAction(onChange(opt.value))}
           >
             {isActive && (

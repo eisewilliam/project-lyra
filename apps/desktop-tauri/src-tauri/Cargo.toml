@@ -26,6 +26,7 @@ tauri-plugin-autostart = "2"
 lyra-core = { path = "../../../crates/lyra-core" }
 dirs-next = "2"
 tokio = { workspace = true }
+tauri-plugin-clipboard-manager = "2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"

@@ -277,11 +277,17 @@ mod tempdir_like {
 
     impl TempPath {
         pub fn new() -> Self {
+            // The clock alone collides when parallel tests start within the
+            // same microsecond (macOS resolution); one test's Drop would then
+            // delete the other's directory mid-run.
+            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let seq = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let nanos = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos();
-            let path = std::env::temp_dir().join(format!("lyra-cache-test-{nanos}"));
+            let pid = std::process::id();
+            let path = std::env::temp_dir().join(format!("lyra-cache-test-{pid}-{nanos}-{seq}"));
             std::fs::create_dir_all(&path).unwrap();
             Self(path)
         }

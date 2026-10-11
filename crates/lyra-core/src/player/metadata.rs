@@ -213,9 +213,94 @@ fn trailing_group(s: &str) -> Option<(usize, usize)> {
     Some((open, close))
 }
 
+/// When an adapter that caches metadata per track should read it again.
+///
+/// Players swap the track ID and title first on a change and fill in duration
+/// and artwork once the item has loaded: Spotify music videos read
+/// `duration = 0` for 1–2 s. Adapters that read metadata once per track would
+/// otherwise keep a partial or stale first read for the whole track. The first
+/// read is repeated once after `SETTLE_MS`, and retried while incomplete.
+#[derive(Debug, Clone, Copy)]
+pub struct MetaRefresh {
+    first_ms: u64,
+    last_ms: u64,
+    settled: bool,
+}
+
+impl MetaRefresh {
+    pub const SETTLE_MS: u64 = 2_000;
+    const RETRY_FAST_MS: u64 = 500;
+    const RETRY_SLOW_MS: u64 = 5_000;
+    /// After this, the missing fields are probably absent (a local file
+    /// without artwork), so retries slow down.
+    const FAST_WINDOW_MS: u64 = 10_000;
+
+    /// Start tracking a track whose metadata was first read at `now_ms`.
+    pub fn new(now_ms: u64) -> Self {
+        Self {
+            first_ms: now_ms,
+            last_ms: now_ms,
+            settled: false,
+        }
+    }
+
+    /// `complete` is whether the cached read has every field the player
+    /// eventually provides (typically a duration and artwork).
+    pub fn due(&self, now_ms: u64, complete: bool) -> bool {
+        let since_first = now_ms.saturating_sub(self.first_ms);
+        if !self.settled && since_first >= Self::SETTLE_MS {
+            return true;
+        }
+        if complete {
+            return false;
+        }
+        let retry_ms = if since_first < Self::FAST_WINDOW_MS {
+            Self::RETRY_FAST_MS
+        } else {
+            Self::RETRY_SLOW_MS
+        };
+        now_ms.saturating_sub(self.last_ms) >= retry_ms
+    }
+
+    /// Record a re-read at `now_ms`, successful or not, so a failing read
+    /// waits a retry interval instead of running on every poll.
+    pub fn reread(&mut self, now_ms: u64) {
+        self.last_ms = now_ms;
+        self.settled |= now_ms.saturating_sub(self.first_ms) >= Self::SETTLE_MS;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn complete_metadata_is_reread_once_after_settling() {
+        let mut refresh = MetaRefresh::new(1_000);
+        assert!(!refresh.due(1_000 + MetaRefresh::SETTLE_MS - 1, true));
+        assert!(refresh.due(1_000 + MetaRefresh::SETTLE_MS, true));
+        refresh.reread(1_000 + MetaRefresh::SETTLE_MS);
+        assert!(!refresh.due(61_000, true));
+    }
+
+    #[test]
+    fn missing_duration_is_retried_until_filled() {
+        // Spotify music videos report duration 0 right after a track change.
+        let mut refresh = MetaRefresh::new(1_000);
+        assert!(!refresh.due(1_499, false));
+        assert!(refresh.due(1_500, false));
+        refresh.reread(1_500);
+        assert!(!refresh.due(1_999, false));
+        assert!(refresh.due(2_000, false));
+    }
+
+    #[test]
+    fn persistently_incomplete_metadata_backs_off() {
+        let mut refresh = MetaRefresh::new(0);
+        refresh.reread(10_000);
+        assert!(!refresh.due(10_500, false));
+        assert!(refresh.due(15_000, false));
+    }
 
     #[test]
     fn metadata_key_separates_versions_by_duration() {

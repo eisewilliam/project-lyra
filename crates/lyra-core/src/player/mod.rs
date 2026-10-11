@@ -19,6 +19,8 @@ pub mod apple_music_macos;
 #[cfg(target_os = "macos")]
 mod applescript;
 #[cfg(target_os = "macos")]
+pub use applescript::{automation_denied, set_automation_enabled};
+#[cfg(target_os = "macos")]
 pub mod mediaremote_macos;
 #[cfg(target_os = "macos")]
 pub mod spotify_macos;

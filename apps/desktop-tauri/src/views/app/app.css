@@ -7,11 +7,7 @@
   background: rgb(22, 22, 26);
   color: white;
   position: relative;
-  transition: background var(--motion-duration-base) var(--motion-ease-control);
-}
-
-body[data-resizing="true"] .lyra-window {
-  background: rgba(18, 18, 22, 0.92) !important;
+  transition: background var(--duration-base) var(--ease-control);
 }
 
 body[data-os="windows"] .lyra-window {
@@ -56,13 +52,13 @@ body[data-os="windows"] .lyra-window {
  * Activated when EITHER:
  *   - The OS reports `prefers-reduced-motion: reduce` (System Settings →
  *     Accessibility → Display → Reduce motion), OR
- *   - The frontend sets `<html data-low-power="true">` (future Settings
- *     toggle — not wired yet).
+ *   - Battery saver is on (Settings → General), which sets
+ *     `<html data-low-power="true">` on every surface.
  *
- * Disables the most GPU-expensive effects: full-window backdrop blur, 120 px
- * ambient Gaussian, active compositing hints, and smooth-scroll animation.
- * Visual identity preserved via opacity + color fall-backs so it doesn't look
- * broken — just flat.
+ * Disables the most GPU-expensive effects: full-window backdrop blur, active
+ * compositing hints, and smooth-scroll animation. Battery saver also halves
+ * the lyric depth blur (`--blur-power` in index.css); the Lyric blur setting
+ * controls its strength, so neither trigger removes it outright.
  *
  * macOS Activity Monitor reports "Significant energy" largely because of the
  * compositor work these rules generate; opting out drops the app from
@@ -73,16 +69,17 @@ body[data-os="windows"] .lyra-window {
   .ambient-bg img { filter: none; transform: translate(-50%, -50%) scale(20); opacity: 0.2; }
   /* Respect reduced motion: keep only colour/opacity fades — no scale,
      translate, or enter animation. */
-  .lyric-line { filter: none !important; will-change: auto !important; transform: none !important; animation: none !important; transition: color 0.25s ease, opacity 0.25s ease !important; }
-  .lyric-line.is-active { filter: none !important; transform: none !important; }
+  .lyric-line { will-change: auto !important; transform: none !important; animation: none !important; transition: color 0.25s ease, opacity 0.25s ease !important; }
+  .lyric-line.is-active { transform: none !important; }
   .lyric-line.is-leaving-edge { animation: none !important; transform: none !important; }
   .lyrics-container { transition: none !important; }
   .lyrics-pane { scroll-behavior: auto; }
 }
 :root[data-low-power="true"] .lyra-window { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(18, 18, 22, 0.82); }
-:root[data-low-power="true"] .ambient-bg img { filter: blur(2px) saturate(160%); transform: translate(-50%, -50%) scale(20); opacity: 0.5; }
-:root[data-low-power="true"] .lyric-line { filter: none !important; will-change: auto !important; }
-:root[data-low-power="true"] .lyric-line.is-active { filter: none !important; will-change: auto !important; }
+/* The ambient wash keeps its look: it is already a blurred 80px thumbnail,
+   cheap enough that dropping its blur would only cost quality. */
+:root[data-low-power="true"] .lyric-line { will-change: auto !important; }
+:root[data-low-power="true"] .lyric-line.is-active { will-change: auto !important; }
 :root[data-low-power="true"] .lyric-line.is-leaving-edge { animation: none !important; transform: none !important; }
 :root[data-low-power="true"] .lyrics-pane { scroll-behavior: auto; }
 
@@ -167,6 +164,51 @@ body[data-os="windows"] .lyra-window {
 .album-art-frame {
   position: relative;
   width: 100%;
+  transition: transform 560ms cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+/* Paused: the cover settles back, like a record lifted off the platter, and
+   springs forward again on play. Readable from across the room. */
+.album-art-frame.is-paused {
+  transform: scale(0.92);
+}
+
+.album-art-frame .album-cover {
+  transition: box-shadow 560ms var(--ease-standard);
+}
+
+/* Track change: the new cover fades in over the old one, which stays
+   underneath (same box, no shadow of its own) until the fade completes. */
+.album-cover-previous {
+  position: absolute;
+  inset: 0;
+  box-shadow: none !important;
+}
+
+.album-cover.is-entering {
+  position: relative;
+  animation: art-crossfade 420ms var(--ease-standard) both;
+}
+
+.ambient-bg img.ambient-previous {
+  z-index: 0;
+}
+
+.ambient-bg img.is-entering {
+  z-index: 1;
+  animation: art-crossfade 600ms var(--ease-standard) both;
+}
+
+.ambient-bg .ambient-dimmer {
+  z-index: 2;
+}
+
+@keyframes art-crossfade {
+  from { opacity: 0; }
+}
+
+.album-art-frame.is-paused .album-cover {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 /* Where the track plays; opens the player when clickable. A neutral chip
@@ -190,7 +232,7 @@ body[data-os="windows"] .lyra-window {
 }
 
 button.source-badge {
-  cursor: pointer;
+  cursor: default;
   transition: transform var(--duration-fast) var(--ease-standard);
 }
 
@@ -210,6 +252,21 @@ button.source-badge:focus-visible {
 
   button.source-badge:hover {
     transform: none;
+  }
+}
+
+/* Wide layout: the cover fits whichever of width/height is tighter, so a
+   short window shrinks the art instead of pushing the transport controls
+   off the bottom edge. The frame carries the size so the source badge stays
+   pinned to the cover's corner. */
+@media (min-width: 901px) {
+  .album-art-large {
+    min-height: 0;
+    container-type: size;
+  }
+
+  .album-art-large .album-art-frame {
+    width: min(100cqw, 100cqh);
   }
 }
 
@@ -282,14 +339,24 @@ button.source-badge:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 
+/* Long titles stop at two lines and long artist lists at one, so the
+   progress bar and controls never move; the full text is the tooltip. */
 .track-title {
   font-size: 1.25rem;
   font-weight: 700;
   margin: 0;
   color: #fff;
   letter-spacing: -0.01em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
 .track-artist {
@@ -297,6 +364,9 @@ button.source-badge:focus-visible {
   font-weight: 500;
   margin: 0;
   color: rgba(255, 255, 255, 0.65);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .track-actions {
@@ -306,23 +376,31 @@ button.source-badge:focus-visible {
   padding-bottom: 2px;
 }
 
+/* 28px hit area, with a toolbar-style hover fill. */
 .track-action-btn {
-  background: transparent !important;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: transparent;
   border: none;
   outline: none;
   appearance: none;
   -webkit-appearance: none;
   color: rgba(255, 255, 255, 0.6);
-  cursor: pointer;
+  cursor: default;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: color var(--duration-fast) var(--ease-standard);
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
 }
 
-.track-action-btn:hover {
+.track-action-btn:not(:disabled):hover,
+.track-menu:hover .track-action-btn:not(:disabled) {
   color: #fff;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .btn-icon:focus-visible,
@@ -362,7 +440,7 @@ button.source-badge:focus-visible {
   background: rgba(255, 255, 255, 0.15);
   border-radius: 4px;
   position: relative;
-  cursor: pointer;
+  cursor: default;
   transition: height var(--duration-fast) var(--ease-standard);
 }
 
@@ -383,7 +461,9 @@ button.source-badge:focus-visible {
 }
 
 .progress-track.is-placeholder:hover,
-.progress-track.is-placeholder:active {
+.progress-track.is-placeholder:active,
+.progress-track.is-indeterminate:hover,
+.progress-track.is-indeterminate:active {
   height: 4px;
 }
 
@@ -397,6 +477,15 @@ button.source-badge:focus-visible {
   height: 4px;
 }
 
+/* Track known, duration not yet reported: keep the rail, hide the fill. */
+.progress-track.is-indeterminate {
+  cursor: default;
+}
+
+.progress-track.is-indeterminate .progress-fill {
+  opacity: 0;
+}
+
 .progress-fill {
   width: 100%;
   height: 100%;
@@ -408,6 +497,7 @@ button.source-badge:focus-visible {
   transform: scaleX(0);
   transform-origin: left center;
   will-change: transform;
+  transition: opacity var(--duration-base) var(--ease-standard);
 }
 
 .progress-fill::after {
@@ -453,73 +543,51 @@ button.source-badge:focus-visible {
   appearance: none;
   -webkit-appearance: none;
   color: rgba(255, 255, 255, 0.9);
-  cursor: pointer;
+  cursor: default;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
+  /* Release springs back with a slight overshoot; the press itself is quick
+     (see :active), so a click reads as a physical push. */
   transition:
     color var(--duration-fast) var(--ease-standard),
-    transform var(--duration-fast) var(--ease-standard);
+    opacity var(--duration-fast) var(--ease-standard),
+    transform 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.btn-icon:hover {
+.btn-icon:hover:not(:disabled) {
   color: #fff;
-  transform: scale(1.05);
+  transform: scale(1.06);
+}
+
+.btn-icon:active:not(:disabled) {
+  transform: scale(0.86);
+  transition-duration: 90ms;
+  transition-timing-function: ease-out;
+}
+
+.btn-icon:disabled {
+  opacity: 0.35;
 }
 
 .btn-icon.skip {
   color: rgba(255, 255, 255, 0.65);
 }
-.btn-icon.skip:hover {
+.btn-icon.skip:hover:not(:disabled) {
   color: #fff;
 }
 
-/* Control unsupported by the followed player. */
-.btn-icon:disabled,
-.btn-icon:disabled:hover {
-  color: rgba(255, 255, 255, 0.28);
-  cursor: default;
-  transform: none;
-}
-
-/* Play/Pause icon crossfade — both SVGs always rendered and stacked.
-   The data-playing attribute drives which is visible. Runs entirely
-   on the compositor thread (opacity + transform only). */
+/* Play/pause uses the shared TransportGlyph: the bars fold into the triangle
+   in place instead of cross-fading two icons. */
 .btn-icon.play-pause {
-  position: relative;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
 }
 
-.btn-icon.play-pause .icon-play,
-.btn-icon.play-pause .icon-pause {
-  position: absolute;
-  inset: 0;
-  transition:
-    opacity 160ms var(--ease-standard),
-    transform 160ms var(--ease-standard);
-  will-change: opacity, transform;
-}
-
-/* Playing state: pause icon visible, play icon hidden */
-.btn-icon.play-pause[data-playing="true"] .icon-pause {
-  opacity: 1;
-  transform: scale(1);
-}
-.btn-icon.play-pause[data-playing="true"] .icon-play {
-  opacity: 0;
-  transform: scale(0.6);
-}
-
-/* Paused state: play icon visible, pause icon hidden */
-.btn-icon.play-pause[data-playing="false"] .icon-play {
-  opacity: 1;
-  transform: scale(1);
-}
-.btn-icon.play-pause[data-playing="false"] .icon-pause {
-  opacity: 0;
-  transform: scale(0.6);
+.btn-icon.play-pause .transport-glyph {
+  --glyph-size: 34px;
 }
 
 
@@ -567,13 +635,17 @@ button.source-badge:focus-visible {
 .lyrics-container {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  /* Clearly wider than the leading inside a wrapped line, so each line reads
+     as one unit and a two-row line never seems to join the next one. */
+  gap: calc(1.6rem * var(--font-scale, 1));
   width: 100%;
   margin: auto 0;
   padding: 50vh 0;
   position: relative;
   /* The reel glide. JS sets `transform: translateY(...)` per active line. */
-  transition: transform var(--duration-reel) cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    transform var(--duration-reel) cubic-bezier(0.4, 0, 0.2, 1),
+    opacity var(--duration-base) var(--ease-standard);
   will-change: transform;
 }
 
@@ -598,10 +670,10 @@ button.lyric-line:focus-visible {
 .lyric-line {
   font-size: calc(2.6rem * var(--font-scale, 1));
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.18;
   letter-spacing: -0.03em;
   color: rgba(255, 255, 255, 0.4);
-  filter: blur(3.5px);
+  filter: blur(calc(3.5px * var(--lyric-blur, 1) * var(--blur-power, 1)));
   opacity: 0.85;
   transition:
     color var(--duration-base) var(--ease-standard),
@@ -615,9 +687,10 @@ button.lyric-line:focus-visible {
   user-select: none;
 }
 
+/* Hovering a line (click to seek) brings it nearly into focus. */
 .lyric-line:not(.is-active):hover {
   color: rgba(255, 255, 255, 0.75);
-  filter: blur(1.5px);
+  filter: blur(calc(0.75px * var(--lyric-blur, 1) * var(--blur-power, 1)));
   opacity: 0.95;
 }
 
@@ -630,24 +703,30 @@ button.lyric-line:focus-visible {
 }
 
 .lyric-line.is-passed-1 {
-  filter: blur(1.2px);
+  filter: blur(calc(1.2px * var(--lyric-blur, 1) * var(--blur-power, 1)));
   opacity: 0.52;
   will-change: filter, opacity;
 }
 
+/* Brightness order, so the eye always lands on the current line: sung words
+   100%, the current line's unsung words 55% (`.lyric-word`), the next line
+   ~40% with a light blur, the previous line ~21%, everything else dimmer
+   and softer. The next line must stay below the unsung words, or it reads
+   as the current line. */
 .lyric-line.is-future-1 {
-  filter: blur(0.8px);
-  opacity: 0.64;
+  color: rgba(255, 255, 255, 0.5);
+  filter: blur(calc(0.5px * var(--lyric-blur, 1) * var(--blur-power, 1)));
+  opacity: 0.8;
   will-change: filter, opacity;
 }
 
 .lyric-line.is-passed-2 {
-  filter: blur(3.5px);
+  filter: blur(calc(3.5px * var(--lyric-blur, 1) * var(--blur-power, 1)));
   opacity: 0.28;
 }
 
 .lyric-line.is-future-2 {
-  filter: blur(3px);
+  filter: blur(calc(3px * var(--lyric-blur, 1) * var(--blur-power, 1)));
   opacity: 0.34;
 }
 
@@ -697,8 +776,8 @@ button.lyric-line:focus-visible {
     to right,
     var(--lyric-color, #ffffff) 0%,
     var(--lyric-color, #ffffff) calc(var(--word-progress, 0) * 100%),
-    color-mix(in srgb, var(--lyric-color, #ffffff) 32%, transparent) calc(var(--word-progress, 0) * 100%),
-    color-mix(in srgb, var(--lyric-color, #ffffff) 32%, transparent) 100%
+    color-mix(in srgb, var(--lyric-color, #ffffff) 55%, transparent) calc(var(--word-progress, 0) * 100%),
+    color-mix(in srgb, var(--lyric-color, #ffffff) 55%, transparent) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
@@ -808,7 +887,7 @@ button.lyric-line:focus-visible {
   color: rgba(255, 255, 255, 0.92);
   font-size: 12px;
   font-weight: 500;
-  cursor: pointer;
+  cursor: default;
   transition: background 120ms ease, border-color 120ms ease;
 }
 
@@ -986,7 +1065,7 @@ button.lyric-line:focus-visible {
   width: 100%;
   height: 100%;
   opacity: 0;
-  cursor: pointer;
+  cursor: default;
   border: none;
   background: transparent;
   -webkit-appearance: none;
@@ -1020,11 +1099,9 @@ button.lyric-line:focus-visible {
 }
 
 .delay-control-title {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .delay-control-value {
@@ -1051,11 +1128,11 @@ button.lyric-line:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
+  cursor: default;
   transition:
-    background-color var(--motion-duration-base) var(--motion-ease-control),
-    border-color var(--motion-duration-base) var(--motion-ease-control),
-    color var(--motion-duration-base) var(--motion-ease-control);
+    background-color var(--duration-base) var(--ease-control),
+    border-color var(--duration-base) var(--ease-control),
+    color var(--duration-base) var(--ease-control);
   padding: 0;
 }
 
@@ -1074,11 +1151,11 @@ button.lyric-line:focus-visible {
   color: rgba(255, 255, 255, 0.9);
   font-size: 11px;
   font-weight: 600;
-  cursor: pointer;
+  cursor: default;
   transition:
-    background-color var(--motion-duration-base) var(--motion-ease-control),
-    color var(--motion-duration-base) var(--motion-ease-control),
-    opacity var(--motion-duration-base) var(--motion-ease-control);
+    background-color var(--duration-base) var(--ease-control),
+    color var(--duration-base) var(--ease-control),
+    opacity var(--duration-base) var(--ease-control);
 }
 
 .delay-control-reset:hover:not(:disabled) {
@@ -1113,7 +1190,6 @@ button.lyric-line:focus-visible {
 
 .lyrics-container.is-karaoke .lyric-line.is-active + .lyric-line {
   text-align: center;
-  opacity: 0.45;
 }
 
 /* ── Seek Indicator ───────────────────────────────────────────────────────── */
@@ -1135,7 +1211,7 @@ button.lyric-line:focus-visible {
 }
 
 .lyric-line.is-armed {
-  cursor: pointer;
+  cursor: default;
 }
 
 .lyric-line.is-armed .seek-indicator {
@@ -1151,3 +1227,251 @@ button.lyric-line:focus-visible {
 .lyrics-pane.is-unsynced { display: block; overflow-y: auto; scrollbar-width: thin; scrollbar-color: currentColor transparent; }
 .lyrics-pane.is-unsynced::-webkit-scrollbar { display: block; width: 6px; }
 .lyrics-pane.is-unsynced:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }
+
+/* ── Free scrolling ─────────────────────────────────────────────────────────
+   While the reader scrolls away from the current line, every line sharpens so
+   the passage being read isn't hidden behind depth blur. */
+.lyrics-pane.is-browsing .lyric-line:not(.is-active) {
+  filter: none;
+  opacity: 0.8;
+}
+
+.lyrics-return {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  z-index: 2;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: default;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  animation: lyrics-return-in var(--duration-base) var(--ease-standard);
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.lyrics-return:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.lyrics-return:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 3px;
+}
+
+@keyframes lyrics-return-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* A skip was requested: the old lyrics step back until the next track lands. */
+.lyrics-pane .plain-lyrics {
+  transition: opacity var(--duration-base) var(--ease-standard);
+}
+
+.lyrics-pane.is-switching .lyrics-container,
+.lyrics-pane.is-switching .plain-lyrics {
+  opacity: 0.25;
+}
+
+/* ── Scrub preview ──────────────────────────────────────────────────────────
+   Above the progress bar while hovering or dragging: the time and the lyric
+   line at that point. */
+.progress-bar {
+  position: relative;
+}
+
+.scrub-preview {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: clamp(70px, var(--preview-x, 0px), calc(100% - 70px));
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: 240px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(20, 20, 24, 0.82);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 4px);
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.scrub-preview.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.scrub-preview-time {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+
+.scrub-preview-line {
+  max-width: 220px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Keyboard shortcut confirmation ───────────────────────────────────────── */
+.shortcut-hud {
+  position: absolute;
+  left: 50%;
+  bottom: 32px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 14px;
+  background: rgba(24, 24, 28, 0.78);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: shortcut-hud 900ms var(--ease-standard) forwards;
+}
+
+.shortcut-hud-glyph {
+  --glyph-size: 16px;
+}
+
+@keyframes shortcut-hud {
+  0% { opacity: 0; transform: translate(-50%, 6px) scale(0.96); }
+  14% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  72% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, 0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .album-art-frame,
+  .album-art-frame .album-cover {
+    transition: none;
+  }
+}
+
+/* Empty state: the players Lyra follows, as quiet marks under the note. */
+.lyrics-placeholder-players {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.lyrics-placeholder-player {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ── First run (macOS) ──────────────────────────────────────────────────────
+   One card, one reason, one button — shown before macOS's own prompt. */
+.first-run {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(10, 10, 12, 0.55);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  animation: first-run-in var(--duration-enter) var(--ease-standard);
+}
+
+.first-run-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 420px;
+  padding: 28px 28px 24px;
+  border-radius: 18px;
+  background: rgba(30, 30, 36, 0.92);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.first-run-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.first-run-body {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.72);
+  text-wrap: pretty;
+}
+
+.first-run-continue {
+  align-self: flex-end;
+  margin-top: 6px;
+  padding: 7px 18px;
+  border: none;
+  border-radius: 8px;
+  background: #0a84ff;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: default;
+  transition: filter var(--duration-fast) var(--ease-standard);
+}
+
+.first-run-continue:hover {
+  filter: brightness(1.1);
+}
+
+.first-run-continue:focus-visible {
+  outline: 2px solid rgba(10, 132, 255, 0.6);
+  outline-offset: 3px;
+}
+
+@keyframes first-run-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Reduced motion: swap covers at once (a 1 ms animation, so the end event
+   still clears the outgoing layer). */
+@media (prefers-reduced-motion: reduce) {
+  .album-cover.is-entering,
+  .ambient-bg img.is-entering {
+    animation-duration: 1ms;
+  }
+}
