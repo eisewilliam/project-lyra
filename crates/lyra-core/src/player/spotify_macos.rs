@@ -6,13 +6,17 @@ use crate::domain::{
     MediaKind, PlaybackCaps, PlaybackSnapshot, PlaybackState, PlayerApp, PositionQuality, TrackRef,
     Transport,
 };
-use crate::player::applescript::{parse_number, run_once, Script};
+use crate::player::applescript::{
+    automation_enabled, note_permission, parse_number, run_once, RunError, Script,
+};
+use crate::player::metadata::MetaRefresh;
 use crate::player::{
     macos_open, now_ms, ControlError, PlayerAdapter, PlayerCommand, SessionObservation,
 };
 
 const SPOTIFY_BUNDLE_ID: &str = "com.spotify.client";
 const SESSION_ID: &str = "applescript:com.spotify.client";
+const PLAYER_NAME: &str = "Spotify";
 
 /// Lightweight poll: only the values that change between polls. The running
 /// check is outside the `tell` block so polling never launches Spotify.
@@ -29,7 +33,8 @@ end tell
 "#,
 );
 
-/// Full metadata fetch — only invoked on track change.
+/// Full metadata fetch — on track change, and again while the cached read is
+/// incomplete or unsettled (see `MetaRefresh`).
 static META: Script = Script::new(
     r#"
 if application "Spotify" is not running then return "not_running"
@@ -80,7 +85,7 @@ pub struct SpotifyMacOsAdapter {
     /// Cached heavy metadata keyed by Spotify track URI. The hot polling
     /// path only fetches state + URI + position via AppleScript; the
     /// title/artist/album/duration/artwork accessors involve extra Apple
-    /// Events to Spotify and only need to run on track change.
+    /// Events to Spotify and only run on track change or a due refresh.
     cached_meta: Mutex<Option<CachedMeta>>,
 }
 
@@ -92,6 +97,21 @@ struct CachedMeta {
     album: String,
     duration_ms: u64,
     artwork_url: Option<String>,
+    refresh: MetaRefresh,
+}
+
+impl CachedMeta {
+    fn is_complete(&self) -> bool {
+        self.duration_ms > 0 && self.artwork_url.is_some()
+    }
+}
+
+enum MetaLookup {
+    Ready(CachedMeta),
+    /// The track changed between the lite poll and the metadata read.
+    Raced,
+    /// Spotify returned no metadata for the current item.
+    Unavailable,
 }
 
 enum RawSpotifyLite {
@@ -111,23 +131,23 @@ impl SpotifyMacOsAdapter {
         }
     }
 
-    fn query_lite() -> Option<RawSpotifyLite> {
-        let raw = LITE.run()?;
+    fn query_lite() -> Result<RawSpotifyLite, RunError> {
+        let raw = LITE.run_checked()?;
         if raw == "not_running" || raw == "stopped" || raw.is_empty() {
-            return Some(RawSpotifyLite::Stopped);
+            return Ok(RawSpotifyLite::Stopped);
         }
         let parts: Vec<&str> = raw.splitn(3, '|').collect();
         if parts.len() < 3 {
-            return None;
+            return Err(RunError::Failed);
         }
-        Some(RawSpotifyLite::Track {
+        Ok(RawSpotifyLite::Track {
             state: parts[0].to_string(),
             uri: parts[1].to_string(),
             position_ms: (parse_number(parts[2]).unwrap_or(0.0) * 1000.0) as u64,
         })
     }
 
-    fn query_meta() -> Option<CachedMeta> {
+    fn query_meta(now_ms: u64) -> Option<CachedMeta> {
         let raw = META.run()?;
         if raw == "not_running" || raw == "stopped" || raw.is_empty() {
             return None;
@@ -148,23 +168,55 @@ impl SpotifyMacOsAdapter {
             // Spotify reports duration in milliseconds.
             duration_ms: parse_number(parts[4]).unwrap_or(0.0) as u64,
             artwork_url,
+            refresh: MetaRefresh::new(now_ms),
         })
     }
 
     /// Reuse cached metadata when the URI matches — saves five Apple Event
-    /// roundtrips to Spotify on every same-track poll.
-    fn meta_for(&self, uri: &str) -> Option<CachedMeta> {
-        let cached = self.cached_meta.lock().ok().and_then(|g| g.clone());
-        match cached {
-            Some(m) if m.uri == uri => Some(m),
-            _ => {
-                let fresh = Self::query_meta();
-                if let (Some(ref m), Ok(mut slot)) = (&fresh, self.cached_meta.lock()) {
-                    *slot = Some(m.clone());
-                }
-                fresh
+    /// roundtrips to Spotify on every same-track poll — unless a refresh is
+    /// due because the first read was partial or hasn't settled.
+    fn meta_for(&self, uri: &str, now_ms: u64) -> MetaLookup {
+        let cached = self
+            .cached_meta
+            .lock()
+            .ok()
+            .and_then(|g| g.clone())
+            .filter(|m| m.uri == uri);
+        if let Some(m) = cached.as_ref() {
+            if !m.refresh.due(now_ms, m.is_complete()) {
+                return MetaLookup::Ready(m.clone());
             }
         }
+
+        let fresh = Self::query_meta(now_ms);
+        let raced = fresh.as_ref().is_some_and(|m| m.uri != uri);
+        let fresh = fresh.filter(|m| m.uri == uri);
+        let merged = match (cached, fresh) {
+            (Some(prev), Some(mut next)) => {
+                next.refresh = prev.refresh;
+                // Never regress a field an earlier read already filled.
+                if next.duration_ms == 0 {
+                    next.duration_ms = prev.duration_ms;
+                }
+                if next.artwork_url.is_none() {
+                    next.artwork_url = prev.artwork_url;
+                }
+                next.refresh.reread(now_ms);
+                next
+            }
+            (Some(mut prev), None) => {
+                prev.refresh.reread(now_ms);
+                prev
+            }
+            (None, Some(next)) => next,
+            (None, None) if raced => return MetaLookup::Raced,
+            (None, None) => return MetaLookup::Unavailable,
+        };
+
+        if let Ok(mut slot) = self.cached_meta.lock() {
+            *slot = Some(merged.clone());
+        }
+        MetaLookup::Ready(merged)
     }
 }
 
@@ -206,9 +258,22 @@ impl PlayerAdapter for SpotifyMacOsAdapter {
 
     fn sessions(&self) -> Vec<SessionObservation> {
         let observed_at_ms = now_ms();
+        if !automation_enabled() {
+            return Vec::new();
+        }
 
-        let Some(lite) = Self::query_lite() else {
-            return self.last.lock().map(|g| g.clone()).unwrap_or_default();
+        let lite = match Self::query_lite() {
+            Ok(lite) => {
+                note_permission(PLAYER_NAME, false);
+                lite
+            }
+            Err(RunError::NotPermitted) => {
+                note_permission(PLAYER_NAME, true);
+                return Vec::new();
+            }
+            Err(RunError::Failed) => {
+                return self.last.lock().map(|g| g.clone()).unwrap_or_default();
+            }
         };
 
         let sessions: Vec<SessionObservation> = match lite {
@@ -230,42 +295,50 @@ impl PlayerAdapter for SpotifyMacOsAdapter {
                 } else {
                     PlaybackState::Paused
                 };
-                self.meta_for(&uri)
-                    .map(|m| SessionObservation {
-                        id: SESSION_ID.to_string(),
-                        snapshot: PlaybackSnapshot {
-                            track: Some(TrackRef {
-                                player: PlayerApp {
-                                    id: SPOTIFY_BUNDLE_ID.to_string(),
-                                    name: "Spotify".to_string(),
-                                },
-                                transport: Transport::AppleScript,
-                                native_id: Some(uri.clone()),
-                                uri,
-                                file_path: None,
-                                from_browser: false,
-                                platform: None,
-                                kind: MediaKind::Unsure,
-                                page_url: None,
-                                title: m.title,
-                                artist: m.artist,
-                                album: (!m.album.is_empty()).then_some(m.album),
-                                duration_ms: m.duration_ms,
-                                artwork_url: m.artwork_url,
-                            }),
-                            state: pb_state,
-                            position_ms: Some(position_ms),
-                            observed_at_ms,
-                            rate: 1.0,
-                            ignored: None,
-                            position_quality: PositionQuality::Exact,
-                            caps: PlaybackCaps::ALL,
-                        },
-                        artwork: None,
-                        os_current: false,
-                    })
-                    .into_iter()
-                    .collect()
+                let meta = match self.meta_for(&uri, observed_at_ms) {
+                    MetaLookup::Ready(m) => Some(m),
+                    MetaLookup::Unavailable => None,
+                    // Report the previous sessions until the next poll rather
+                    // than pairing this position with another track's metadata.
+                    MetaLookup::Raced => {
+                        return self.last.lock().map(|g| g.clone()).unwrap_or_default();
+                    }
+                };
+                meta.map(|m| SessionObservation {
+                    id: SESSION_ID.to_string(),
+                    snapshot: PlaybackSnapshot {
+                        track: Some(TrackRef {
+                            player: PlayerApp {
+                                id: SPOTIFY_BUNDLE_ID.to_string(),
+                                name: "Spotify".to_string(),
+                            },
+                            transport: Transport::AppleScript,
+                            native_id: Some(uri.clone()),
+                            uri,
+                            file_path: None,
+                            from_browser: false,
+                            platform: None,
+                            kind: MediaKind::Unsure,
+                            page_url: None,
+                            title: m.title,
+                            artist: m.artist,
+                            album: (!m.album.is_empty()).then_some(m.album),
+                            duration_ms: m.duration_ms,
+                            artwork_url: m.artwork_url,
+                        }),
+                        state: pb_state,
+                        position_ms: Some(position_ms),
+                        observed_at_ms,
+                        rate: 1.0,
+                        ignored: None,
+                        position_quality: PositionQuality::Exact,
+                        caps: PlaybackCaps::ALL,
+                    },
+                    artwork: None,
+                    os_current: false,
+                })
+                .into_iter()
+                .collect()
             }
         };
 

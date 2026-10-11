@@ -4,12 +4,63 @@
 //! release goes through `APPLESCRIPT_LOCK`, so polls (GCD queue) and commands
 //! (blocking pool) never run scripts concurrently.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use objc::runtime::Object;
 use objc::{class, msg_send, sel, sel_impl};
 
 static APPLESCRIPT_LOCK: Mutex<()> = Mutex::new(());
+
+/// AppleScript readers stay idle until the host enables them, so macOS asks
+/// for permission to control Spotify or Music only after Lyra has explained
+/// why (first run). Players remain visible through MediaRemote meanwhile.
+static AUTOMATION_ENABLED: AtomicBool = AtomicBool::new(true);
+
+/// Players whose scripts macOS refused (Automation permission denied or
+/// revoked), by display name, in the order they were refused.
+static DENIED: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+
+/// `errAEEventNotPermitted`: the user declined Automation access.
+const ERR_NOT_PERMITTED: i64 = -1743;
+
+/// Enable or pause the AppleScript readers.
+pub fn set_automation_enabled(enabled: bool) {
+    AUTOMATION_ENABLED.store(enabled, Ordering::Release);
+}
+
+pub(crate) fn automation_enabled() -> bool {
+    AUTOMATION_ENABLED.load(Ordering::Acquire)
+}
+
+/// Players Lyra may not control because Automation access was refused.
+pub fn automation_denied() -> Vec<String> {
+    DENIED
+        .lock()
+        .map(|denied| denied.iter().map(|name| name.to_string()).collect())
+        .unwrap_or_default()
+}
+
+/// Record the outcome of a reader's poll for `player`.
+pub(crate) fn note_permission(player: &'static str, denied: bool) {
+    let Ok(mut list) = DENIED.lock() else {
+        return;
+    };
+    let present = list.contains(&player);
+    if denied && !present {
+        list.push(player);
+    } else if !denied && present {
+        list.retain(|name| *name != player);
+    }
+}
+
+/// Why a script produced no result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RunError {
+    /// macOS refused Automation access to the target app.
+    NotPermitted,
+    Failed,
+}
 
 /// Retained NSAppleScript pointer. Send/Sync rely on `APPLESCRIPT_LOCK`.
 struct CompiledScript {
@@ -44,15 +95,20 @@ impl Script {
 
     /// The script's result as text; `None` if it failed to run.
     pub(crate) fn run(&self) -> Option<String> {
+        self.run_checked().ok()
+    }
+
+    /// Like `run`, but tells a permission refusal apart from other failures.
+    pub(crate) fn run_checked(&self) -> Result<String, RunError> {
         match execute(self.ptr(), Output::Text)? {
-            Value::Text(text) => Some(text),
-            Value::Data(_) => None,
+            Value::Text(text) => Ok(text),
+            Value::Data(_) => Err(RunError::Failed),
         }
     }
 
     /// The script's result as raw bytes (e.g. artwork data).
     pub(crate) fn run_data(&self) -> Option<Vec<u8>> {
-        match execute(self.ptr(), Output::Data)? {
+        match execute(self.ptr(), Output::Data).ok()? {
             Value::Data(data) => Some(data),
             Value::Text(_) => None,
         }
@@ -70,7 +126,7 @@ impl Script {
 pub(crate) fn run_once(source: &str) -> Option<String> {
     let ptr = compile(source)?;
     let result = match execute(ptr, Output::Text) {
-        Some(Value::Text(text)) => Some(text),
+        Ok(Value::Text(text)) => Some(text),
         _ => None,
     };
     let _guard = APPLESCRIPT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -129,11 +185,10 @@ enum Value {
     Data(Vec<u8>),
 }
 
-/// Run a compiled script and read its result in the requested form; `None`
-/// means the script failed.
-fn execute(script_ptr: *mut Object, output: Output) -> Option<Value> {
+/// Run a compiled script and read its result in the requested form.
+fn execute(script_ptr: *mut Object, output: Output) -> Result<Value, RunError> {
     if script_ptr.is_null() {
-        return None;
+        return Err(RunError::Failed);
     }
     let _guard = APPLESCRIPT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     unsafe {
@@ -141,16 +196,38 @@ fn execute(script_ptr: *mut Object, output: Output) -> Option<Value> {
         let mut err_ptr: *mut Object = std::ptr::null_mut();
         let desc: *mut Object = msg_send![script_ptr, executeAndReturnError: &mut err_ptr];
         let result = if desc.is_null() {
-            None
+            if error_number(err_ptr) == Some(ERR_NOT_PERMITTED) {
+                Err(RunError::NotPermitted)
+            } else {
+                Err(RunError::Failed)
+            }
         } else {
             match output {
                 Output::Text => descriptor_text(desc).map(Value::Text),
                 Output::Data => descriptor_data(desc).map(Value::Data),
             }
+            .ok_or(RunError::Failed)
         };
         let _: () = msg_send![pool, drain];
         result
     }
+}
+
+/// `NSAppleScriptErrorNumber` from an execute error dictionary.
+unsafe fn error_number(err: *mut Object) -> Option<i64> {
+    if err.is_null() {
+        return None;
+    }
+    let key: *mut Object = msg_send![
+        class!(NSString),
+        stringWithUTF8String: c"NSAppleScriptErrorNumber".as_ptr()
+    ];
+    let number: *mut Object = msg_send![err, objectForKey: key];
+    if number.is_null() {
+        return None;
+    }
+    let value: i64 = msg_send![number, longLongValue];
+    Some(value)
 }
 
 unsafe fn descriptor_text(desc: *mut Object) -> Option<String> {
@@ -181,7 +258,7 @@ unsafe fn descriptor_data(desc: *mut Object) -> Option<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_number;
+    use super::{automation_denied, note_permission, parse_number};
 
     #[test]
     fn numbers_parse_with_either_decimal_separator() {
@@ -189,5 +266,15 @@ mod tests {
         assert_eq!(parse_number("12,5"), Some(12.5));
         assert_eq!(parse_number(" 214 "), Some(214.0));
         assert_eq!(parse_number("missing value"), None);
+    }
+
+    #[test]
+    fn refusal_is_recorded_once_and_cleared_on_success() {
+        note_permission("Test Player", true);
+        note_permission("Test Player", true);
+        let denied = automation_denied();
+        assert_eq!(denied.iter().filter(|n| *n == "Test Player").count(), 1);
+        note_permission("Test Player", false);
+        assert!(!automation_denied().iter().any(|n| n == "Test Player"));
     }
 }
