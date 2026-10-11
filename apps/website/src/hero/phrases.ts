@@ -3,52 +3,116 @@
 // Geometry is authored in staff spaces (the distance between two staff lines)
 // so every figure keeps its proportions from phone to wide desktop.
 
+export type Point = [x: number, y: number];
+
+// Hero geometry measured from the DOM, in CSS pixels. `unit` is one staff space.
+export interface Layout {
+  width: number;
+  height: number;
+  unit: number;
+  pitch: number;
+  cy: number;
+  compact: boolean;
+  copyLeft: number;
+  copyRight: number;
+}
+
+interface Timing {
+  t0: number;
+  dur: number;
+}
+
+interface StrokeBase extends Timing {
+  kind: 'stroke';
+  points: Point[];
+  cum: number[];
+  total: number;
+  head: boolean;
+  // Index of the staff line (0 to 4) for staff strokes; absent for symbols.
+  staff?: number;
+}
+
+// A stroke has a constant width or swells along its length, never both.
+export type ConstantStroke = StrokeBase & { width: number; widthAt?: undefined };
+export type SwellingStroke = StrokeBase & { widthAt: (t: number) => number; width?: undefined };
+export type StrokeElement = ConstantStroke | SwellingStroke;
+
+export interface BlobElement extends Timing {
+  kind: 'blob';
+  x: number;
+  y: number;
+  rx: number;
+  ry: number;
+  rotation: number;
+  solid?: boolean;
+  pulse?: (tau: number) => number;
+}
+
+export type PhraseElement = StrokeElement | BlobElement;
+
 export const PHRASE_LENGTH = 12.6;
 export const RELEASE_START = 9.6;
 export const RELEASE_END = 11.8;
 export const STILL_TIME = 6.8;
 
-const clamp01 = value => Math.min(1, Math.max(0, value));
-const smooth = (edge0, edge1, value) => {
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+const smooth = (edge0: number, edge1: number, value: number) => {
   const t = clamp01((value - edge0) / (edge1 - edge0));
   return t * t * (3 - 2 * t);
 };
-export const easeInOut = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+export const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
 // Global light level for a phrase: quick ignition, steady sustain with a slow
 // breath, then a long release into darkness.
-export function envelope(tau) {
+export function envelope(tau: number) {
   const attack = smooth(0.35, 1.0, tau);
   const release = 1 - smooth(RELEASE_START, RELEASE_END, tau);
   const breath = 1 + 0.06 * Math.sin(tau * 1.25) * smooth(4.5, 6, tau);
   return attack * release * breath;
 }
 
-export function progressOf(element, tau) {
+export function progressOf(element: Timing, tau: number) {
   return easeInOut(clamp01((tau - element.t0) / element.dur));
 }
 
-function cumulative(points) {
-  const lengths = [0];
-  for (let i = 1; i < points.length; i += 1) {
-    const [x0, y0] = points[i - 1];
-    const [x1, y1] = points[i];
-    lengths.push(lengths[i - 1] + Math.hypot(x1 - x0, y1 - y0));
+// Running length along a polyline, one entry per point.
+function cumulative(points: Point[]) {
+  const lengths: number[] = [];
+  let total = 0;
+  let previous: Point | undefined;
+  for (const point of points) {
+    if (previous) total += Math.hypot(point[0] - previous[0], point[1] - previous[1]);
+    lengths.push(total);
+    previous = point;
   }
   return lengths;
 }
 
-function stroke(points, options) {
+type StrokeOptions = Timing & { head?: boolean; staff?: number } & ({ width: number } | { widthAt: (t: number) => number });
+
+function stroke(points: Point[], options: StrokeOptions): StrokeElement {
   const cum = cumulative(points);
-  return { kind: 'stroke', points, cum, total: cum[cum.length - 1], head: true, ...options };
+  return { kind: 'stroke', points, cum, total: cum.at(-1) ?? 0, head: true, ...options };
+}
+
+interface Staff {
+  center: (xn: number) => number;
+  spread?: (xn: number) => number;
+}
+
+interface StaffSpan {
+  from?: number;
+  to?: number;
+  t0?: number;
+  dur?: number;
 }
 
 // Five staff lines that follow a centre curve and fan by `spread`.
-function staffLines(layout, { center, spread = () => 1, from = -0.04, to = 1.04, t0 = 0.6, dur = 3.0 }) {
+function staffLines(layout: Layout, { center, spread = () => 1, from = -0.04, to = 1.04, t0 = 0.6, dur = 3.0 }: Staff & StaffSpan) {
   const { width, cy, unit } = layout;
-  const lines = [];
+  const lines: StrokeElement[] = [];
   for (let line = -2; line <= 2; line += 1) {
-    const points = [];
+    const points: Point[] = [];
     const steps = Math.max(24, Math.round(((to - from) * width) / 7));
     for (let step = 0; step <= steps; step += 1) {
       const xn = from + ((to - from) * step) / steps;
@@ -62,12 +126,19 @@ function staffLines(layout, { center, spread = () => 1, from = -0.04, to = 1.04,
 // Frame for a symbol sitting on the staff at normalised x.
 // Every figure sits in the music column to the right of the copy. On phones
 // the copy sits below the light, so the figures simply favour the right half.
-function rightColumn(layout, leftReach) {
+function rightColumn(layout: Layout, leftReach: number) {
   const start = layout.compact ? 0.32 : layout.copyRight + 0.04;
   return start + (leftReach * layout.unit) / layout.width;
 }
 
-function frameAt(layout, staff, xn, scale = 1) {
+interface Frame {
+  x: number;
+  y: number;
+  size: number;
+  rotation: number;
+}
+
+function frameAt(layout: Layout, staff: Staff, xn: number, scale = 1): Frame {
   const { width, cy, unit } = layout;
   const spread = staff.spread ? staff.spread(xn) : 1;
   const delta = 0.002;
@@ -80,13 +151,15 @@ function frameAt(layout, staff, xn, scale = 1) {
   };
 }
 
-function place(frame, [x, y]) {
+function place(frame: Frame, [x, y]: Point): Point {
   const cos = Math.cos(frame.rotation);
   const sin = Math.sin(frame.rotation);
   return [frame.x + (x * cos - y * sin) * frame.size, frame.y + (x * sin + y * cos) * frame.size];
 }
 
-function bezierPath(frame, start, curves, segments = 22) {
+type Curve = [c1x: number, c1y: number, c2x: number, c2y: number, x: number, y: number];
+
+function bezierPath(frame: Frame, start: Point, curves: Curve[], segments = 22) {
   const points = [place(frame, start)];
   let [x0, y0] = start;
   for (const [c1x, c1y, c2x, c2y, x, y] of curves) {
@@ -103,19 +176,21 @@ function bezierPath(frame, start, curves, segments = 22) {
   return points;
 }
 
-function blob(frame, [x, y], rx, ry, options = {}) {
+type BlobOptions = Timing & { solid?: boolean; tilt?: number; pulse?: (tau: number) => number };
+
+function blob(frame: Frame, [x, y]: Point, rx: number, ry: number, { tilt = 0, ...options }: BlobOptions): BlobElement {
   const [cx, cy] = place(frame, [x, y]);
-  return { kind: 'blob', x: cx, y: cy, rx: rx * frame.size, ry: ry * frame.size, rotation: frame.rotation + (options.tilt || 0), ...options };
+  return { kind: 'blob', x: cx, y: cy, rx: rx * frame.size, ry: ry * frame.size, rotation: frame.rotation + tilt, ...options };
 }
 
 // Thick-thin profile for engraved symbols, in staff spaces.
-const swell = (thin, thick, peak = 0.5) => t => {
+const swell = (thin: number, thick: number, peak = 0.5) => (t: number) => {
   const s = t < peak ? (t / peak) * 0.5 : 0.5 + ((t - peak) / (1 - peak)) * 0.5;
   return thin + (thick - thin) * Math.sin(Math.PI * s);
 };
 
-function bassClef(layout) {
-  const staff = {
+function bassClef(layout: Layout): PhraseElement[] {
+  const staff: Staff = {
     center: xn => 0.7 - 2.8 * smooth(0.42, 1.08, xn) + 0.45 * Math.sin(xn * Math.PI * 1.25),
     spread: xn => 1 + 0.3 * xn,
   };
@@ -134,8 +209,8 @@ function bassClef(layout) {
   ];
 }
 
-function trebleClef(layout) {
-  const staff = { center: () => 0 };
+function trebleClef(layout: Layout): PhraseElement[] {
+  const staff: Staff = { center: () => 0 };
   const frame = frameAt(layout, staff, rightColumn(layout, 1.8), 1.2);
   const curve = bezierPath(frame, [0.28, 1.02], [
     [-0.3, 1.0, -0.38, 0.2, 0.2, 0.12],
@@ -146,7 +221,7 @@ function trebleClef(layout) {
     [-0.16, -2.4, 0.1, 0.5, 0.36, 2.92],
     [0.46, 3.72, -0.3, 4.02, -0.56, 3.46],
   ]);
-  const w = t => 1.45 * (0.13 + 0.3 * Math.pow(Math.sin(Math.PI * clamp01((t - 0.18) / 0.36)), 1.4) + 0.12 * Math.pow(Math.sin(Math.PI * clamp01((t - 0.62) / 0.24)), 2)) * frame.size;
+  const w = (t: number) => 1.45 * (0.13 + 0.3 * Math.pow(Math.sin(Math.PI * clamp01((t - 0.18) / 0.36)), 1.4) + 0.12 * Math.pow(Math.sin(Math.PI * clamp01((t - 0.62) / 0.24)), 2)) * frame.size;
   return [
     ...staffLines(layout, staff),
     stroke(curve, { widthAt: w, t0: 2.2, dur: 2.2 }),
@@ -154,36 +229,37 @@ function trebleClef(layout) {
   ];
 }
 
-function beamedNotes(layout) {
-  const staff = { center: xn => -0.7 * Math.sin(Math.PI * xn) };
+function beamedNotes(layout: Layout): PhraseElement[] {
+  const staff: Staff = { center: xn => -0.7 * Math.sin(Math.PI * xn) };
   const { unit, width } = layout;
   // Clear of the copy on wide screens, where the staff runs behind it.
   const start = rightColumn(layout, 4.6);
   const groupX = Math.max(start, Math.min(1 - (5.6 * unit) / width, (start + 1) / 2));
-  const offsets = [-3.9, -1.3, 1.3, 3.9];
-  const pitches = [1.5, 0.5, -0.5, 0];
-  const notes = offsets.map((offset, index) => {
+  // Each note head's offset along the staff and its pitch, in staff spaces.
+  const heads: [offset: number, pitch: number][] = [[-3.9, 1.5], [-1.3, 0.5], [1.3, -0.5], [3.9, 0]];
+  const notes = heads.map(([offset, pitch]) => {
     const xn = groupX + (offset * unit) / width;
     const frame = frameAt(layout, staff, xn, 1);
-    const [x, y] = place(frame, [0, pitches[index]]);
-    return { x, y, frame };
+    const [x, y] = place(frame, [0, pitch]);
+    return { x, y, frame, pitch };
   });
   const stemLength = 3.9 * unit;
-  const first = notes[0];
-  const last = notes[notes.length - 1];
-  const stemX = note => note.x + 0.86 * unit;
-  const beamY = x => {
+  const [first] = notes;
+  const last = notes.at(-1);
+  if (!first || !last) return [];
+  const stemX = (note: { x: number }) => note.x + 0.86 * unit;
+  const beamY = (x: number) => {
     const t = (x - stemX(first)) / (stemX(last) - stemX(first));
     return first.y - stemLength + t * (last.y - first.y);
   };
   const beat = 0.6;
-  const elements = notes.flatMap((note, index) => {
+  const elements: PhraseElement[] = notes.flatMap((note, index) => {
     const top = beamY(stemX(note));
     return [
-      blob(note.frame, [0, pitches[index]], 0.95, 0.68, {
+      blob(note.frame, [0, note.pitch], 0.95, 0.68, {
         solid: true,
         tilt: -0.38, t0: 3.0 + index * 0.32, dur: 0.45,
-        pulse: tau => {
+        pulse: (tau: number) => {
           const since = tau - 5.4 - index * beat;
           return since < 0 ? 0 : Math.exp(-(since % (4 * beat)) * 4.5);
         },
@@ -195,8 +271,8 @@ function beamedNotes(layout) {
   return [...staffLines(layout, staff), ...elements];
 }
 
-function fermata(layout) {
-  const staff = { center: xn => 1.5 * Math.sin(Math.PI * 3 * xn + 0.4) * Math.exp(-2.2 * xn) };
+function fermata(layout: Layout): PhraseElement[] {
+  const staff: Staff = { center: xn => 1.5 * Math.sin(Math.PI * 3 * xn + 0.4) * Math.exp(-2.2 * xn) };
   const { unit, width } = layout;
   const bar = Math.max(layout.compact ? 0.82 : 0.86, rightColumn(layout, 2.8));
   const lines = staffLines(layout, { ...staff, to: bar, dur: 2.8 });
@@ -221,6 +297,8 @@ export const phraseNames = ['Bass clef', 'Treble clef', 'Beamed notes', 'Fermata
 const builders = [bassClef, trebleClef, beamedNotes, fermata];
 export const phraseCount = builders.length;
 
-export function buildPhrase(index, layout) {
-  return builders[index % builders.length](layout);
+export function buildPhrase(index: number, layout: Layout): PhraseElement[] {
+  const build = builders[index % builders.length];
+  if (!build) throw new Error('No hero phrase at index ' + index);
+  return build(layout);
 }

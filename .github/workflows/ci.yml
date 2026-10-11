@@ -118,7 +118,7 @@ jobs:
               run: pnpm run build
 
     website:
-        name: Website (test, build)
+        name: Website (lint, test, build)
         runs-on: ubuntu-latest
         defaults:
             run:
@@ -137,11 +137,14 @@ jobs:
             - name: Install dependencies
               run: npm ci
 
-            # The Sites packaging check needs deployment config that is not
-            # in the repository.
-            - name: Test
-              run: node --test --test-skip-pattern="Sites packaging" src/downloads.test.js tests/sites-worker.test.mjs
+            - name: Lint
+              run: npm run lint
 
-            # Only the site build; deployment packaging is not part of CI.
-            - name: Build
-              run: npx vite build
+            - name: Unit tests
+              run: npm test
+
+            - name: Type-check and build
+              run: npm run build
+
+            - name: Worker tests
+              run: npm run test:sites
