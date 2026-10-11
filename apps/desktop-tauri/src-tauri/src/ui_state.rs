@@ -10,8 +10,13 @@ pub struct UiState {
     pub floating_visible: bool,
     #[serde(default)]
     pub karaoke_visible: bool,
+    /// Position lock: the island can't be dragged. It still takes hover and
+    /// clicks unless `island_click_through` is on.
     #[serde(default = "default_true")]
     pub island_locked: bool,
+    /// The island ignores the mouse entirely; clicks reach the app behind it.
+    #[serde(default)]
+    pub island_click_through: bool,
     #[serde(default)]
     pub island_pos: Option<(i32, i32)>,
     /// Physical pixels — None means use the tauri.conf.json defaults.
@@ -67,6 +72,11 @@ pub struct UiState {
     /// `None` means use the primary (default) monitor.
     #[serde(default)]
     pub preferred_monitor: Option<String>,
+
+    /// The first-run explanation has been shown. Saved states from before it
+    /// existed count as done; only a fresh install sees it.
+    #[serde(default = "default_true")]
+    pub onboarded: bool,
 }
 
 fn default_true() -> bool {
@@ -101,6 +111,7 @@ impl Default for UiState {
             floating_visible: true,
             karaoke_visible: false,
             island_locked: true,
+            island_click_through: false,
             island_pos: None,
             island_width: None,
             island_height: None,
@@ -123,6 +134,7 @@ impl Default for UiState {
             karaoke_bold: true,
             autostart_enabled: false,
             preferred_monitor: None,
+            onboarded: false,
         }
     }
 }

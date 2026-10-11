@@ -52,17 +52,94 @@ pub fn set_show_on_fullscreen(
     let _ = app.emit("ui-settings-changed", new_state);
 }
 
+/// Position lock only: a locked island can't be dragged but still responds
+/// to hover and clicks. Click-through is a separate setting.
 #[tauri::command]
 pub fn set_island_locked(locked: bool, state: State<'_, AppState>, app: AppHandle) {
     let new_state = state.ui.mutate(|s| s.island_locked = locked);
-    if let Some(island) = app.get_webview_window("island") {
-        let _ = island.set_ignore_cursor_events(locked);
-    }
     if let Some(refs) = app.try_state::<tray::TrayMenuRefs>() {
         refs.sync(&new_state);
     }
     let _ = app.emit("island-lock-changed", new_state.island_locked);
     let _ = app.emit("ui-settings-changed", new_state);
+}
+
+/// Let clicks pass through the island to whatever is behind it. Disables
+/// hover controls and click actions on the island.
+#[tauri::command]
+pub fn set_island_click_through(enabled: bool, state: State<'_, AppState>, app: AppHandle) {
+    let new_state = state.ui.mutate(|s| s.island_click_through = enabled);
+    if let Some(island) = app.get_webview_window("island") {
+        let _ = island.set_ignore_cursor_events(enabled);
+    }
+    let _ = app.emit("ui-settings-changed", new_state);
+}
+
+/// Put lyric text on the system clipboard. Runs on the host because the
+/// lyric line menu's actions arrive without a user gesture, which the web
+/// clipboard API requires.
+#[tauri::command]
+pub fn copy_text(text: String, app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    app.clipboard().write_text(text).map_err(|e| e.to_string())
+}
+
+/// Whether the pointer is over the island (macOS hover safety check). Sync so
+/// it runs on the main thread, where AppKit state may be read.
+#[tauri::command]
+pub fn island_pointer_inside(app: AppHandle) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        crate::macos::island_pointer_inside(&app)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        true
+    }
+}
+
+/// Show and focus the main window (from the island or the first-run card).
+#[tauri::command]
+pub fn open_main_window(app: AppHandle) {
+    tray::open_lyra(&app);
+}
+
+/// Record that the first-run explanation was acknowledged, then poll the
+/// players immediately: AppleScript readers wait for this before asking
+/// macOS for permission to control Spotify and Music.
+#[tauri::command]
+pub fn complete_onboarding(state: State<'_, AppState>, app: AppHandle) {
+    let new_state = state.ui.mutate(|s| s.onboarded = true);
+    #[cfg(target_os = "macos")]
+    lyra_core::player::set_automation_enabled(true);
+    state.poll.request_poll();
+    let _ = app.emit("ui-settings-changed", new_state);
+}
+
+/// Players macOS refused to let Lyra control (Automation permission), by
+/// display name. Empty elsewhere and when nothing was refused.
+#[tauri::command]
+pub fn get_automation_denied() -> Vec<String> {
+    #[cfg(target_os = "macos")]
+    {
+        lyra_core::player::automation_denied()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Vec::new()
+    }
+}
+
+/// Open System Settings at Privacy & Security → Automation.
+#[tauri::command]
+pub fn open_automation_settings() {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("/usr/bin/open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")
+            .spawn();
+    }
 }
 
 #[tauri::command]
@@ -240,18 +317,38 @@ pub fn nudge_lyric_offset(delta_ms: i64, state: State<'_, AppState>, app: AppHan
 
 // ── Playback Control ──────────────────────────────────────────────────────────
 
+/// Tell the main window a skip came from a native menu, so it shows the same
+/// direction-aware feedback as its own buttons and shortcuts.
+pub(crate) fn announce_skip(app: &AppHandle, command: PlayerCommand) {
+    let direction: i8 = match command {
+        PlayerCommand::Next => 1,
+        PlayerCommand::Previous => -1,
+        _ => return,
+    };
+    let _ = app.emit_to(
+        tauri::EventTarget::webview_window("main"),
+        "transport-skip",
+        direction,
+    );
+}
+
 /// Send a command to the followed player. Adapter calls block on OS IPC
 /// (AppleScript, WinRT, D-Bus), so they run on the blocking pool instead of
-/// the main thread.
-async fn send_player_command(
+/// the main thread. Playback changes then request an immediate adapter poll
+/// so every surface reflects them without waiting for the next tick.
+pub(crate) async fn send_player_command(
     state: State<'_, AppState>,
     command: PlayerCommand,
 ) -> Result<(), String> {
     let players = Arc::clone(&state.players);
-    tauri::async_runtime::spawn_blocking(move || players.control(command))
+    let result = tauri::async_runtime::spawn_blocking(move || players.control(command))
         .await
         .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string());
+    if !matches!(command, PlayerCommand::Raise) {
+        state.poll.request_poll();
+    }
+    result
 }
 
 #[tauri::command]
@@ -554,7 +651,7 @@ pub fn window_ready(label: String, state: State<'_, AppState>, app: AppHandle) {
     tray::apply_window_visibility(&app, &label, &ui);
 
     // Karaoke is a display-only overlay — always click-through.
-    // Island is click-through when locked (persisted across restarts).
+    // Island is click-through only when the user turned that on.
     // Deferred here (rather than in `setup()`) because the window must be
     // realized — i.e. shown and backed by an actual GTK/gdk surface on
     // Linux — before `set_ignore_cursor_events` is safe to call. `setup()`
@@ -568,7 +665,7 @@ pub fn window_ready(label: String, state: State<'_, AppState>, app: AppHandle) {
         }
         "island" => {
             if let Some(win) = app.get_webview_window(&label) {
-                crate::linux::apply_ignore_cursor_events_when_ready(&win, ui.island_locked);
+                crate::linux::apply_ignore_cursor_events_when_ready(&win, ui.island_click_through);
             }
         }
         _ => {}
@@ -578,35 +675,42 @@ pub fn window_ready(label: String, state: State<'_, AppState>, app: AppHandle) {
     // up to 10 s in the booting/loading state waiting for the first
     // poll-driven `playback-tick` emission.
     if configured_visible {
-        if let Ok(render) = state.runtime.lock().map(|mut rt| rt.tick()) {
-            if let Some(win) = app.get_webview_window(&label) {
-                let _ = win.emit("playback-tick", render);
-            }
-        }
+        emit_snapshot_to(&app, &state, &label);
     }
 }
-// #[tauri::command]
-// pub fn window_ready(label: String, state: State<'_, AppState>, app: AppHandle) {
-//     let ui = state.ui.snapshot();
-//     let configured_visible = match label.as_str() {
-//         "main" => ui.floating_visible,
-//         "island" => ui.island_visible,
-//         "karaoke" => ui.karaoke_visible,
-//         _ => false,
-//     };
-//     tray::apply_window_visibility(&app, &label, &ui);
-//
-//     // Push the current snapshot immediately so the frontend doesn't spend
-//     // up to 10 s in the booting/loading state waiting for the first
-//     // poll-driven `playback-tick` emission.
-//     if configured_visible {
-//         if let Ok(render) = state.runtime.lock().map(|mut rt| rt.tick()) {
-//             if let Some(win) = app.get_webview_window(&label) {
-//                 let _ = win.emit("playback-tick", render);
-//             }
-//         }
-//     }
-// }
+
+/// Push the current render snapshot to one surface. `Emitter::emit` on a
+/// window broadcasts to every webview, so target the label explicitly.
+fn emit_snapshot_to(app: &AppHandle, state: &State<'_, AppState>, label: &str) {
+    let render = lock_runtime(state).tick();
+    let _ = app.emit_to(
+        tauri::EventTarget::webview_window(label),
+        "playback-tick",
+        render,
+    );
+}
+
+/// Each playback surface reports its page visibility. A surface that is
+/// minimized, fully covered, on another Space or behind the lock screen stops
+/// receiving ticks, and when every surface is hidden the poll loop stops
+/// calling the player entirely. Becoming visible again triggers an immediate
+/// poll and pushes the current snapshot so the surface never shows stale state.
+#[tauri::command]
+pub fn set_surface_occluded(
+    label: String,
+    occluded: bool,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) {
+    if !matches!(label.as_str(), "main" | "island" | "karaoke") {
+        return;
+    }
+    state.surface_visibility.set_occluded(&label, occluded);
+    if !occluded {
+        state.poll.request_poll();
+        emit_snapshot_to(&app, &state, &label);
+    }
+}
 
 /// Query whether autostart at login is currently enabled (delegates to the OS).
 #[tauri::command]
@@ -632,33 +736,4 @@ pub fn set_autostart(
     let new_state = state.ui.mutate(|s| s.autostart_enabled = enabled);
     let _ = app.emit("ui-settings-changed", new_state);
     Ok(())
-}
-
-#[tauri::command]
-pub fn clear_main_vibrancy(app: AppHandle) {
-    #[cfg(target_os = "macos")]
-    {
-        if let Some(main_win) = app.get_webview_window("main") {
-            let _ = window_vibrancy::clear_vibrancy(&main_win);
-        }
-    }
-    #[cfg(not(target_os = "macos"))]
-    let _ = app;
-}
-
-#[tauri::command]
-pub fn apply_main_vibrancy(app: AppHandle) {
-    #[cfg(target_os = "macos")]
-    {
-        if let Some(main_win) = app.get_webview_window("main") {
-            let _ = window_vibrancy::apply_vibrancy(
-                &main_win,
-                window_vibrancy::NSVisualEffectMaterial::HudWindow,
-                None,
-                None,
-            );
-        }
-    }
-    #[cfg(not(target_os = "macos"))]
-    let _ = app;
 }

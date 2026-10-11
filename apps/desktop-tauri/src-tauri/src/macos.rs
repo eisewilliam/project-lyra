@@ -72,6 +72,7 @@ pub fn init_overlay_panels(app: &AppHandle) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("island") {
         let _ = window.to_panel()?;
         unconstrain_from_screen(&window);
+        track_island_hover(app, &window);
     }
     if let Some(window) = app.get_webview_window("karaoke") {
         let _ = window.to_panel()?;
@@ -256,6 +257,187 @@ pub fn apply_overlay_visibility(
     }
 
     true
+}
+
+// ── Island hover ───────────────────────────────────────────────────────────────
+//
+// The island is a non-activating panel, so while another app is active WebKit
+// may not deliver mouse-moved events to its page and CSS :hover never fires.
+// An NSTrackingArea with NSTrackingActiveAlways reports enter/exit/move
+// regardless of which app is active; the owner forwards them to the island
+// page as `island-hover` and `island-edge` (edge changes only). Nothing fires
+// while the pointer is elsewhere. With click-through on, the panel ignores the
+// mouse and the area stays silent.
+
+#[cfg(target_os = "macos")]
+static HOVER_APP: std::sync::OnceLock<AppHandle> = std::sync::OnceLock::new();
+
+/// Edge the pointer is near (-1 left, 1 right, 0 neither), so the island's
+/// resize handles appear only there. Emitted on change only.
+#[cfg(target_os = "macos")]
+static HOVER_EDGE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(0);
+
+/// How close to a side edge (points) counts as "near" for the resize handles.
+#[cfg(target_os = "macos")]
+const EDGE_ZONE_PT: f64 = 20.0;
+
+#[cfg(target_os = "macos")]
+fn emit_island_edge(edge: i8) {
+    use std::sync::atomic::Ordering;
+    use tauri::Emitter;
+    if HOVER_EDGE.swap(edge, Ordering::AcqRel) == edge {
+        return;
+    }
+    if let Some(app) = HOVER_APP.get() {
+        let _ = app.emit_to(
+            tauri::EventTarget::webview_window("island"),
+            "island-edge",
+            edge,
+        );
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn emit_island_hover(hovered: bool) {
+    use tauri::Emitter;
+    if let Some(app) = HOVER_APP.get() {
+        let _ = app.emit_to(
+            tauri::EventTarget::webview_window("island"),
+            "island-hover",
+            hovered,
+        );
+    }
+}
+
+#[cfg(target_os = "macos")]
+extern "C" fn hover_mouse_entered(_this: &Object, _cmd: objc::runtime::Sel, _event: *mut Object) {
+    emit_island_hover(true);
+}
+
+#[cfg(target_os = "macos")]
+extern "C" fn hover_mouse_exited(_this: &Object, _cmd: objc::runtime::Sel, _event: *mut Object) {
+    emit_island_edge(0);
+    emit_island_hover(false);
+}
+
+#[cfg(target_os = "macos")]
+extern "C" fn hover_mouse_moved(_this: &Object, _cmd: objc::runtime::Sel, event: *mut Object) {
+    if event.is_null() {
+        return;
+    }
+    // SAFETY: AppKit passes a live NSEvent for the tracking area's window.
+    let edge = unsafe {
+        let window: *mut Object = objc::msg_send![event, window];
+        if window.is_null() {
+            return;
+        }
+        let point: CocoaPoint = objc::msg_send![event, locationInWindow];
+        let frame: CocoaRect = objc::msg_send![window, frame];
+        if point.x <= EDGE_ZONE_PT {
+            -1
+        } else if point.x >= frame.size.width - EDGE_ZONE_PT {
+            1
+        } else {
+            0
+        }
+    };
+    emit_island_edge(edge);
+}
+
+/// Whether the pointer is over the island right now. The island page asks
+/// this a few times a second while it believes it is hovered, so its hover
+/// effects reverse even if an exit event never arrives.
+#[cfg(target_os = "macos")]
+pub fn island_pointer_inside(app: &AppHandle) -> bool {
+    let Some(window) = app.get_webview_window("island") else {
+        return false;
+    };
+    let Ok(ns_window) = window.ns_window() else {
+        return false;
+    };
+    // SAFETY: called from a synchronous command, which Tauri runs on the
+    // main thread; `ns_window` is the island's live NSWindow.
+    unsafe {
+        let ns_window = ns_window as *mut Object;
+        let location: CocoaPoint = objc::msg_send![objc::class!(NSEvent), mouseLocation];
+        let frame: CocoaRect = objc::msg_send![ns_window, frame];
+        location.x >= frame.origin.x
+            && location.x <= frame.origin.x + frame.size.width
+            && location.y >= frame.origin.y
+            && location.y <= frame.origin.y + frame.size.height
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn hover_owner_class() -> Option<&'static objc::runtime::Class> {
+    use objc::declare::ClassDecl;
+    use objc::runtime::{Class, Sel};
+
+    const NAME: &str = "LyraIslandHoverOwner";
+    if let Some(cls) = Class::get(NAME) {
+        return Some(cls);
+    }
+    let mut decl = ClassDecl::new(NAME, objc::class!(NSObject))?;
+    // SAFETY: both functions match the `- (void)method:(NSEvent *)event`
+    // signature AppKit uses for tracking-area callbacks.
+    unsafe {
+        decl.add_method(
+            objc::sel!(mouseEntered:),
+            hover_mouse_entered as extern "C" fn(&Object, Sel, *mut Object),
+        );
+        decl.add_method(
+            objc::sel!(mouseExited:),
+            hover_mouse_exited as extern "C" fn(&Object, Sel, *mut Object),
+        );
+        decl.add_method(
+            objc::sel!(mouseMoved:),
+            hover_mouse_moved as extern "C" fn(&Object, Sel, *mut Object),
+        );
+    }
+    Some(decl.register())
+}
+
+#[cfg(target_os = "macos")]
+fn track_island_hover(app: &AppHandle, window: &tauri::WebviewWindow) {
+    // NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved |
+    // NSTrackingActiveAlways | NSTrackingInVisibleRect. Moves are delivered
+    // only while the pointer is over the island and only emit on edge changes.
+    const OPTIONS: u64 = 0x01 | 0x02 | 0x80 | 0x200;
+
+    let _ = HOVER_APP.set(app.clone());
+    let window_clone = window.clone();
+    let _ = window.run_on_main_thread(move || unsafe {
+        let Ok(ns_window) = window_clone.ns_window() else {
+            return;
+        };
+        let ns_window = ns_window as *mut Object;
+        let content_view: *mut Object = objc::msg_send![ns_window, contentView];
+        let Some(cls) = hover_owner_class() else {
+            return;
+        };
+        if content_view.is_null() {
+            return;
+        }
+        // Owner and area live for the process lifetime, like the panel.
+        let owner: *mut Object = objc::msg_send![cls, new];
+        let area: *mut Object = objc::msg_send![objc::class!(NSTrackingArea), alloc];
+        let zero = CocoaRect {
+            origin: CocoaPoint { x: 0.0, y: 0.0 },
+            size: CocoaSize {
+                width: 0.0,
+                height: 0.0,
+            },
+        };
+        let nil: *mut Object = std::ptr::null_mut();
+        let area: *mut Object = objc::msg_send![
+            area,
+            initWithRect: zero
+            options: OPTIONS
+            owner: owner
+            userInfo: nil
+        ];
+        let _: () = objc::msg_send![content_view, addTrackingArea: area];
+    });
 }
 
 #[cfg(not(target_os = "macos"))]
