@@ -5,10 +5,15 @@
 //! (blocking pool) never run scripts concurrently.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
-use objc::runtime::Object;
-use objc::{class, msg_send, sel, sel_impl};
+use objc2::rc::{autoreleasepool, Retained};
+use objc2::runtime::AnyObject;
+use objc2::{msg_send, AllocAnyThread};
+use objc2_foundation::{
+    NSAppleEventDescriptor, NSAppleScript, NSAppleScriptErrorNumber, NSData, NSDictionary,
+    NSNumber, NSString,
+};
 
 static APPLESCRIPT_LOCK: Mutex<()> = Mutex::new(());
 
@@ -62,10 +67,9 @@ pub(crate) enum RunError {
     Failed,
 }
 
-/// Retained NSAppleScript pointer. Send/Sync rely on `APPLESCRIPT_LOCK`.
-struct CompiledScript {
-    ptr: *mut Object,
-}
+/// A compiled script, or `None` if it failed to compile. Send/Sync rely on
+/// `APPLESCRIPT_LOCK`.
+struct CompiledScript(Option<Retained<NSAppleScript>>);
 
 unsafe impl Send for CompiledScript {}
 unsafe impl Sync for CompiledScript {}
@@ -85,12 +89,11 @@ impl Script {
         }
     }
 
-    fn ptr(&self) -> *mut Object {
+    fn compiled(&self) -> Option<&NSAppleScript> {
         self.compiled
-            .get_or_init(|| CompiledScript {
-                ptr: compile(self.source).unwrap_or(std::ptr::null_mut()),
-            })
-            .ptr
+            .get_or_init(|| CompiledScript(compile(self.source)))
+            .0
+            .as_deref()
     }
 
     /// The script's result as text; `None` if it failed to run.
@@ -100,7 +103,7 @@ impl Script {
 
     /// Like `run`, but tells a permission refusal apart from other failures.
     pub(crate) fn run_checked(&self) -> Result<String, RunError> {
-        match execute(self.ptr(), Output::Text)? {
+        match execute(self.compiled(), Output::Text)? {
             Value::Text(text) => Ok(text),
             Value::Data(_) => Err(RunError::Failed),
         }
@@ -108,7 +111,7 @@ impl Script {
 
     /// The script's result as raw bytes (e.g. artwork data).
     pub(crate) fn run_data(&self) -> Option<Vec<u8>> {
-        match execute(self.ptr(), Output::Data).ok()? {
+        match execute(self.compiled(), Output::Data).ok()? {
             Value::Data(data) => Some(data),
             Value::Text(_) => None,
         }
@@ -124,15 +127,13 @@ impl Script {
 /// Run a one-off script (e.g. one with a formatted seek position) and release
 /// it afterwards.
 pub(crate) fn run_once(source: &str) -> Option<String> {
-    let ptr = compile(source)?;
-    let result = match execute(ptr, Output::Text) {
+    let script = compile(source)?;
+    let result = match execute(Some(&script), Output::Text) {
         Ok(Value::Text(text)) => Some(text),
         _ => None,
     };
-    let _guard = APPLESCRIPT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    unsafe {
-        let _: () = msg_send![ptr, release];
-    }
+    let _guard = lock();
+    drop(script);
     result
 }
 
@@ -145,34 +146,20 @@ pub(crate) fn parse_number(raw: &str) -> Option<f64> {
         .filter(|n| n.is_finite())
 }
 
-fn compile(source: &str) -> Option<*mut Object> {
-    let _guard = APPLESCRIPT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    unsafe {
-        let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
-        let bytes = source.as_bytes();
-        let str_alloc: *mut Object = msg_send![class!(NSString), alloc];
-        let src_str: *mut Object = msg_send![
-            str_alloc,
-            initWithBytes: bytes.as_ptr()
-            length: bytes.len()
-            encoding: 4u64
-        ];
-        let s_alloc: *mut Object = msg_send![class!(NSAppleScript), alloc];
-        let script: *mut Object = msg_send![s_alloc, initWithSource: src_str];
-        let _: () = msg_send![src_str, release];
+fn lock() -> MutexGuard<'static, ()> {
+    APPLESCRIPT_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
 
-        if script.is_null() {
-            let _: () = msg_send![pool, drain];
-            return None;
-        }
-
+fn compile(source: &str) -> Option<Retained<NSAppleScript>> {
+    let _guard = lock();
+    autoreleasepool(|_| {
+        let source = NSString::from_str(source);
+        let script = NSAppleScript::initWithSource(NSAppleScript::alloc(), &source)?;
         // Pre-compile so the first execute call doesn't pay the parse cost.
-        let mut compile_err: *mut Object = std::ptr::null_mut();
-        let _: bool = msg_send![script, compileAndReturnError: &mut compile_err];
-
-        let _: () = msg_send![pool, drain];
+        // SAFETY: the error out-parameter may be null.
+        let _ = unsafe { script.compileAndReturnError(None) };
         Some(script)
-    }
+    })
 }
 
 enum Output {
@@ -186,79 +173,52 @@ enum Value {
 }
 
 /// Run a compiled script and read its result in the requested form.
-fn execute(script_ptr: *mut Object, output: Output) -> Result<Value, RunError> {
-    if script_ptr.is_null() {
-        return Err(RunError::Failed);
-    }
-    let _guard = APPLESCRIPT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    unsafe {
-        let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
-        let mut err_ptr: *mut Object = std::ptr::null_mut();
-        let desc: *mut Object = msg_send![script_ptr, executeAndReturnError: &mut err_ptr];
-        let result = if desc.is_null() {
-            if error_number(err_ptr) == Some(ERR_NOT_PERMITTED) {
-                Err(RunError::NotPermitted)
-            } else {
-                Err(RunError::Failed)
-            }
-        } else {
-            match output {
-                Output::Text => descriptor_text(desc).map(Value::Text),
-                Output::Data => descriptor_data(desc).map(Value::Data),
-            }
-            .ok_or(RunError::Failed)
+fn execute(script: Option<&NSAppleScript>, output: Output) -> Result<Value, RunError> {
+    let script = script.ok_or(RunError::Failed)?;
+    let _guard = lock();
+    autoreleasepool(|_| {
+        let mut error: Option<Retained<NSDictionary<NSString, AnyObject>>> = None;
+        // `executeAndReturnError:` returns nil when the script fails, which the
+        // generated binding doesn't allow for, so declare the optional result.
+        // SAFETY: the selector takes an error out-parameter and returns a
+        // descriptor or nil.
+        let descriptor: Option<Retained<NSAppleEventDescriptor>> =
+            unsafe { msg_send![script, executeAndReturnError: Some(&mut error)] };
+        let Some(descriptor) = descriptor else {
+            return Err(match error_number(error.as_deref()) {
+                Some(ERR_NOT_PERMITTED) => RunError::NotPermitted,
+                _ => RunError::Failed,
+            });
         };
-        let _: () = msg_send![pool, drain];
-        result
-    }
+        match output {
+            Output::Text => descriptor
+                .stringValue()
+                .map(|text| Value::Text(text.to_string().trim().to_string())),
+            Output::Data => descriptor_data(&descriptor).map(Value::Data),
+        }
+        .ok_or(RunError::Failed)
+    })
 }
 
 /// `NSAppleScriptErrorNumber` from an execute error dictionary.
-unsafe fn error_number(err: *mut Object) -> Option<i64> {
-    if err.is_null() {
-        return None;
-    }
-    let key: *mut Object = msg_send![
-        class!(NSString),
-        stringWithUTF8String: c"NSAppleScriptErrorNumber".as_ptr()
-    ];
-    let number: *mut Object = msg_send![err, objectForKey: key];
-    if number.is_null() {
-        return None;
-    }
-    let value: i64 = msg_send![number, longLongValue];
-    Some(value)
+fn error_number(error: Option<&NSDictionary<NSString, AnyObject>>) -> Option<i64> {
+    // SAFETY: an immutable string constant exported by Foundation.
+    let key = unsafe { NSAppleScriptErrorNumber };
+    let value = error?.objectForKey(key)?;
+    Some(value.downcast_ref::<NSNumber>()?.longLongValue())
 }
 
-unsafe fn descriptor_text(desc: *mut Object) -> Option<String> {
-    let val: *mut Object = msg_send![desc, stringValue];
-    if val.is_null() {
-        return None;
-    }
-    let utf8: *const std::ffi::c_char = msg_send![val, UTF8String];
-    if utf8.is_null() {
-        return None;
-    }
-    let c_str = std::ffi::CStr::from_ptr(utf8);
-    Some(c_str.to_string_lossy().trim().to_string())
-}
-
-unsafe fn descriptor_data(desc: *mut Object) -> Option<Vec<u8>> {
-    let data: *mut Object = msg_send![desc, data];
-    if data.is_null() {
-        return None;
-    }
-    let len: usize = msg_send![data, length];
-    let bytes: *const u8 = msg_send![data, bytes];
-    if bytes.is_null() || len == 0 {
-        return None;
-    }
-    Some(std::slice::from_raw_parts(bytes, len).to_vec())
+fn descriptor_data(descriptor: &NSAppleEventDescriptor) -> Option<Vec<u8>> {
+    // SAFETY: `data` returns the descriptor's bytes as NSData; declared
+    // optional in case a descriptor has none.
+    let data: Option<Retained<NSData>> = unsafe { msg_send![descriptor, data] };
+    let bytes = data?.to_vec();
+    (!bytes.is_empty()).then_some(bytes)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{automation_denied, note_permission, parse_number};
+    use super::{automation_denied, note_permission, parse_number, run_once, RunError, Script};
 
     #[test]
     fn numbers_parse_with_either_decimal_separator() {
@@ -276,5 +236,33 @@ mod tests {
         assert_eq!(denied.iter().filter(|n| *n == "Test Player").count(), 1);
         note_permission("Test Player", false);
         assert!(!automation_denied().iter().any(|n| n == "Test Player"));
+    }
+
+    // These run in-process and target no other app, so they need no
+    // Automation permission.
+
+    #[test]
+    fn scripts_return_text() {
+        static GREETING: Script = Script::new(r#"return "  hello  ""#);
+        assert_eq!(GREETING.run().as_deref(), Some("hello"));
+        assert_eq!(GREETING.run().as_deref(), Some("hello"));
+        assert_eq!(run_once("return 1 + 2").as_deref(), Some("3"));
+    }
+
+    #[test]
+    fn script_errors_are_told_apart() {
+        static REFUSED: Script = Script::new(r#"error "refused" number -1743"#);
+        static BROKEN: Script = Script::new(r#"error "broken" number 42"#);
+        static UNPARSABLE: Script = Script::new("return (");
+        assert_eq!(REFUSED.run_checked(), Err(RunError::NotPermitted));
+        assert_eq!(BROKEN.run_checked(), Err(RunError::Failed));
+        assert_eq!(UNPARSABLE.run_checked(), Err(RunError::Failed));
+        assert_eq!(run_once("return ("), None);
+    }
+
+    #[test]
+    fn scripts_return_raw_data() {
+        static BYTES: Script = Script::new("return «data rdatCAFE»");
+        assert_eq!(BYTES.run_data(), Some(vec![0xCA, 0xFE]));
     }
 }
