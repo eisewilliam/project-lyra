@@ -14,6 +14,10 @@
   --item-active-text: #ffffff;
   --knob-shadow: 0 2px 6px rgba(0, 0, 0, 0.18), 0 1px 2px rgba(0, 0, 0, 0.12);
   --accent: #0A84FF;
+  --slider-rail: rgba(0, 0, 0, 0.1);
+  --slider-fill: rgba(0, 0, 0, 0.42);
+  --nav-hover: rgba(0, 0, 0, 0.04);
+  --nav-selected: rgba(0, 0, 0, 0.09);
   --panel-radius: 12px;
 }
 
@@ -31,6 +35,10 @@
     --item-active: rgba(255, 255, 255, 0.1);
     --item-active-bg: #0A84FF;
     --knob-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+    --slider-rail: rgba(255, 255, 255, 0.14);
+    --slider-fill: rgba(255, 255, 255, 0.6);
+    --nav-hover: rgba(255, 255, 255, 0.05);
+    --nav-selected: rgba(255, 255, 255, 0.13);
   }
 }
 
@@ -69,6 +77,10 @@ body {
   color: var(--text-secondary);
 }
 
+/* Sidebar rows: monochrome outline icons in the text colour, like the rest
+   of Lyra. The selected row is a solid neutral fill with its icon at full
+   strength; hover is a fainter wash, so the two never read alike. The
+   selection moves instantly, like a native source list. */
 .nav-item {
   background: transparent;
   border: none;
@@ -76,35 +88,27 @@ body {
   cursor: default;
   font-family: inherit;
   font-size: 13px;
-  font-weight: 600;
-  transition:
-    color var(--duration-base) var(--ease-control);
+  font-weight: 500;
 }
 
-.nav-item-indicator {
-  position: absolute;
-  inset: 0;
-  border-radius: 8px;
-  background: var(--item-active-bg);
-  box-shadow: 0 1px 3px rgba(10, 132, 255, 0.25);
-  z-index: 0;
-  pointer-events: none;
+.nav-icon {
+  color: var(--text-secondary);
 }
 
 .nav-item:hover:not(.active) {
-  background: var(--item-active);
+  background: var(--nav-hover);
 }
 
 .nav-item:active:not(.active) {
-  background: var(--border-color);
+  background: var(--nav-selected);
 }
 
 .nav-item.active {
-  color: var(--item-active-text);
+  background: var(--nav-selected);
 }
 
 .nav-item.active .nav-icon {
-  filter: brightness(0) invert(1);
+  color: var(--text-primary);
 }
 
 .nav-item:focus-visible,
@@ -114,6 +118,7 @@ input[type="checkbox"]:focus-visible,
 .native-snap-slider:focus-visible,
 .segmented-option:focus-visible,
 .custom-select-trigger:focus-visible,
+.color-well:focus-visible,
 .settings-win-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -134,14 +139,19 @@ input[type="checkbox"]:focus-visible,
   color: var(--text-primary);
 }
 
-/* Form Groups */
-.group {
-  animation: fade-in 0.3s ease-out;
+/* A section swaps in place with a short fade; nothing slides. */
+.settings-section {
+  animation: section-in 0.14s ease-out;
 }
 
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes section-in {
+  from { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-section {
+    animation: none;
+  }
 }
 
 /* Sentence-case section headers, as in System Settings and Windows 11
@@ -185,6 +195,40 @@ input[type="checkbox"]:focus-visible,
   font-size: 11.5px;
   font-weight: 400;
   line-height: 1.35;
+}
+
+/* An option that depends on another one being on. */
+.row.is-disabled .row-label {
+  opacity: 0.45;
+}
+
+/* Lyric colour: a rounded colour well instead of the bare system input. */
+.color-well {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 44px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  /* A ring that shows on any swatch, white included, in either theme. */
+  box-shadow: 0 0 0 1px rgba(128, 128, 128, 0.35);
+  cursor: default;
+}
+
+.color-well::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-well::-webkit-color-swatch {
+  border: none;
+  border-radius: 6px;
+}
+
+.color-well::-moz-color-swatch {
+  border: none;
+  border-radius: 6px;
 }
 
 /* `<input switch>` renders as a native switch in WebKit (macOS 14.4+).
@@ -410,9 +454,9 @@ input[type="checkbox"]:focus-visible,
 
 .snap-slider-control {
   display: inline-flex;
-  align-items: flex-start;
-  gap: 12px;
-  width: clamp(300px, 42vw, 460px);
+  align-items: center;
+  gap: 10px;
+  width: clamp(220px, 34vw, 340px);
   max-width: 100%;
 }
 
@@ -443,25 +487,30 @@ input[type="checkbox"]:focus-visible,
 .native-snap-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 8px;
+  width: 18px;
   height: 18px;
-  border-radius: 999px;
+  border-radius: 50%;
   background: #ffffff;
   cursor: default;
   z-index: 3;
   position: relative;
-  border: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+.native-snap-slider:active::-webkit-slider-thumb {
+  transform: scale(1.08);
 }
 
 .native-snap-slider::-moz-range-thumb {
-  width: 8px;
+  width: 18px;
   height: 18px;
-  border-radius: 999px;
+  border-radius: 50%;
   background: #ffffff;
   cursor: default;
-  border: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .snap-slider-range {
@@ -472,37 +521,39 @@ input[type="checkbox"]:focus-visible,
   align-items: center;
 }
 
+/* Inset by the thumb radius so stops line up with the thumb's centre. */
 .snap-slider-track-container {
   position: absolute;
-  left: 4px;
-  right: 4px;
-  top: 50%;
-  height: 8px;
-  transform: translateY(-50%);
+  left: 9px;
+  right: 9px;
+  top: 0;
+  bottom: 0;
   pointer-events: none;
   z-index: 1;
 }
 
-.snap-slider-rail {
+.snap-slider-rail,
+.snap-slider-fill {
   position: absolute;
-  left: 0;
-  right: 0;
   top: 50%;
-  height: 6px;
+  height: 4px;
   transform: translateY(-50%);
   border-radius: 999px;
-  background: var(--text-secondary);
-  opacity: 0.2;
+}
+
+.snap-slider-rail {
+  left: -9px;
+  right: -9px;
+  background: var(--slider-rail);
 }
 
 .snap-slider-fill {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  height: 2px;
-  transform: translateY(-50%);
-  background: var(--text-secondary);
-  opacity: 0.2;
+  left: -9px;
+  /* Reach the thumb's centre from the rail's rounded start. */
+  padding-left: 9px;
+  box-sizing: content-box;
+  background: var(--slider-fill);
+  transition: width var(--duration-fast) var(--ease-standard);
 }
 
 .snap-slider-ticks {
@@ -510,86 +561,25 @@ input[type="checkbox"]:focus-visible,
   inset: 0;
 }
 
+/* Stops sit under the rail, as on a native ticked slider. */
 .snap-slider-tick {
   position: absolute;
-  top: 50%;
-  width: 1.5px;
-  height: 8px;
+  top: calc(50% + 6px);
+  width: 1px;
+  height: 4px;
   background: var(--text-secondary);
-  opacity: 0.35;
-  transform: translate(-50%, -50%);
-  border-radius: 1px;
-  transition: opacity var(--duration-fast) var(--ease-standard);
-}
-
-.snap-slider-tick.active {
-  opacity: 0.7;
-}
-
-.snap-slider-labels {
-  position: relative;
-  display: block;
-  height: 16px;
-  margin: 6px 4px 0 4px;
-}
-
-.snap-slider-label {
-  position: absolute;
-  top: 0;
+  opacity: 0.45;
   transform: translateX(-50%);
-  font-size: 11px;
+}
+
+.snap-slider-value {
+  flex: none;
+  min-width: 4.5em;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
+  text-align: right;
   white-space: nowrap;
-  transition: color var(--duration-fast) var(--ease-standard), font-weight var(--duration-fast) var(--ease-standard);
-}
-
-.snap-slider-label.active {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-.snap-slider-info-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 22px;
-  cursor: help;
-  color: var(--text-secondary);
-  transition: color 0.15s ease;
-  flex-shrink: 0;
-  position: relative;
-}
-
-.snap-slider-info-wrapper:hover {
-  color: var(--text-primary);
-}
-
-.snap-slider-tooltip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  right: 0;
-  width: 220px;
-  background: rgba(30, 30, 30, 0.95);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #ffffff;
-  padding: 8px 10px;
-  border-radius: 6px;
-  font-size: 11px;
-  line-height: 1.4;
-  z-index: 10;
-  pointer-events: none;
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  text-align: left;
-  white-space: normal;
-}
-
-.snap-slider-info-wrapper:hover .snap-slider-tooltip {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 /* Custom Controls */
@@ -714,6 +704,13 @@ body[data-os="macos"] {
   }
 }
 
+/* Follow the user's macOS accent colour where WebKit exposes it. */
+@supports (color: -apple-system-control-accent) {
+  body[data-os="macos"] {
+    --accent: -apple-system-control-accent;
+  }
+}
+
 /* MacOS Layout adjustments */
 
 body[data-os="macos"] .settings-shell {
@@ -727,14 +724,7 @@ body[data-os="macos"] .nav-section {
   display: none; /* System Settings' sidebar has no section headers */
 }
 body[data-os="macos"] .nav-item {
-  color: var(--text-secondary);
-}
-body[data-os="macos"] .nav-item.active {
-  box-shadow: none;
-}
-body[data-os="macos"] .nav-item.active .nav-icon {
-  filter: none;
-  color: var(--item-active-text) !important;
+  color: var(--text-primary);
 }
 
 /* Toolbar title, as in System Settings: the page name sits in the title bar
@@ -763,7 +753,7 @@ body[data-os="macos"] .pane-header h1 {
 
 /* Form Groups: Mac has Ventura-style rounded translucent cards */
 body[data-os="macos"] .group {
-  padding-bottom: 8px;
+  padding-bottom: 0;
 }
 body[data-os="macos"] .group:last-child {
   border-bottom: none;
@@ -773,7 +763,7 @@ body[data-os="macos"] .group-title {
   font-size: 13px;
   font-weight: 700;
   color: var(--text-primary);
-  margin: 16px 0 6px 12px;
+  margin: 0 0 6px 12px;
 }
 body[data-os="macos"] .group-card {
   background: rgba(255, 255, 255, 0.05);
@@ -942,8 +932,8 @@ body[data-os="macos"] .row {
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 0;
-  min-height: 56px;
+  padding: 7px 0;
+  min-height: 44px;
   border-bottom: 1px solid var(--border-row);
   box-sizing: border-box;
 }
@@ -1078,12 +1068,22 @@ body[data-os="windows"] .nav-item {
   color: var(--text-primary);
 }
 
+/* Windows 11 Settings marks the selected row with a short bar as well. */
 body[data-os="windows"] .nav-item.active {
-  box-shadow: none;
+  background: var(--nav-selected);
+  color: var(--text-primary);
 }
 
-body[data-os="windows"] .nav-item.active .nav-icon {
-  filter: brightness(0) invert(1);
+body[data-os="windows"] .nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--accent);
+  transform: translateY(-50%);
 }
 
 body[data-os="windows"] .pane-header {
@@ -1122,8 +1122,8 @@ body[data-os="windows"] .group-card {
 }
 
 body[data-os="windows"] .row {
-  padding: 6px 16px;
-  min-height: 56px;
+  padding: 8px 16px;
+  min-height: 52px;
   box-sizing: border-box;
 }
 
@@ -1295,9 +1295,16 @@ body[data-os="windows"] .settings-ambient-bg {
               linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.5));
 }
 
+/* In light mode the tint washes towards white; a dark vignette would turn
+   the whole window grey and sink the secondary text. */
+@media (prefers-color-scheme: light) {
+  .settings-ambient-dimmer {
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.6));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .settings-shell { backdrop-filter: none; -webkit-backdrop-filter: none; background: #252522; }
-  body[data-os="windows"] .settings-shell { background: #242424; }
+  .settings-shell { backdrop-filter: none; -webkit-backdrop-filter: none; }
   .settings-ambient-bg img { opacity: 0.1; }
   .segmented-indicator { transition: none !important; }
   .custom-select-dropdown { animation: none !important; }

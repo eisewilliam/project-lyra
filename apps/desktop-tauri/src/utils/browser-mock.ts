@@ -2,6 +2,8 @@ import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
 import { emit } from '@tauri-apps/api/event';
 import type {
   AppSettings,
+  IslandSettingsPatch,
+  KaraokeSettingsPatch,
   UiState,
   RenderSnapshot,
   LyricLineSlim,
@@ -438,24 +440,25 @@ if (!isTauri) {
       }
 
       case 'update_island_settings': {
-        const { patch } = args as { patch: Partial<UiState> };
-        if (patch.island_show_cover !== undefined) uiState.island_show_cover = patch.island_show_cover;
-        if (patch.island_cover_circle !== undefined) uiState.island_cover_circle = patch.island_cover_circle;
-        if (patch.island_cover_spin !== undefined) uiState.island_cover_spin = patch.island_cover_spin;
+        // The host takes the patch's short field names (see surface-maps).
+        const { patch } = args as { patch: IslandSettingsPatch };
+        if (patch.show_cover !== undefined) uiState.island_show_cover = patch.show_cover;
+        if (patch.cover_circle !== undefined) uiState.island_cover_circle = patch.cover_circle;
+        if (patch.cover_spin !== undefined) uiState.island_cover_spin = patch.cover_spin;
         saveUiState();
         void emit('ui-settings-changed', uiState);
         return;
       }
 
       case 'update_karaoke_settings': {
-        const { patch } = args as { patch: Partial<UiState> };
-        if (patch.karaoke_position !== undefined) uiState.karaoke_position = patch.karaoke_position;
-        if (patch.karaoke_alignment !== undefined) uiState.karaoke_alignment = patch.karaoke_alignment;
-        if (patch.karaoke_width_pct !== undefined) uiState.karaoke_width_pct = patch.karaoke_width_pct;
-        if (patch.karaoke_offset_px !== undefined) uiState.karaoke_offset_px = patch.karaoke_offset_px;
-        if (patch.karaoke_lines !== undefined) uiState.karaoke_lines = patch.karaoke_lines;
-        if (patch.karaoke_bg_opacity !== undefined) uiState.karaoke_bg_opacity = patch.karaoke_bg_opacity;
-        if (patch.karaoke_bold !== undefined) uiState.karaoke_bold = patch.karaoke_bold;
+        const { patch } = args as { patch: KaraokeSettingsPatch };
+        if (patch.position !== undefined) uiState.karaoke_position = patch.position;
+        if (patch.alignment !== undefined) uiState.karaoke_alignment = patch.alignment;
+        if (patch.width_pct !== undefined) uiState.karaoke_width_pct = patch.width_pct;
+        if (patch.offset_px !== undefined) uiState.karaoke_offset_px = patch.offset_px;
+        if (patch.lines !== undefined) uiState.karaoke_lines = patch.lines;
+        if (patch.bg_opacity !== undefined) uiState.karaoke_bg_opacity = patch.bg_opacity;
+        if (patch.bold !== undefined) uiState.karaoke_bold = patch.bold;
         saveUiState();
         void emit('ui-settings-changed', uiState);
         return;

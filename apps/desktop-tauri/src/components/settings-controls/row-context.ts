@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 
-export type RowIds = { labelId: string; hintId: string | undefined };
+export type RowIds = { labelId: string; hintId: string | undefined; disabled?: boolean };
 
 export const RowContext = createContext<RowIds | undefined>(undefined);
 
@@ -15,4 +15,9 @@ export function useRowAria(): { 'aria-labelledby'?: string; 'aria-describedby'?:
   return ids.hintId
     ? { 'aria-labelledby': ids.labelId, 'aria-describedby': ids.hintId }
     : { 'aria-labelledby': ids.labelId };
+}
+
+/** The surrounding row is disabled; its control should be too. */
+export function useRowDisabled(): boolean {
+  return useContext(RowContext)?.disabled ?? false;
 }
