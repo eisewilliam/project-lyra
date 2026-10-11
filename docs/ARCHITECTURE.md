@@ -14,7 +14,7 @@ Business/runtime policy belongs in core. The host supplies OS integration and th
 
 ## Surfaces and contracts
 
-One Vite SPA serves four Tauri windows: main (`/`), island (`/island`), karaoke (`/karaoke`), and settings (`/settings`). On macOS the island and karaoke windows use NSPanels; other platforms use regular window APIs. Native window behavior stays in the host.
+One Vite SPA serves four Tauri windows: main (`/`), island (`/island`, shown to users as the Marquee), karaoke (`/karaoke`), and settings (`/settings`). On macOS the island and karaoke windows use NSPanels; other platforms use regular window APIs. Native window behavior stays in the host.
 
 Shared wire types live in core `domain.rs` and frontend `types/tauri-contracts.ts`. Playback surfaces mount through `usePlaybackSnapshot`: make the window ready, request an initial snapshot, then subscribe to `playback-tick`. The main window also requests full lyric lines; overlays consume the core-computed visible window. UI preference changes use `ui-settings-changed`, while core settings changes use `app-settings-changed`.
 

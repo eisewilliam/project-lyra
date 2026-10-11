@@ -83,12 +83,12 @@ function Hero({ platform }) {
 
 const surfaces = [
   { id: 'window', name: 'Lyra window', text: 'The whole song: artwork, playback controls and the full lyric sheet, with the current line in focus. Click any line to jump there.', detail: 'The window takes its color from the artwork of whatever is playing.' },
-  { id: 'island', name: 'Floating island', text: 'A slim strip docked to the top of your screen, above every app. The line being sung, and the one coming next.', detail: 'Hide it when the music pauses, or move it wherever you like.' },
+  { id: 'island', name: 'Marquee', text: 'A dynamic panel docked to the top of your screen, above every app. The line being sung, and the one coming next.', detail: 'Hide it when the music pauses, or move it wherever you like.' },
   { id: 'overlay', name: 'Karaoke overlay', text: 'One or two large lines across your screen, filling word by word as they are sung.', detail: 'Give it a background so it reads over anything, even a bright page.' },
 ];
 const sceneLabels = {
   window: 'The Lyra window showing the demo song’s lyric sheet',
-  island: 'The floating island docked above an open document',
+  island: 'The Marquee docked above an open document',
   overlay: 'The karaoke overlay over a bright desktop',
 };
 
@@ -400,7 +400,7 @@ function Customize() {
 const steps = [
   ['Install Lyra', 'Download it for your computer and open it. Lyra sits in your menu bar or system tray.'],
   ['Press play', `Play something in ${playersOrOthers}. Lyra notices and looks up its synced lyrics.`],
-  ['Follow along', 'Turn the window, the island or the overlay on or off at any time from the tray.'],
+  ['Follow along', 'Turn the window, the Marquee or the overlay on or off at any time from the tray.'],
 ];
 
 function Steps() {

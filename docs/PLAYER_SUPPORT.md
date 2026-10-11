@@ -56,8 +56,8 @@ plays), per track ("Show lyrics anyway" / "Not music"), per app (Music only /
 Always follow / Never follow), then the global "Only follow music" switch.
 They are stored in `media_policy.json`.
 
-Settings → Players lists active players (playing now, with per-track
-overrides) and detected players: every app Lyra has seen, kept in
+Settings → Players lists what is playing now (with per-track overrides)
+and remembered players: every app Lyra has seen, kept in
 `known_players.json` (app name and ID, last seen; no track data), so per-app
 rules and the selected player can be changed while the app is closed.
 "Forget" removes an app and its rules until it plays again.

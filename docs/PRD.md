@@ -13,7 +13,7 @@
 
 ## 1. Overview
 
-Lyra is a personal, free, cross-platform synced-lyrics companion. It displays time-synchronized lyrics for the currently playing track in a beautiful floating window, with optional Dynamic Island, widget, and Touch Bar surfaces on macOS.
+Lyra is a personal, free, cross-platform synced-lyrics companion. It displays time-synchronized lyrics for the currently playing track in a beautiful floating window, with optional Marquee (dynamic panel), widget, and Touch Bar surfaces on macOS.
 
 The product is built initially for personal use on macOS with Spotify, but is architected from day one to support Apple Music, Windows, Linux, and eventually mobile platforms — by writing new adapters, not by rewriting the core.
 
@@ -97,7 +97,7 @@ Priority: **P0** = MVP, must ship • **P1** = first follow-up • **P2** = nice
 - Toggleable; line-level mode remains the default for users who find karaoke distracting.
 - Designed to plug in true word-level timing later if a clean source becomes available.
 
-### 6.5 Dynamic Island Mode (macOS) — P1
+### 6.5 Marquee: Dynamic Panel (macOS) — P1
 
 - Floating window pinned at top center, sized and positioned to integrate with the notch on supported MacBooks.
 - Two states: **compact** (scrolling artist + track) and **expanded** (current line).
@@ -128,7 +128,7 @@ Priority: **P0** = MVP, must ship • **P1** = first follow-up • **P2** = nice
 
 - Adapter using **SMTC** (System Media Transport Controls) — works with Spotify, Apple Music for Windows, browser playback, and any SMTC-aware player.
 - Tauri shell builds for Windows out of the box.
-- No Dynamic Island or WidgetKit equivalents — desktop floating window only.
+- No notch-integrated Marquee or WidgetKit equivalents — desktop floating window only.
 
 ### 6.10 Linux Support — P3 (Future)
 
@@ -181,7 +181,7 @@ Priority: **P0** = MVP, must ship • **P1** = first follow-up • **P2** = nice
 │            UI Surfaces                       │
 │  • Tauri main window (mac / Win / Linux)    │
 │  • Swift sidecar (macOS only):              │
-│      Dynamic Island • Widget • Touch Bar    │
+│      Marquee • Widget • Touch Bar           │
 └─────────────────────────────────────────────┘
 ```
 
@@ -260,7 +260,7 @@ enum PlayerEvent {
 ### Phase 3 — Native macOS Surfaces — Weekends 4–6
 
 - Swift sidecar scaffolding + IPC.
-- Dynamic Island window.
+- Marquee window.
 - macOS widget (if motivation holds).
 - Apple Music adapter (free win once architecture is in place).
 

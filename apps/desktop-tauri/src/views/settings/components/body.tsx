@@ -146,7 +146,7 @@ export function Body({
         </Group>
 
         <Group title="Background">
-          <Row label="Background darkness" hint="Main window and Dynamic Island.">
+          <Row label="Background darkness" hint="Main window and Marquee.">
             <SnapSlider
               steps={BACKGROUND_OPACITY_STEPS}
               value={app.appearance.background_opacity}
@@ -293,7 +293,7 @@ export function Body({
     <>
       <IslandPreview ui={ui} appearance={app.appearance} artworkSrc={artworkSrc} />
       <Group title="Visibility">
-        <Row label={`Show ${activeLabel}`}>
+        <Row label={`Show ${activeLabel}`} hint="The dynamic panel docked at the top of your screen.">
           <Toggle value={ui.island_visible} onChange={() => actions.toggleVisible('island')} />
         </Row>
         <Row label="Show over full-screen apps">
@@ -302,10 +302,10 @@ export function Body({
       </Group>
 
       <Group title="Window">
-        <Row label="Lock position" hint="Unlock to drag the island anywhere.">
+        <Row label="Lock position" hint="Unlock to drag the Marquee anywhere.">
           <Toggle value={ui.island_locked} onChange={(v: boolean) => actions.setLock(v)} />
         </Row>
-        <Row label="Click-through" hint="Clicks pass to the app behind the island, and its controls turn off.">
+        <Row label="Click-through" hint="Clicks pass to the app behind the Marquee, and its controls turn off.">
           <Toggle value={ui.island_click_through} onChange={(v: boolean) => actions.setIslandClickThrough(v)} />
         </Row>
         <Row label="Position">

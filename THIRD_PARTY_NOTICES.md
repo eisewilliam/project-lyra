@@ -28,7 +28,7 @@ cd apps/desktop-tauri && pnpm dlx license-checker --summary
 | Crate | License |
 |---|---|
 | tauri, tauri-build, tauri-plugin-* | MIT OR Apache-2.0 |
-| tauri-nspanel (github.com/ahkohd/tauri-nspanel) | MIT |
+| tauri-nspanel | MIT OR Apache-2.0 |
 | tokio | MIT |
 | reqwest | MIT OR Apache-2.0 |
 | serde, serde_json | MIT OR Apache-2.0 |
@@ -38,7 +38,8 @@ cd apps/desktop-tauri && pnpm dlx license-checker --summary
 | base64 | MIT OR Apache-2.0 |
 | log | MIT OR Apache-2.0 |
 | dirs-next | MIT OR Apache-2.0 |
-| objc | MIT |
+| objc2, objc2-foundation | MIT |
+| objc2-app-kit | Zlib OR Apache-2.0 OR MIT |
 | libc | MIT OR Apache-2.0 |
 | dispatch2 | MIT OR Apache-2.0 |
 | windows | MIT OR Apache-2.0 |

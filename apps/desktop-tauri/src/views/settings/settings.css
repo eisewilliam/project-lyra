@@ -1522,7 +1522,7 @@ body[data-os="windows"] .settings-ambient-bg {
 }
 
 /* ── Live previews ──────────────────────────────────────────────────────────
-   Shown at the top of Appearance, Dynamic Island and Karaoke. Purely visual
+   Shown at the top of Appearance, Marquee and Karaoke. Purely visual
    (aria-hidden); every control below still names its own effect. */
 .settings-preview {
   position: relative;
