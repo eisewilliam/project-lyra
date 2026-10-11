@@ -21,8 +21,8 @@ Lyra offers three ways to see your lyrics, depending on how you like to work or 
 ### Lyra Window
 A full-featured window showing album artwork, playback controls (play/pause, skip, seek), and the complete lyric sheet — scrolling automatically to keep the current line centered. The background glows with colors drawn from the album art.
 
-### Floating Island
-A compact, always-on-top overlay that floats above all your other windows. It shows the current lyric line and the next one coming up, with animated audio bars while music plays. You can drag it anywhere on screen, lock it in place, and optionally show a spinning album cover. It snaps to the top of your screen when dragged near the edge.
+### Marquee
+A dynamic panel: a compact, always-on-top overlay that floats above all your other windows. It shows the current lyric line and the next one coming up, with animated audio bars while music plays. You can drag it anywhere on screen, lock it in place, and optionally show a spinning album cover. It snaps to the top of your screen when dragged near the edge.
 
 ### Karaoke Overlay
 A fullscreen transparent overlay — designed for use while watching something or doing anything else on your screen. It displays a small band of lyrics over whatever is behind it, with word-by-word highlighting and customizable position, alignment, size, and opacity.
@@ -35,7 +35,7 @@ Each display mode has its own settings. You can control:
 
 - Font size for each surface independently
 - Which surfaces are visible
-- Whether the floating island shows album art, and whether it spins
+- Whether the Marquee shows album art, and whether it spins
 - Karaoke position (top, center, bottom), text alignment, width, and background opacity
 - Whether to hide all surfaces when music is paused
 - Which monitor to use on multi-monitor setups

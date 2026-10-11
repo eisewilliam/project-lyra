@@ -7,7 +7,7 @@ The current app is built with a Tauri desktop host and a Rust core. It is ready 
 ## Features
 
 - Main Lyra window with album artwork, playback controls, seeking, the full lyric sheet, and current-line highlighting
-- Floating island overlay for compact always-on-top lyrics
+- Marquee, a dynamic panel at the top of the screen for compact always-on-top lyrics
 - Karaoke overlay with word-progress highlighting and configurable layout
 - Settings for surface visibility, font scale, overlays, pause behavior, autostart, theme, and preferred monitor
 - Spotify playback integration on macOS through AppleScript, on Windows through SMTC, and on Linux through MPRIS
@@ -25,7 +25,7 @@ Apple Music support, signing and distribution polish, and additional native plat
 | Surface | Purpose |
 |---|---|
 | Lyra window | Full lyric sheet, track context, playback controls, and seekable lyrics |
-| Floating island | Compact overlay with the active lyric context near the top of the screen or another chosen position |
+| Marquee | Dynamic panel with the active lyric context, docked at the top of the screen or another chosen position |
 | Karaoke overlay | Wide overlay for one or two active lyric lines with configurable position, alignment, width, and opacity |
 | Settings | Visibility and appearance controls for the lyric surfaces plus app behavior settings |
 

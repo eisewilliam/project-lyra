@@ -26,7 +26,7 @@ All windows are served from one Vite SPA. `main.tsx` routes by `window.location.
 | Window label | URL path | View | Purpose |
 |---|---|---|---|
 | `main` | `/` | `views/app` | Full lyrics pane + player controls |
-| `island` | `/island` | `views/island` | Dynamic Island-style mini overlay |
+| `island` | `/island` | `views/island` | Marquee: the dynamic panel docked at the top of the screen |
 | `karaoke` | `/karaoke` | `views/karaoke` | Fullscreen karaoke overlay |
 | `settings` | `/settings` | `views/settings` | Settings UI |
 

@@ -24,7 +24,7 @@ QA helpers: `?frame=<phrase>:<seconds>` renders one still frame of the hero ligh
 | `src/hero/phrases.js` | The four musical figures, authored in staff spaces, and their draw, hold and release timeline |
 | `src/hero/lyrics.js` | Original lyric fragments for the hero field |
 | `src/hero/LyricLightField.jsx` | React wrapper: sizing, visibility, pointer light, still-art fallback without WebGL2 |
-| `src/demo/` | Three public-domain demo songs (Shenandoah, Greensleeves, Danny Boy) with artwork palettes, the song clock, and illustrative recreations of the window, island and overlay |
+| `src/demo/` | Three public-domain demo songs (Shenandoah, Greensleeves, Danny Boy) with artwork palettes, the song clock, and illustrative recreations of the window, Marquee and overlay |
 | `src/landing/LandingPage.jsx` | Hero, pinned surfaces story, players picker, settings preview, steps, liner notes, FAQ, closing; interaction animation uses Motion (`motion/react`) |
 | `src/download/DownloadPage.jsx` | Platform rows, release status, build from source |
 | `src/components/` | Router, header, footer, download button, staff-line motif, OS and player marks |

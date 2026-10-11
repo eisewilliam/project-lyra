@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import type { AppearanceSettings, UiState } from '@/types/tauri-contracts';
 import { resolveFontFamily } from '@/utils/app-settings';
 
-// Live previews at the top of Appearance, Dynamic Island and Karaoke, so a
+// Live previews at the top of Appearance, Marquee and Karaoke, so a
 // setting's effect is visible without switching to another window. They read
 // the same values the surfaces do and use the current track's artwork.
 

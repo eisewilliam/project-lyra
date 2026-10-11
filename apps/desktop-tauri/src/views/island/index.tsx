@@ -240,7 +240,7 @@ export default function Island() {
       ref={panelRef}
       className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${isDocked ? 'docked' : 'floating'} ${panelState !== 'ready' && !showTrackIntro ? 'has-placeholder' : ''} ${isCompactLayout ? 'is-compact' : ''} ${hovered ? 'is-hovered' : ''} ${dragging ? 'is-dragging' : ''}`}
       role="application"
-      aria-label="Dynamic Island panel"
+      aria-label="Marquee"
       {...handlers}
     >
       <div className="island-background">

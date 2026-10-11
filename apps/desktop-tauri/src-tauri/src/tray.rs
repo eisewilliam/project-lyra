@@ -103,7 +103,7 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
     let show_lyra = MenuItemBuilder::new("Open Lyra")
         .id("show_lyra")
         .build(app)?;
-    let show_island = CheckMenuItemBuilder::new("Show Dynamic Island")
+    let show_island = CheckMenuItemBuilder::new("Show Marquee")
         .id("toggle_island")
         .checked(initial.island_visible)
         .build(app)?;
@@ -111,7 +111,7 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
         .id("toggle_karaoke")
         .checked(initial.karaoke_visible)
         .build(app)?;
-    let lock_island = CheckMenuItemBuilder::new("Lock Dynamic Island")
+    let lock_island = CheckMenuItemBuilder::new("Lock Marquee Position")
         .id("toggle_island_lock")
         .checked(initial.island_locked)
         .build(app)?;
