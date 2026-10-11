@@ -44,8 +44,9 @@ cd apps/desktop-tauri && pnpm lint
   transport, or feature support changes or is verified on an OS.
 - The `island` surface is called the **Marquee** in everything users see
   (described as a "dynamic panel"). Code identifiers, commands, events and
-  saved `island_*` settings keep the `island` name; do not rename them
-  without a settings migration. Never call it a "Dynamic Island".
+  saved `island_*` settings keep the `island` name until the code rename in
+  issue #10, which migrates the saved keys with serde aliases. Never call it a
+  "Dynamic Island".
 
 ## Read relevant reference sections before changing behavior
 
