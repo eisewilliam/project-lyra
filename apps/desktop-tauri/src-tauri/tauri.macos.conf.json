@@ -1,7 +1,8 @@
 {
   "bundle": {
     "macOS": {
-      "frameworks": ["native-build/MediaRemoteAdapter.framework"]
+      "frameworks": ["native-build/MediaRemoteAdapter.framework"],
+      "entitlements": "Entitlements.plist"
     }
   }
 }

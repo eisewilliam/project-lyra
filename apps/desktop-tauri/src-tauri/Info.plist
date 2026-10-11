@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the bundle's Info.plist by the Tauri bundler. -->
+<plist version="1.0">
+<dict>
+	<!-- Shown in macOS's prompt before Lyra first scripts Spotify or Music. -->
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Lyra reads the song playing in Spotify or Music so it can show its lyrics in time with the music.</string>
+</dict>
+</plist>

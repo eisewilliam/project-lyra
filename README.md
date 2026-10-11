@@ -19,7 +19,7 @@ The current app is built with a Tauri desktop host and a Rust core. It is ready 
 
 Lyra is still early. Support differs by player and OS; [docs/PLAYER_SUPPORT.md](docs/PLAYER_SUPPORT.md) lists what has been verified. Lyrics depend on synced LRCLIB coverage unless a local LRC override is available.
 
-Signed macOS builds, auto-updates, and additional native platform integrations are not part of this release yet.
+Releases include signed and notarized macOS builds, and Lyra updates itself in the background. Windows builds aren't signed yet, so SmartScreen may warn on first launch. Release steps are in [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Surfaces
 
@@ -103,6 +103,8 @@ Or manually:
 cd apps/desktop-tauri
 pnpm run tauri build
 ```
+
+Local builds are unsigned and don't update themselves. Signed releases are built by CI from a version tag; see [docs/RELEASING.md](docs/RELEASING.md).
 
 ### Verify the workspace
 

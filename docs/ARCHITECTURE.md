@@ -62,6 +62,10 @@ The host selects `dirs_next::data_dir()/lyra` once and injects it into the store
 
 Track filenames use percent-encoded URIs. Overrides take precedence over fetched lyrics. Network requests never hold the runtime lock. Cache reads and settings/offset writes can still occur while it is held; cache-result writes are separately scheduled. This is not a guarantee that all runtime operations are free of disk I/O.
 
+## Releases and updates
+
+A version tag builds signed installers in CI (`.github/workflows/release.yml`) and publishes them as a GitHub release with fixed file names and a signed `latest.json`. The host's `updater.rs` checks that file in release builds, downloads a newer version quietly, and offers it through the tray menu and Settings → General → Updates (`update-status` event; `get_update_status`, `check_for_updates` and `install_update` commands). The root `Cargo.toml` version is the only version number. Steps and secrets are in `docs/RELEASING.md`.
+
 ## Verification
 
 Run `cargo test -p lyra-core` for parser, cache, render, runtime, and refresh-coordinator tests. Run `cargo check --manifest-path apps/desktop-tauri/src-tauri/Cargo.toml` for host integration. Frontend changes require `pnpm lint` from `apps/desktop-tauri/`. Platform-specific runtime behavior still requires testing on the relevant OS; a local macOS check does not validate Windows SMTC or Linux D-Bus behavior.

@@ -173,4 +173,6 @@ Settings pages show live previews (`views/settings/components/previews.tsx`) bui
 
 Native chrome: macOS has an app menu (`src-tauri/src/menu.rs`) with Settings… (⌘,) and Playback key equivalents (⌘←/⌘→). The main window handles Space and ←/→ in-page (`use-main-keyboard-shortcuts.ts`). Production builds suppress the WebView context menu outside editable fields (`utils/native-feel.ts`). The browser IPC mock is loaded only in dev outside Tauri.
 
+Updates (`src-tauri/src/updater.rs`): release builds with a real `plugins.updater.pubkey` check `latest.json` 20 s after launch and every 6 h, download in the background, and set `UpdateStatus::Ready`. That adds "Restart to Install Lyra x.y" to the tray (`TrayMenuRefs::show_update_ready`) and emits `update-status` for Settings → General → Updates (`views/settings/components/updates-group.tsx`). `install_update` installs and restarts. Debug builds report `unavailable` and never check. Release builds pass `--config src-tauri/tauri.release.conf.json` to create signed update bundles; see `docs/RELEASING.md`.
+
 Frontend OS styling is selected through `body[data-os]`. Linux must be detected as `linux` instead of falling through to macOS styles; shared playback UI should stay platform-neutral and consume `RenderSnapshot`.

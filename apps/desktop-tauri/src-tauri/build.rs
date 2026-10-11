@@ -101,7 +101,7 @@ mod mediaremote {
   <key>CFBundleExecutable</key>
   <string>{NAME}</string>
   <key>CFBundleIdentifier</key>
-  <string>com.lyra.{NAME}</string>
+  <string>app.lyralyrics.desktop.{NAME}</string>
   <key>CFBundleName</key>
   <string>{NAME}</string>
   <key>CFBundlePackageType</key>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Hardened runtime entitlements for signed, notarized builds. -->
+<plist version="1.0">
+<dict>
+	<!-- AppleScript to Spotify and Music; without it the hardened runtime
+	     blocks every Apple event Lyra sends. -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+</dict>
+</plist>

@@ -1,8 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Lyra",
-  "version": "0.1.0",
-  "identifier": "com.lyra",
+  "identifier": "app.lyralyrics.desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -52,7 +51,7 @@
       },
       {
         "label": "settings",
-        "title": "Lyra \u2014 Settings",
+        "title": "Lyra — Settings",
         "url": "/settings",
         "width": 860,
         "height": 640,
@@ -109,6 +108,17 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "UPDATER_PUBLIC_KEY_NOT_SET",
+      "endpoints": [
+        "https://github.com/eisewilliam/project-lyra/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

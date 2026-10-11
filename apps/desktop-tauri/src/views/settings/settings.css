@@ -694,6 +694,11 @@ body[data-os="macos"] select {
 .action-btn:active {
   transform: scale(0.96);
 }
+/* Shared by every platform's button style. */
+.settings-shell .action-btn:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
 
 .native-toggle {
   width: 44px;

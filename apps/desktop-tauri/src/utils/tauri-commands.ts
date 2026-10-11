@@ -13,6 +13,7 @@ import type {
   RenderSnapshot,
   SettingsPatch,
   UiState,
+  UpdateInfo,
 } from '@/types/tauri-contracts';
 
 // Manual contract-alignment checklist for Phase 1:
@@ -223,6 +224,20 @@ export function getAutomationDenied(): Promise<string[]> {
 
 export function openAutomationSettings(): Promise<void> {
   return invoke('open_automation_settings');
+}
+
+export function getUpdateStatus(): Promise<UpdateInfo> {
+  return invoke('get_update_status');
+}
+
+/** Starts a check; progress arrives as `update-status` events. */
+export function checkForUpdates(): Promise<void> {
+  return invoke('check_for_updates');
+}
+
+/** Installs the downloaded update and restarts Lyra. */
+export function installUpdate(): Promise<void> {
+  return invoke('install_update');
 }
 
 export function islandPointerInside(): Promise<boolean> {

@@ -1,6 +1,7 @@
 [package]
 name = "lyra-desktop"
-version = "0.1.0"
+# The app version (tauri.conf.json has none) is the workspace version.
+version.workspace = true
 description = "Lyra — floating synced-lyrics companion"
 authors = ["Olusegun William Eise"]
 license = "MIT"
@@ -27,6 +28,7 @@ lyra-core = { path = "../../../crates/lyra-core" }
 dirs-next = "2"
 tokio = { workspace = true }
 tauri-plugin-clipboard-manager = "2"
+tauri-plugin-updater = "2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
