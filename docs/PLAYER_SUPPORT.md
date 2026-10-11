@@ -3,7 +3,7 @@
 Which music players Lyra can follow on each OS, and which features work with
 each. Update this file in the same change that adds, removes, or verifies an
 adapter or player. The website names Spotify, Apple Music and YouTube Music
-(`players.named` in `apps/website/src/site-config.js`) and otherwise says "most
+(`players.named` in `apps/website/src/site-config.ts`) and otherwise says "most
 players that show up in your computer's media controls"; name another player
 there only once it has been verified.
 

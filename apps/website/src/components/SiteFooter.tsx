@@ -1,5 +1,6 @@
-import { siteConfig } from '../site-config.js';
-import { ExternalLink, Link } from './router.jsx';
+import { Link } from '@tanstack/react-router';
+import { siteConfig } from '../site-config.ts';
+import { ExternalLink } from './ExternalLink.tsx';
 
 export function SiteFooter() {
   return <footer className="site-footer">

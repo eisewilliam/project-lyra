@@ -1,19 +1,36 @@
-import { useEffect, useRef, useState } from 'react';
-import { LyricLight } from './lyric-light.js';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import { LyricLight } from './lyric-light.ts';
+
+declare global {
+  interface Window {
+    // Development only: the running engine, for poking at it from the console.
+    __lyricLight?: LyricLight;
+  }
+}
+
+interface LyricLightFieldProps {
+  playing: boolean;
+  heroRef: RefObject<HTMLElement | null>;
+  copyRef: RefObject<HTMLElement | null>;
+  startTime: number | undefined;
+  onUnsupported: () => void;
+}
 
 // Decorative hero field. Falls back to the still Resonance artwork without WebGL2.
-export function LyricLightField({ playing, heroRef, copyRef, startTime, onUnsupported }) {
-  const canvasRef = useRef(null);
-  const engineRef = useRef(null);
+export function LyricLightField({ playing, heroRef, copyRef, startTime, onUnsupported }: LyricLightFieldProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const engineRef = useRef<LyricLight | null>(null);
   const [unsupported, setUnsupported] = useState(false);
 
   useEffect(() => {
     const hero = heroRef.current;
     const copy = copyRef.current;
-    const engine = LyricLight.create(canvasRef.current);
+    const canvas = canvasRef.current;
+    if (!hero || !copy || !canvas) return undefined;
+    const engine = LyricLight.create(canvas);
     if (!engine) {
       setUnsupported(true);
-      onUnsupported?.();
+      onUnsupported();
       return undefined;
     }
     engineRef.current = engine;
@@ -28,7 +45,8 @@ export function LyricLightField({ playing, heroRef, copyRef, startTime, onUnsupp
         range.selectNodeContents(node);
         return node.matches('h1, p') ? range.getBoundingClientRect() : node.getBoundingClientRect();
       });
-      const headline = rects[0];
+      const [headline] = rects;
+      if (!headline) return;
       engine.resize(box.width, box.height, {
         left: Math.min(...rects.map(r => r.left)) - box.left,
         top: Math.min(...rects.map(r => r.top)) - box.top,
@@ -49,7 +67,7 @@ export function LyricLightField({ playing, heroRef, copyRef, startTime, onUnsupp
     let inView = true;
     const updateVisibility = () => engine.setVisible(inView && !document.hidden);
     const intersectionObserver = new IntersectionObserver(([entry]) => {
-      inView = entry.isIntersecting;
+      inView = entry?.isIntersecting ?? false;
       updateVisibility();
     });
     intersectionObserver.observe(hero);
@@ -57,7 +75,7 @@ export function LyricLightField({ playing, heroRef, copyRef, startTime, onUnsupp
 
     // A small hand-held light: on fine pointers, the cursor reveals nearby lyrics too.
     const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
-    const onPointerMove = event => {
+    const onPointerMove = (event: PointerEvent) => {
       if (!finePointer.matches || event.pointerType !== 'mouse') return;
       const box = hero.getBoundingClientRect();
       engine.setPointer(event.clientX - box.left, event.clientY - box.top, true);

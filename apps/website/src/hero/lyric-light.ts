@@ -1,5 +1,8 @@
-import { lyricFragments } from './lyrics.js';
-import { PHRASE_LENGTH, buildPhrase, envelope, phraseCount, progressOf } from './phrases.js';
+import { lyricFragments } from './lyrics.ts';
+import {
+  PHRASE_LENGTH, buildPhrase, envelope, phraseCount, progressOf,
+  type BlobElement, type Layout, type PhraseElement, type Point, type StrokeElement, type SwellingStroke,
+} from './phrases.ts';
 
 // Lyric field revealed by musical light.
 //
@@ -105,8 +108,9 @@ void main() {
   outColor = vec4(max(color, 0.0), 1.0);
 }`;
 
-function compile(gl, type, source) {
+function compile(gl: WebGL2RenderingContext, type: GLenum, source: string) {
   const shader = gl.createShader(type);
+  if (!shader) throw new Error('Lyric light shader could not be created');
   gl.shaderSource(shader, source);
   gl.compileShader(shader);
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
@@ -117,7 +121,7 @@ function compile(gl, type, source) {
   return shader;
 }
 
-function seeded(seed) {
+function seeded(seed: number) {
   let state = seed >>> 0;
   return () => {
     state = (state + 0x6d2b79f5) >>> 0;
@@ -130,7 +134,15 @@ function seeded(seed) {
 
 // Rows tile seamlessly: leftover space is shared between the gaps so each row
 // is exactly one atlas width long.
-function drawLyricRows(ctx, { pitch, size, weight, color, seed }, width, height) {
+interface LyricRows {
+  pitch: number;
+  size: number;
+  weight: number;
+  color: string;
+  seed: number;
+}
+
+function drawLyricRows(ctx: CanvasRenderingContext2D, { pitch, size, weight, color, seed }: LyricRows, width: number, height: number) {
   ctx.font = `italic ${weight} ${size}px "Geist Variable", sans-serif`;
   ctx.fillStyle = color;
   ctx.textBaseline = 'middle';
@@ -139,11 +151,11 @@ function drawLyricRows(ctx, { pitch, size, weight, color, seed }, width, height)
   const rows = Math.ceil(height / pitch);
   for (let row = 0; row < rows; row += 1) {
     const y = (row + 0.5) * pitch;
-    const items = [];
+    const items: [text: string, width: number][] = [];
     let used = 0;
     let index = Math.floor(random() * lyricFragments.length);
     for (;;) {
-      const text = lyricFragments[index % lyricFragments.length];
+      const text = lyricFragments[index % lyricFragments.length] ?? '';
       const textWidth = ctx.measureText(text).width;
       if (used + textWidth + gap > width) break;
       items.push([text, textWidth]);
@@ -160,11 +172,19 @@ function drawLyricRows(ctx, { pitch, size, weight, color, seed }, width, height)
   }
 }
 
-const rgb = (r, g, b) => `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`;
+const rgb = (r: number, g: number, b: number) => `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`;
 
 // Light profile, outermost first. R is the light body (centre-weighted so the
 // shader can find a filament), B the wide glow, G marks symbols inside the body.
-const PASSES = [
+interface LightPass {
+  stroke: number;
+  blob: number;
+  r: number;
+  b: number;
+  inner?: boolean;
+}
+
+const PASSES: LightPass[] = [
   { stroke: 6, blob: 2.1, r: 0, b: 0.08 },
   { stroke: 3.2, blob: 1.5, r: 0, b: 0.2 },
   { stroke: 1.5, blob: 1.12, r: 0.2, b: 0.2 },
@@ -172,8 +192,63 @@ const PASSES = [
   { stroke: 0.38, blob: 0.72, r: 1, b: 0.2, inner: true },
 ];
 
+const UNIFORMS = ['uText', 'uMask', 'uResolution', 'uDpr', 'uTime', 'uLight', 'uTextWidth', 'uPitch', 'uProtect', 'uPointer'] as const;
+type UniformName = (typeof UNIFORMS)[number];
+
+interface CopyRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+interface VisibleElement {
+  element: PhraseElement;
+  progress: number;
+  end: Point | null;
+}
+
+function context2d(canvas: HTMLCanvasElement) {
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Lyric light needs a 2D canvas');
+  return context;
+}
+
 export class LyricLight {
-  static create(canvas) {
+  readonly canvas: HTMLCanvasElement;
+  readonly gl: WebGL2RenderingContext;
+  readonly mask = document.createElement('canvas');
+  readonly maskContext = context2d(this.mask);
+  readonly atlas = document.createElement('canvas');
+  readonly atlasContext = context2d(this.atlas);
+  // Start just before the first light so the hero ignites almost at once.
+  time = 0.75;
+  playing = false;
+  visible = true;
+  destroyed = false;
+  lost = false;
+  frame = 0;
+  last = 0;
+  size = { width: 0, height: 0, dpr: 1 };
+  layout: Layout | null = null;
+  phrases = new Map<number, PhraseElement[]>();
+  protectRect: [left: number, top: number, right: number, bottom: number] = [0, 0, 0, 0];
+  pointer = { x: 0, y: 0, goalX: 0, goalY: 0, target: 0, strength: 0 };
+  quality = 1;
+  slowFrames = 0;
+  fontsReady = false;
+  atlasKey = '';
+  textWidth = 0;
+  pitch: [near: number, far: number] = [0, 0];
+  onQualityChange: (() => void) | null = null;
+  // Set by initGL, which also runs again after a lost context is restored.
+  program!: WebGLProgram;
+  uniforms!: Record<UniformName, WebGLUniformLocation | null>;
+  textTexture!: WebGLTexture;
+  maskTexture!: WebGLTexture;
+  maxTexture = 0;
+
+  static create(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, stencil: false, powerPreference: 'high-performance' });
     if (!gl) return null;
     try {
@@ -184,49 +259,42 @@ export class LyricLight {
     }
   }
 
-  constructor(canvas, gl) {
+  constructor(canvas: HTMLCanvasElement, gl: WebGL2RenderingContext) {
     this.canvas = canvas;
     this.gl = gl;
-    this.mask = document.createElement('canvas');
-    this.maskContext = this.mask.getContext('2d');
-    this.atlas = document.createElement('canvas');
-    // Start just before the first light so the hero ignites almost at once.
-    this.time = 0.75;
-    this.playing = false;
-    this.frame = 0;
-    this.last = 0;
-    this.visible = true;
-    this.size = { width: 0, height: 0, dpr: 1 };
-    this.layout = null;
-    this.phrases = new Map();
-    this.protectRect = [0, 0, 0, 0];
-    this.pointer = { x: 0, y: 0, goalX: 0, goalY: 0, target: 0, strength: 0 };
-    this.quality = 1;
-    this.slowFrames = 0;
-    this.fontsReady = false;
-    this.atlasKey = '';
     this.initGL();
-    this.onLost = event => { event.preventDefault(); cancelAnimationFrame(this.frame); this.lost = true; };
-    this.onRestored = () => { this.lost = false; this.initGL(); this.atlasKey = ''; this.refresh(); };
     canvas.addEventListener('webglcontextlost', this.onLost);
     canvas.addEventListener('webglcontextrestored', this.onRestored);
     const font = `italic 380 16px "Geist Variable"`;
-    (document.fonts ? document.fonts.load(font) : Promise.resolve())
+    void document.fonts.load(font)
       .catch(() => {})
       .then(() => { this.fontsReady = true; this.refresh(); });
   }
 
+  onLost = (event: Event) => {
+    event.preventDefault();
+    cancelAnimationFrame(this.frame);
+    this.lost = true;
+  };
+
+  onRestored = () => {
+    this.lost = false;
+    this.initGL();
+    this.atlasKey = '';
+    this.refresh();
+  };
+
   initGL() {
     const { gl } = this;
     const program = gl.createProgram();
+    if (!program) throw new Error('Lyric light program could not be created');
     gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, vertexSource));
     gl.attachShader(program, compile(gl, gl.FRAGMENT_SHADER, fragmentSource));
     gl.bindAttribLocation(program, 0, 'aPosition');
     gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) ?? 'Lyric light program failed to link');
     this.program = program;
-    this.uniforms = Object.fromEntries(['uText', 'uMask', 'uResolution', 'uDpr', 'uTime', 'uLight', 'uTextWidth', 'uPitch', 'uProtect', 'uPointer']
-      .map(name => [name, gl.getUniformLocation(program, name)]));
+    this.uniforms = Object.fromEntries(UNIFORMS.map(name => [name, gl.getUniformLocation(program, name)])) as Record<UniformName, WebGLUniformLocation | null>;
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
@@ -234,12 +302,13 @@ export class LyricLight {
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     this.textTexture = this.createTexture(gl.REPEAT);
     this.maskTexture = this.createTexture(gl.CLAMP_TO_EDGE);
-    this.maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+    this.maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
   }
 
-  createTexture(wrapS) {
+  createTexture(wrapS: GLenum) {
     const { gl } = this;
     const texture = gl.createTexture();
+    if (!texture) throw new Error('Lyric light texture could not be created');
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrapS);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -252,7 +321,7 @@ export class LyricLight {
   // behind, and the headline's centre line.
   // Wide screens set the headline into the staff: the staff runs through it
   // and the symbols sit either side of the copy. Phones put the light above.
-  resize(width, height, copyRect, headlineY) {
+  resize(width: number, height: number, copyRect: CopyRect, headlineY: number) {
     const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR) * this.quality;
     // Phones and portrait tablets (matching the CSS aspect query) stack light over copy.
     const compact = width < 720 || height > width * 1.1;
@@ -284,8 +353,8 @@ export class LyricLight {
     this.refresh();
   }
 
-  buildAtlas() {
-    const { gl, canvas, layout } = this;
+  buildAtlas(layout: Layout) {
+    const { gl, canvas } = this;
     const key = [canvas.height, layout.pitch, this.size.dpr].join(':');
     if (key === this.atlasKey) return;
     this.atlasKey = key;
@@ -294,7 +363,7 @@ export class LyricLight {
     const height = canvas.height;
     this.atlas.width = width;
     this.atlas.height = height;
-    const ctx = this.atlas.getContext('2d');
+    const ctx = this.atlasContext;
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, width, height);
@@ -311,17 +380,20 @@ export class LyricLight {
     this.pitch = [nearPitch, farPitch];
   }
 
-  phrase(index) {
-    if (!this.phrases.has(index)) this.phrases.set(index, buildPhrase(index, this.layout));
-    return this.phrases.get(index);
+  phrase(index: number, layout: Layout) {
+    let phrase = this.phrases.get(index);
+    if (!phrase) {
+      phrase = buildPhrase(index, layout);
+      this.phrases.set(index, phrase);
+    }
+    return phrase;
   }
 
   // Passes run outermost first across every element, so with plain source-over
   // each pass only ever raises the light: crossings stay bright, never seamed,
   // and every draw uses hardware blending.
-  drawMask(elements, tau) {
+  drawMask(elements: PhraseElement[], tau: number, { unit }: Layout) {
     const ctx = this.maskContext;
-    const { unit } = this.layout;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = '#000';
@@ -330,18 +402,23 @@ export class LyricLight {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    const visible = [];
+    const visible: VisibleElement[] = [];
     for (const element of elements) {
       const progress = progressOf(element, tau);
       if (progress > 0) visible.push({ element, progress, end: element.kind === 'stroke' ? this.pointAt(element, progress) : null });
     }
     for (const pass of PASSES) {
       for (const { element, progress, end } of visible) {
-        const symbol = element.staff === undefined ? (element.solid ? 0.42 : 0.24) : 0;
-        const fade = element.kind === 'blob' ? progress : 1;
-        const color = rgb(pass.r * fade, pass.inner ? symbol * fade : 0, pass.b * fade);
-        if (element.kind === 'blob') this.ellipse(element, (0.55 + 0.45 * progress) * pass.blob, color);
-        else if (element.widthAt) this.outline(element, progress, end, pass.stroke, color);
+        if (element.kind === 'blob') {
+          const symbol = element.solid ? 0.42 : 0.24;
+          const color = rgb(pass.r * progress, pass.inner ? symbol * progress : 0, pass.b * progress);
+          this.ellipse(element, (0.55 + 0.45 * progress) * pass.blob, color);
+          continue;
+        }
+        if (!end) continue;
+        const symbol = element.staff === undefined ? 0.24 : 0;
+        const color = rgb(pass.r, pass.inner ? symbol : 0, pass.b);
+        if (element.widthAt) this.outline(element, progress, end, pass.stroke, color);
         else this.line(element, progress, end, pass.stroke, color);
       }
     }
@@ -355,7 +432,8 @@ export class LyricLight {
         if (pulse > 0.01) this.ellipse(element, 1.2, `rgba(0,255,0,${0.75 * pulse})`);
         continue;
       }
-      if (element.head !== false && progress < 1) this.spark(end[0], end[1], unit * 1.15, Math.sin(Math.PI * progress) ** 0.5 * 0.9);
+      if (!end) continue;
+      if (element.head && progress < 1) this.spark(end[0], end[1], unit * 1.15, Math.sin(Math.PI * progress) ** 0.5 * 0.9);
       if (element.staff !== undefined && sustain > 0) {
         const along = (tau * 0.055 * (1 + 0.27 * element.staff) + element.staff * 0.37) % 1;
         const point = this.pointAt(element, along);
@@ -364,7 +442,7 @@ export class LyricLight {
     }
   }
 
-  ellipse(element, scale, color) {
+  ellipse(element: BlobElement, scale: number, color: string) {
     const ctx = this.maskContext;
     ctx.fillStyle = color;
     ctx.beginPath();
@@ -372,7 +450,7 @@ export class LyricLight {
     ctx.fill();
   }
 
-  spark(x, y, radius, alpha) {
+  spark(x: number, y: number, radius: number, alpha: number) {
     if (alpha <= 0.01) return;
     const ctx = this.maskContext;
     const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
@@ -382,52 +460,57 @@ export class LyricLight {
     ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
   }
 
-  pointAt(element, fraction) {
+  // Point at `fraction` of the stroke's length. Strokes always have at least
+  // two points, and `cum` has one entry per point, so indices stay in range.
+  pointAt(element: StrokeElement, fraction: number): Point {
     const target = fraction * element.total;
     const { cum, points } = element;
     let low = 0;
     let high = cum.length - 1;
     while (low < high) {
       const mid = (low + high) >> 1;
-      if (cum[mid] < target) low = mid + 1; else high = mid;
+      if (cum[mid]! < target) low = mid + 1; else high = mid;
     }
-    if (low === 0) return points[0];
-    const span = cum[low] - cum[low - 1] || 1;
-    const t = (target - cum[low - 1]) / span;
-    const [x0, y0] = points[low - 1];
-    const [x1, y1] = points[low];
+    if (low === 0) return points[0]!;
+    const span = cum[low]! - cum[low - 1]! || 1;
+    const t = (target - cum[low - 1]!) / span;
+    const [x0, y0] = points[low - 1]!;
+    const [x1, y1] = points[low]!;
     return [x0 + (x1 - x0) * t, y0 + (y1 - y0) * t];
   }
 
   // Visible part of a constant-width stroke as one path.
-  line(element, progress, end, scale, color) {
+  line(element: StrokeElement & { width: number }, progress: number, end: Point, scale: number, color: string) {
     const ctx = this.maskContext;
     const limit = progress * element.total;
     const { points, cum } = element;
     ctx.strokeStyle = color;
     ctx.lineWidth = element.width * scale;
     ctx.beginPath();
-    ctx.moveTo(points[0][0], points[0][1]);
-    for (let i = 1; i < points.length && cum[i] < limit; i += 1) ctx.lineTo(points[i][0], points[i][1]);
+    // The first lineTo of an empty path starts it, like moveTo.
+    for (const [i, [x, y]] of points.entries()) {
+      if (i > 0 && cum[i]! >= limit) break;
+      ctx.lineTo(x, y);
+    }
     ctx.lineTo(end[0], end[1]);
     ctx.stroke();
   }
 
   // Visible part of a swelling stroke as one filled outline with round ends.
-  outline(element, progress, end, scale, color) {
+  outline(element: SwellingStroke, progress: number, end: Point, scale: number, color: string) {
     const ctx = this.maskContext;
     const limit = progress * element.total;
     const { points, cum } = element;
-    const path = [];
-    for (let i = 0; i < points.length && cum[i] < limit; i += 1) path.push([points[i], cum[i]]);
+    const path: [point: Point, distance: number][] = [];
+    for (let i = 0; i < points.length && cum[i]! < limit; i += 1) path.push([points[i]!, cum[i]!]);
     path.push([end, limit]);
     if (path.length < 2) return;
-    const left = [];
-    const right = [];
+    const left: Point[] = [];
+    const right: Point[] = [];
     for (let i = 0; i < path.length; i += 1) {
-      const [[x, y], distance] = path[i];
-      const [px, py] = path[Math.max(0, i - 1)][0];
-      const [nx, ny] = path[Math.min(path.length - 1, i + 1)][0];
+      const [[x, y], distance] = path[i]!;
+      const [px, py] = path[Math.max(0, i - 1)]![0];
+      const [nx, ny] = path[Math.min(path.length - 1, i + 1)]![0];
       const length = Math.hypot(nx - px, ny - py) || 1;
       const half = (element.widthAt(distance / element.total) * scale) / 2;
       const ox = (-(ny - py) / length) * half;
@@ -437,12 +520,10 @@ export class LyricLight {
     }
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.moveTo(left[0][0], left[0][1]);
-    for (let i = 1; i < left.length; i += 1) ctx.lineTo(left[i][0], left[i][1]);
-    for (let i = right.length - 1; i >= 0; i -= 1) ctx.lineTo(right[i][0], right[i][1]);
+    for (const [x, y] of left) ctx.lineTo(x, y);
+    for (const [x, y] of right.reverse()) ctx.lineTo(x, y);
     ctx.closePath();
-    for (const index of [0, path.length - 1]) {
-      const [[x, y], distance] = path[index];
+    for (const [[x, y], distance] of [path[0]!, path.at(-1)!]) {
       ctx.moveTo(x, y);
       ctx.arc(x, y, (element.widthAt(distance / element.total) * scale) / 2, 0, Math.PI * 2);
     }
@@ -450,12 +531,13 @@ export class LyricLight {
   }
 
   render() {
-    if (this.destroyed || this.lost || !this.layout || !this.fontsReady || !this.canvas.width) return;
-    this.buildAtlas();
+    const { layout } = this;
+    if (this.destroyed || this.lost || !layout || !this.fontsReady || !this.canvas.width) return;
+    this.buildAtlas(layout);
     const { gl, uniforms: u } = this;
     const index = Math.floor(this.time / PHRASE_LENGTH) % phraseCount;
     const tau = this.time % PHRASE_LENGTH;
-    this.drawMask(this.phrase(index), tau);
+    this.drawMask(this.phrase(index, layout), tau, layout);
 
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.maskTexture);
@@ -481,7 +563,7 @@ export class LyricLight {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
-  tick = now => {
+  tick = (now: DOMHighResTimeStamp) => {
     this.frame = 0;
     if (!this.playing || !this.visible) return;
     const delta = this.last ? (now - this.last) / 1000 : 0;
@@ -497,7 +579,7 @@ export class LyricLight {
   };
 
   // Drop resolution on hardware that cannot hold a smooth frame rate.
-  adapt(delta) {
+  adapt(delta: number) {
     if (!delta) return;
     this.slowFrames = delta > 0.028 ? this.slowFrames + 1 : Math.max(0, this.slowFrames - 1);
     if (this.slowFrames > 90 && this.quality > 0.6) {
@@ -519,7 +601,7 @@ export class LyricLight {
     else this.render();
   }
 
-  setPlaying(playing) {
+  setPlaying(playing: boolean) {
     this.playing = playing;
     if (!playing) {
       cancelAnimationFrame(this.frame);
@@ -530,7 +612,7 @@ export class LyricLight {
     this.refresh();
   }
 
-  setVisible(visible) {
+  setVisible(visible: boolean) {
     this.visible = visible;
     if (!visible) {
       cancelAnimationFrame(this.frame);
@@ -538,12 +620,12 @@ export class LyricLight {
     } else this.schedule();
   }
 
-  setTime(time) {
+  setTime(time: number) {
     this.time = time;
     this.refresh();
   }
 
-  setPointer(x, y, active) {
+  setPointer(x: number, y: number, active: boolean) {
     if (active && this.pointer.target === 0) {
       this.pointer.x = x;
       this.pointer.y = y;
