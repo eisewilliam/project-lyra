@@ -1,4 +1,5 @@
 mod commands;
+mod island_size;
 mod linux;
 mod macos;
 mod menu;
@@ -36,6 +37,8 @@ pub struct AppState {
     pub surface_visibility: RuntimeSurfaceVisibility,
     /// Wakes the poll loop for an immediate adapter poll.
     pub poll: PollTrigger,
+    /// The Marquee's size on its current display.
+    pub island_fit: island_size::IslandFit,
 }
 
 /// Lets commands request an immediate adapter poll — after a transport
@@ -370,9 +373,12 @@ pub(crate) fn apply_preferred_monitor_positioning(app: &tauri::AppHandle, ui: &U
     let mon_h = monitor.size().height as i32;
 
     // Island: top-centred on the target monitor only when the user has no
-    // explicit saved position.
+    // explicit saved position. The fit that follows the move keeps it centred.
     if ui.island_pos.is_none() {
-        let island_w = ui.island_width.unwrap_or(400) as i32;
+        let island_w = app
+            .get_webview_window("island")
+            .and_then(|w| w.outer_size().ok())
+            .map_or(0, |size| size.width as i32);
         let ix = mon_x + (mon_w - island_w) / 2;
         let iy = mon_y + 8;
         let _ = macos::set_overlay_position(app, "island", ix, iy);
@@ -956,6 +962,7 @@ pub fn run() {
                 ui,
                 surface_visibility: RuntimeSurfaceVisibility::new_all_hidden(),
                 poll: PollTrigger::default(),
+                island_fit: island_size::IslandFit::default(),
             });
 
             #[cfg(target_os = "macos")]
@@ -990,10 +997,10 @@ pub fn run() {
             // visibility. This prevents the empty-window flash that occurs
             // when the native frame becomes visible before React renders.
 
-            // Restore persisted island size (before position so the frame is correct).
-            if let (Some(w), Some(h)) = (initial.island_width, initial.island_height) {
-                let _ = macos::set_island_size(app.handle(), w, h);
-            }
+            // Size the island before placing it: the saved position is the
+            // top-left corner of the sized window. Moves below refit it if
+            // they take it to another display or under the notch.
+            island_size::fit_island_now(app.handle(), true);
 
             // Restore persisted island position immediately at startup so the window
             // appears in the right place before the frontend finishes loading.
@@ -1111,7 +1118,7 @@ pub fn run() {
             commands::update_island_settings,
             commands::set_overlay_position,
             commands::save_island_position,
-            commands::set_island_size,
+            commands::get_island_frame,
             commands::get_render_snapshot,
             commands::get_all_lyrics,
             commands::get_all_lines,
@@ -1149,6 +1156,16 @@ pub fn run() {
             updater::install_update,
         ])
         .on_window_event(|window, event| {
+            // A move can take the island to another display, or onto or off
+            // the notch; either can change its size.
+            if window.label() == "island"
+                && matches!(
+                    event,
+                    tauri::WindowEvent::Moved(_) | tauri::WindowEvent::ScaleFactorChanged { .. }
+                )
+            {
+                island_size::fit_island(window.app_handle(), false);
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let label = window.label();
                 if label == "main" || label == "island" || label == "karaoke" {

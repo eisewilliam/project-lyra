@@ -104,7 +104,7 @@ interface Surface {
 
 const surfaces: Surface[] = [
   { id: 'window', name: 'Lyra window', text: 'The whole song: artwork, playback controls and the full lyric sheet, with the current line in focus. Click any line to jump there.', detail: 'The window takes its color from the artwork of whatever is playing.' },
-  { id: 'island', name: 'Marquee', text: 'A dynamic panel docked to the top of your screen, above every app. The line being sung, and the one coming next.', detail: 'Hide it when the music pauses, or move it wherever you like.' },
+  { id: 'island', name: 'Marquee', text: 'A dynamic panel above every app, wherever you put it. The line being sung, and the one coming next.', detail: 'Hide it when the music pauses, and let it size itself to each screen.' },
   { id: 'overlay', name: 'Karaoke overlay', text: 'One or two large lines across your screen, filling word by word as they are sung.', detail: 'Give it a background so it reads over anything, even a bright page.' },
 ];
 const sceneLabels: Record<SurfaceId, string> = {

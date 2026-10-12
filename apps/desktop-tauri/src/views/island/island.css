@@ -21,6 +21,11 @@ html, body {
   --marquee-clear: max(0, calc(2 * var(--marquee-transparency, 0.5) - 1));
   --panel-tint-rgb: 22 22 26;
   --panel-tint: 0.4;
+  /* One point of the base design at the chosen size (Settings → Marquee →
+     Size, `--marquee-scale`). Lengths below are multiples of it, so the
+     whole layout scales together; the corner radius stays fixed to match
+     the native glass. */
+  --u: calc(1px * var(--marquee-scale, 1));
   --panel-wash: 0.65;
   background: rgb(var(--panel-tint-rgb) / calc(var(--panel-tint) * var(--marquee-body) + (1 - var(--panel-tint)) * var(--marquee-solid)));
   border-radius: 20px;
@@ -145,15 +150,17 @@ html, body {
   height: 100%;
   display: flex;
   align-items: center;
-  padding: 0 20px;
+  /* Under a MacBook notch the window is taller by the notch's height and the
+     content sits below it (`--marquee-notch-inset`, set by the host fit). */
+  padding: var(--marquee-notch-inset, 0px) calc(20 * var(--u)) 0;
   box-sizing: border-box;
-  gap: 16px;
+  gap: calc(16 * var(--u));
 }
 
 .panel-art {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
+  width: calc(40 * var(--u));
+  height: calc(40 * var(--u));
+  border-radius: calc(12 * var(--u));
   flex-shrink: 0;
   box-shadow: 0 8px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
 }
@@ -196,9 +203,9 @@ html, body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 4px;
+  gap: calc(4 * var(--u));
   flex: 1;
-  min-width: 0; 
+  min-width: 0;
 }
 
 .panel-lyrics-stack.is-placeholder {
@@ -206,7 +213,7 @@ html, body {
 }
 
 .panel-lyric-active {
-  font-size: calc(1rem * var(--font-scale, 1));
+  font-size: calc(16 * var(--u) * var(--font-scale, 1));
   font-weight: 700;
   color: var(--lyric-color, #fff);
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
@@ -263,7 +270,7 @@ html, body {
 }
 
 .panel-lyric-next {
-  font-size: calc(0.85rem * var(--font-scale, 1));
+  font-size: calc(13.6 * var(--u) * var(--font-scale, 1));
   font-weight: 600;
   /* The only read-ahead line: readable at a glance, but kept below the
      current line's unsung words (55%, 72% when clear) so it never competes
@@ -276,7 +283,7 @@ html, body {
      rise ended. A shadow is painted content, the same on any layer. WebKit
      draws a shadow's blur lighter than a filter's: 3px matches the old
      blur(0.75px), measured on screen captures of the panel. */
-  --next-blur: calc(3px * var(--lyric-blur, 1) * var(--blur-power, 1) * (1 - 0.5 * var(--marquee-clear, 0)));
+  --next-blur: calc(3 * var(--u) * var(--lyric-blur, 1) * var(--blur-power, 1) * (1 - 0.5 * var(--marquee-clear, 0)));
   color: transparent;
   text-shadow: 0 0 var(--next-blur) rgba(255, 255, 255, calc(0.45 + 0.2 * var(--marquee-clear, 0)));
   white-space: nowrap;
@@ -300,13 +307,13 @@ html, body {
 .panel-placeholder {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: calc(10 * var(--u));
   min-width: 0;
 }
 
 .panel-placeholder-indicator {
-  width: 28px;
-  height: 28px;
+  width: calc(28 * var(--u));
+  height: calc(28 * var(--u));
   border-radius: 50%;
   flex-shrink: 0;
   display: inline-flex;
@@ -318,8 +325,8 @@ html, body {
 }
 
 .panel-placeholder-icon {
-  width: 14px;
-  height: 14px;
+  width: calc(14 * var(--u));
+  height: calc(14 * var(--u));
 }
 
 .panel-placeholder-lines {
@@ -327,12 +334,12 @@ html, body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: calc(6 * var(--u));
 }
 
 .panel-placeholder-line {
   display: block;
-  height: 8px;
+  height: calc(8 * var(--u));
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.12);
 }
@@ -365,23 +372,24 @@ html, body {
   /* Own layer: per-frame meter changes repaint only this small box. */
   will-change: transform;
   display: flex;
-  gap: 2px;
+  gap: calc(2 * var(--u));
   align-items: center; /* Centered animation (grows from both top and bottom) */
   justify-content: flex-end;
-  height: 18px;
-  min-width: 18px; /* Accommodate 4 wider bars cleanly */
+  height: calc(18 * var(--u));
+  min-width: calc(18 * var(--u)); /* Accommodate 4 wider bars cleanly */
   flex-shrink: 0;
   opacity: 0.9;
 }
 
 /* Bars are drawn at full height and scaled to their level (`--meter-scale`,
-   level height / 18px), so the per-frame update never relayouts. Dividing
-   the vertical corner radius by the same scale keeps the ends round. */
+   level height / full height), so the per-frame update never relayouts.
+   Dividing the vertical corner radius by the same scale keeps the ends
+   round. */
 .audio-bars .bar {
-  width: 3px;
-  height: 18px;
+  width: calc(3 * var(--u));
+  height: calc(18 * var(--u));
   transform: scaleY(var(--meter-scale, 0.1667));
-  border-radius: 1.5px / calc(1.5px / var(--meter-scale, 0.1667));
+  border-radius: calc(1.5 * var(--u)) / calc(1.5 * var(--u) / var(--meter-scale, 0.1667));
   background:
     linear-gradient(
       180deg,
@@ -408,7 +416,7 @@ html, body {
 
 .audio-bars.is-paused .bar {
   transform: scaleY(0.1667);
-  border-radius: 1.5px / 9px;
+  border-radius: calc(1.5 * var(--u)) / calc(9 * var(--u));
   opacity: 0.36;
   box-shadow: none;
   transition: transform 0.2s ease, border-radius 0.2s ease, opacity 0.2s ease;
@@ -451,45 +459,45 @@ html, body {
   }
 }
 
-/* Compact and Small Heights (<= 64px logical height) Legibility Polish */
+/* One line (Settings → Marquee → Lines): a shorter panel, tighter fit. */
 .floating-panel.is-compact .panel-lyric-next {
   display: none !important;
 }
 .floating-panel.is-compact .panel-art {
-  width: 30px !important;
-  height: 30px !important;
-  border-radius: 8px !important;
+  width: calc(30 * var(--u)) !important;
+  height: calc(30 * var(--u)) !important;
+  border-radius: calc(8 * var(--u)) !important;
 }
 .floating-panel.is-compact .panel-content {
-  padding: 0 12px !important;
-  gap: 10px !important;
+  padding: var(--marquee-notch-inset, 0px) calc(12 * var(--u)) 0 !important;
+  gap: calc(10 * var(--u)) !important;
 }
 .floating-panel.is-compact .panel-placeholder-indicator {
-  width: 24px !important;
-  height: 24px !important;
+  width: calc(24 * var(--u)) !important;
+  height: calc(24 * var(--u)) !important;
 }
 .floating-panel.is-compact .panel-placeholder-icon {
-  width: 12px !important;
-  height: 12px !important;
+  width: calc(12 * var(--u)) !important;
+  height: calc(12 * var(--u)) !important;
 }
 .floating-panel.is-compact .panel-placeholder-lines {
-  gap: 4px !important;
+  gap: calc(4 * var(--u)) !important;
 }
 .floating-panel.is-compact .panel-placeholder-line {
-  height: 5px !important;
+  height: calc(5 * var(--u)) !important;
 }
 .floating-panel.is-compact .island-meter {
   transform: scale(0.8);
   transform-origin: center right;
-  margin-left: -4px;
+  margin-left: calc(-4 * var(--u));
 }
 
 /* Progress Ring Overlay Styles */
 .progress-ring-svg {
   position: absolute;
-  inset: -2.5px;
-  width: calc(100% + 5px);
-  height: calc(100% + 5px);
+  inset: calc(-2.5 * var(--u));
+  width: calc(100% + 5 * var(--u));
+  height: calc(100% + 5 * var(--u));
   z-index: 10;
   pointer-events: none;
   transform: rotate(-90deg); /* Start from the top center */
@@ -531,8 +539,8 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: calc(30 * var(--u));
+  height: calc(30 * var(--u));
   flex-shrink: 0;
 }
 
@@ -557,7 +565,7 @@ html, body {
 }
 
 .island-glyph {
-  --glyph-size: 18px;
+  --glyph-size: calc(18 * var(--u));
   position: absolute;
   color: #fff;
   opacity: 0;

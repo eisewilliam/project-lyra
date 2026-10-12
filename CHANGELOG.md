@@ -10,6 +10,17 @@ offered it as an update.
 
 ## [Unreleased]
 
+### Changed
+
+- The Marquee's size now looks about the same on every display: a new Size
+  setting (Small to Extra large) scales the whole panel together, and Match
+  screen, the default, picks the size for whichever display it is on. It never
+  takes up more than 45% of a screen's width. Your current size carries over.
+- The Marquee's Height setting is replaced by Lines: the current line only, or
+  the current and next line. Width is now relative to the chosen size.
+- Placed under the notch on a MacBook, the Marquee keeps its lyrics below the
+  notch instead of behind it.
+
 ## [0.1.0-beta.1] - 2026-10-12
 
 The first pre-release, for internal testing ahead of 0.1.0.

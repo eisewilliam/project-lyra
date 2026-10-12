@@ -12,7 +12,6 @@ import {
   setFontScale,
   setIslandClickThrough,
   setIslandLocked,
-  setIslandSize,
   setPreferredMonitor,
   setShowOnFullscreen,
   setTheme,
@@ -235,10 +234,10 @@ export function useSettings() {
         () => setIslandClickThrough(enabled),
       );
     },
-    setIslandSize: async (width: number, height: number) => {
+    setIslandSize: async (scale: number | null) => {
       await optimisticUiAction(
-        { island_width: width, island_height: height },
-        () => debounced('island-size', 120, () => setIslandSize(width, height)),
+        { island_scale: scale },
+        () => updateIslandSettings(scale === null ? { match_screen: true } : { scale }),
       );
     },
     resetIslandPosition: async () => {

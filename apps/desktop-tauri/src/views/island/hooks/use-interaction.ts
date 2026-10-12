@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent, type Wheel
 import { listen } from '@tauri-apps/api/event';
 import { LogicalSize } from '@tauri-apps/api/dpi';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import type { PlaybackCaps } from '@/types/tauri-contracts';
+import { ISLAND_MAX_BASE_WIDTH, ISLAND_MIN_BASE_WIDTH } from '@/constants/island-size';
+import type { IslandFrame, PlaybackCaps } from '@/types/tauri-contracts';
 import { detectHostOs } from '@/utils/os';
 import {
   islandPointerInside,
@@ -11,8 +12,8 @@ import {
   playbackPlayPause,
   playbackPrevious,
   playbackRaise,
-  setIslandSize,
   setOverlayPosition,
+  updateIslandSettings,
 } from '@/utils/tauri-commands';
 
 /** What a click does, by the island region pressed (`data-island-action`). */
@@ -27,9 +28,6 @@ const DOUBLE_CLICK_SLOP_PX = 6;
 /** Horizontal trackpad travel that counts as a swipe to skip. */
 const SWIPE_THRESHOLD_PX = 70;
 const SWIPE_COOLDOWN_MS = 700;
-/** Island width limits when resizing by its edges, in logical px. */
-const MIN_WIDTH = 360;
-const MAX_WIDTH = 900;
 /** Distance from a side edge (px) that reveals that edge's resize handle. */
 const EDGE_ZONE_PX = 20;
 /** While hovered, re-check the pointer this often so effects never linger. */
@@ -55,8 +53,9 @@ type Press = {
   resizeEdge: -1 | 1 | null;
   startX: number;
   startY: number;
-  /** Window frame in physical px, once the async lookup returns. */
-  origin: { x: number; y: number; width: number; height: number } | null;
+  /** Window frame in physical px and the display's pixels per point, once
+      the async lookup returns. */
+  origin: { x: number; y: number; width: number; height: number; pixelRatio: number } | null;
   dragging: boolean;
 };
 
@@ -84,17 +83,20 @@ function actionFor(target: EventTarget | null): IslandAction {
  *   window;
  * - a press that travels past a few pixels drags the island instead, unless
  *   its position is locked; pressing an edge handle resizes it around its
- *   centre;
+ *   centre, within the widths its size allows on this display;
  * - a horizontal two-finger swipe skips tracks.
  * With click-through on, the window receives no mouse input at all.
  */
 export function useIslandInteraction({
   ensureWindowReady,
+  frame,
   locked,
   caps,
   onTogglePlaying,
 }: {
   ensureWindowReady: () => Promise<void>;
+  /** The fitted size; null until the host has sized the window. */
+  frame: IslandFrame | null;
   locked: boolean;
   caps: PlaybackCaps;
   onTogglePlaying: () => void;
@@ -109,6 +111,9 @@ export function useIslandInteraction({
   const pendingMoveRef = useRef<{ x: number; y: number; width?: number; height?: number } | null>(null);
   const swipeRef = useRef({ accumulated: 0, lockedUntil: 0 });
   const lastOpenClickRef = useRef<{ at: number; x: number; y: number } | null>(null);
+  const sizeScale = frame?.scale ?? 1;
+  const minWidth = ISLAND_MIN_BASE_WIDTH * sizeScale;
+  const maxWidth = Math.max(minWidth, Math.min(ISLAND_MAX_BASE_WIDTH * sizeScale, frame?.max_width ?? Infinity));
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -198,9 +203,9 @@ export function useIslandInteraction({
     pressRef.current = press;
     if (!locked) {
       const win = getCurrentWindow();
-      Promise.all([win.outerPosition(), win.outerSize()])
-        .then(([position, size]) => {
-          press.origin = { x: position.x, y: position.y, width: size.width, height: size.height };
+      Promise.all([win.outerPosition(), win.outerSize(), win.scaleFactor()])
+        .then(([position, size, pixelRatio]) => {
+          press.origin = { x: position.x, y: position.y, width: size.width, height: size.height, pixelRatio };
         })
         .catch(noop);
     }
@@ -224,11 +229,11 @@ export function useIslandInteraction({
       setDragging(true);
     }
     if (!press.origin) return;
-    const scale = globalThis.devicePixelRatio || 1;
+    const scale = press.origin.pixelRatio;
     if (press.resizeEdge !== null) {
       // Grow or shrink symmetrically so the island stays centred where it is.
       const startWidth = press.origin.width / scale;
-      const width = Math.round(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth + 2 * dx * press.resizeEdge)));
+      const width = Math.round(Math.min(maxWidth, Math.max(minWidth, startWidth + 2 * dx * press.resizeEdge)));
       const centerX = press.origin.x + press.origin.width / 2;
       pendingMoveRef.current = {
         x: Math.round(centerX - (width * scale) / 2),
@@ -243,7 +248,7 @@ export function useIslandInteraction({
       };
     }
     moveRafRef.current ||= requestAnimationFrame(flushMove);
-  }, [flushMove, locked]);
+  }, [flushMove, locked, maxWidth, minWidth]);
 
   const endPress = useCallback((event: PointerEvent<HTMLElement>, cancelled: boolean) => {
     const press = pressRef.current;
@@ -254,18 +259,19 @@ export function useIslandInteraction({
     }
     if (press.dragging) {
       setDragging(false);
-      if (press.resizeEdge !== null) {
-        // Persist the final size once, not on every frame of the drag.
-        void getCurrentWindow().innerSize().then((size) => {
-          const scale = globalThis.devicePixelRatio || 1;
-          return setIslandSize(Math.round(size.width / scale), Math.round(size.height / scale));
-        }).catch(noop);
+      const origin = press.origin;
+      if (press.resizeEdge !== null && origin) {
+        // Persist the final width once, not on every frame of the drag, as
+        // the width at Medium size so it follows later size changes.
+        void getCurrentWindow().innerSize().then((size) => updateIslandSettings({
+          base_width: Math.round(size.width / origin.pixelRatio / sizeScale),
+        })).catch(noop);
       }
       return;
     }
     if (press.resizeEdge !== null) return;
     if (!cancelled) runAction(press.action, event.screenX, event.screenY);
-  }, [runAction]);
+  }, [runAction, sizeScale]);
 
   const onPointerUp = useCallback((event: PointerEvent<HTMLElement>) => endPress(event, false), [endPress]);
   const onPointerCancel = useCallback((event: PointerEvent<HTMLElement>) => endPress(event, true), [endPress]);

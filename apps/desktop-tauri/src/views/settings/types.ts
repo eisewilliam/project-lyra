@@ -14,7 +14,8 @@ export type Actions = {
   setFullscreen: (surface: Surface, value: boolean) => Promise<void>;
   setLock: (locked: boolean) => Promise<void>;
   setIslandClickThrough: (enabled: boolean) => Promise<void>;
-  setIslandSize: (width: number, height: number) => Promise<void>;
+  /** A size from `ISLAND_SCALE_STEPS`, or null to match the display. */
+  setIslandSize: (scale: number | null) => Promise<void>;
   resetIslandPosition: () => Promise<void>;
   setFont: (surface: Surface, scale: number) => Promise<void>;
   setTheme: (theme: string) => Promise<void>;

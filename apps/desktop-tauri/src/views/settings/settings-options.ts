@@ -89,7 +89,8 @@ export const KARAOKE_ALIGNMENT_OPTIONS: SelectOption[] = [
   { value: 'right', label: 'Right' },
 ];
 
-export const KARAOKE_LINE_OPTIONS: SelectOption[] = [
+/** Line count for the Marquee and the karaoke overlay. */
+export const LINE_COUNT_OPTIONS: SelectOption[] = [
   { value: '1', label: 'Current only' },
   { value: '2', label: 'Current and next' },
 ];
@@ -101,13 +102,13 @@ export const KARAOKE_BACKGROUND_STEPS: SliderStep[] = [
   { value: 0.75, label: '75%' },
 ];
 
+/** Width at Medium size; the Size setting scales it. Dragging the Marquee's
+    edges sets any width in between. */
 export const ISLAND_WIDTH_STEPS: SliderStep[] = [
-  { value: 400, label: 'Narrow' },
-  { value: 500, label: 'Small' },
-  { value: 600, label: 'Medium' },
-  { value: 700, label: 'Wide' },
-  { value: 800, label: 'Wider' },
-  { value: 900, label: 'Full' },
+  { value: 450, label: 'Narrow' },
+  { value: 600, label: 'Standard' },
+  { value: 750, label: 'Wide' },
+  { value: 900, label: 'Widest' },
 ];
 
 export const ISLAND_TRANSPARENCY_STEPS: SliderStep[] = [
@@ -116,12 +117,4 @@ export const ISLAND_TRANSPARENCY_STEPS: SliderStep[] = [
   { value: 0.5, label: 'Standard' },
   { value: 0.75, label: 'High' },
   { value: 1, label: 'Clear' },
-];
-
-export const ISLAND_HEIGHT_STEPS: SliderStep[] = [
-  { value: 52, label: 'Compact' },
-  { value: 64, label: 'Small' },
-  { value: 72, label: 'Medium' },
-  { value: 88, label: 'Large' },
-  { value: 104, label: 'Tall' },
 ];

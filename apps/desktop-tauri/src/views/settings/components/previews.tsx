@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { islandBaseHeight } from '@/constants/island-size';
 import type { AppearanceSettings, UiState } from '@/types/tauri-contracts';
 import { resolveFontFamily } from '@/utils/app-settings';
 
@@ -54,9 +55,11 @@ export function IslandPreview({
   appearance,
   artworkSrc,
 }: Readonly<{ ui: UiState; appearance: AppearanceSettings; artworkSrc: string }>) {
-  const width = ui.island_width ?? 600;
-  const height = ui.island_height ?? 72;
-  const compact = height <= 64;
+  // At Medium: Size changes how big the Marquee is on screen, not its look.
+  const width = ui.island_base_width ?? 600;
+  const lines = ui.island_lines ?? 2;
+  const height = islandBaseHeight(lines);
+  const compact = lines <= 1;
   const transparency = ui.island_transparency ?? 0.5;
   return (
     <div

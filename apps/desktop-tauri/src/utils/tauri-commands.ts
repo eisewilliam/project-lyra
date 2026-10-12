@@ -5,6 +5,7 @@ import type {
   FollowRule,
   KnownPlayerInfo,
   MediaPolicyView,
+  IslandFrame,
   IslandSettingsPatch,
   KaraokeSettingsPatch,
   LyricLineSlim,
@@ -83,8 +84,8 @@ export function saveIslandPosition(x: number, y: number): Promise<void> {
   return invoke('save_island_position', { x, y });
 }
 
-export function setIslandSize(width: number, height: number): Promise<void> {
-  return invoke('set_island_size', { width, height });
+export function getIslandFrame(): Promise<IslandFrame | null> {
+  return invoke('get_island_frame');
 }
 
 export function getRenderSnapshot(): Promise<RenderSnapshot> {

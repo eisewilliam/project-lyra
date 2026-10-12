@@ -626,6 +626,31 @@ pub fn apply_overlay_visibility(
 
 // ── Island size ────────────────────────────────────────────────────────────────
 
+/// The notch of the display `window` is on, if it has one. Call on the main
+/// thread.
+#[cfg(target_os = "macos")]
+pub fn display_notch(window: &tauri::WebviewWindow) -> Option<crate::island_size::Notch> {
+    let screen = ns_window(window)?.screen()?;
+    // The safe area and the areas beside the notch arrived in macOS 12.
+    if !screen.respondsToSelector(sel!(safeAreaInsets)) {
+        return None;
+    }
+    let height = screen.safeAreaInsets().top;
+    let beside_left = screen.auxiliaryTopLeftArea().size.width;
+    let beside_right = screen.auxiliaryTopRightArea().size.width;
+    let notch = crate::island_size::Notch {
+        left: beside_left,
+        right: screen.frame().size.width - beside_right,
+        height,
+    };
+    (height > 0.0 && beside_left > 0.0 && notch.right > notch.left).then_some(notch)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn display_notch(_window: &tauri::WebviewWindow) -> Option<crate::island_size::Notch> {
+    None
+}
+
 #[cfg(target_os = "macos")]
 pub fn set_island_size(app: &AppHandle, width: u32, height: u32) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("island") {
