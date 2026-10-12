@@ -21,6 +21,11 @@ offered it as an update.
 - Placed under the notch on a MacBook, the Marquee keeps its lyrics below the
   notch instead of behind it.
 
+### Fixed
+
+- On Windows, Lyra could start with its window hidden and, once opened, stay
+  on the loading screen without ever showing the playing song or its lyrics.
+
 ## [0.1.0-beta.1] - 2026-10-12
 
 The first pre-release, for internal testing ahead of 0.1.0.

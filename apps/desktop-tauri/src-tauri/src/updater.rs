@@ -63,11 +63,30 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+impl Updates {
+    /// Managed on the builder, before any window can ask for the status.
+    pub fn new(config: &tauri::Config) -> Self {
+        Self {
+            status: Mutex::new(if config_enables_updates(config) {
+                UpdateStatus::Idle
+            } else {
+                UpdateStatus::Unavailable
+            }),
+            ready: Mutex::new(None),
+            busy: AtomicBool::new(false),
+        }
+    }
+}
+
 pub(crate) fn updates_enabled(app: &AppHandle) -> bool {
+    config_enables_updates(app.config())
+}
+
+fn config_enables_updates(config: &tauri::Config) -> bool {
     if cfg!(debug_assertions) {
         return false;
     }
-    app.config()
+    config
         .plugins
         .0
         .get("updater")
@@ -99,21 +118,11 @@ fn set_status(app: &AppHandle, status: UpdateStatus) {
     let _ = app.emit("update-status", info(app, status));
 }
 
-/// Register the updater and start the background schedule.
-pub fn init(app: &AppHandle) -> tauri::Result<()> {
-    app.plugin(tauri_plugin_updater::Builder::new().build())?;
-    let enabled = updates_enabled(app);
-    app.manage(Updates {
-        status: Mutex::new(if enabled {
-            UpdateStatus::Idle
-        } else {
-            UpdateStatus::Unavailable
-        }),
-        ready: Mutex::new(None),
-        busy: AtomicBool::new(false),
-    });
-    if !enabled {
-        return Ok(());
+/// Start the background schedule. The plugin and `Updates` are registered on
+/// the builder.
+pub fn init(app: &AppHandle) {
+    if !updates_enabled(app) {
+        return;
     }
 
     let app = app.clone();
@@ -129,7 +138,6 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
             tokio::time::sleep(CHECK_INTERVAL).await;
         }
     });
-    Ok(())
 }
 
 fn is_ready(app: &AppHandle) -> bool {

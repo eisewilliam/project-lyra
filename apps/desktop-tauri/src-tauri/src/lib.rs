@@ -162,13 +162,11 @@ fn platform_adapters() -> Vec<Box<dyn PlayerAdapter>> {
             Box::new(spotify_macos::SpotifyMacOsAdapter::new()),
             Box::new(apple_music_macos::AppleMusicMacOsAdapter::new()),
         ];
-        match mediaremote_framework() {
-            Some(framework) => adapters.push(Box::new(mediaremote_macos::MediaRemoteAdapter::new(
+        // Runs before the log plugin exists; `setup` warns when it is missing.
+        if let Some(framework) = mediaremote_framework() {
+            adapters.push(Box::new(mediaremote_macos::MediaRemoteAdapter::new(
                 framework,
-            ))),
-            None => {
-                log::warn!("MediaRemoteAdapter.framework not found; Now Playing apps unavailable")
-            }
+            )));
         }
         adapters
     }
@@ -909,61 +907,71 @@ fn set_thread_qos_utility() {}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Tauri creates the windows before `setup` runs, and on Windows creating
+    // each WebView2 pumps the message loop, so a page that loads quickly
+    // (release builds serve it from the binary) can call commands while the
+    // later windows are still being created. Everything a command reaches is
+    // therefore registered on the builder, not in `setup`.
+    migrate_app_support_dir();
+    let dir = app_support_dir();
+    let ui = UiStateStore::load(&dir);
+    let initial = ui.snapshot();
+    // Until the first-run explanation is acknowledged, don't script
+    // Spotify or Music: that is what triggers macOS's permission prompt.
+    #[cfg(target_os = "macos")]
+    lyra_core::player::set_automation_enabled(initial.onboarded);
+
+    let runtime = LyraRuntime::new_in(dir.clone());
+    let players = Arc::new(
+        PlayerHub::new(platform_adapters(), artwork_base_url())
+            .with_media_policy(&dir)
+            .with_known_players(&dir)
+            .with_lyric_cache(runtime.cache.clone()),
+    );
+    players.set_lookups_allowed(runtime.settings().behavior.browser_lyrics == BrowserLyrics::Allow);
+    let state = AppState {
+        runtime: Mutex::new(runtime),
+        lyrics: LyricsRefresh::default(),
+        players: Arc::clone(&players),
+        ui,
+        surface_visibility: RuntimeSurfaceVisibility::new_all_hidden(),
+        poll: PollTrigger::default(),
+        island_fit: island_size::IslandFit::default(),
+    };
+
+    let context = tauri::generate_context!();
+    let updates = updater::Updates::new(context.config());
+
     let builder = tauri::Builder::default();
+    let builder = if cfg!(debug_assertions) {
+        builder.plugin(
+            tauri_plugin_log::Builder::default()
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
+    } else {
+        builder
+    };
     #[cfg(target_os = "macos")]
     let builder = builder.menu(menu::build).on_menu_event(menu::handle_event);
     builder
+        .manage(state)
+        .manage(updates)
+        .plugin(tauri_plugin_clipboard_manager::init())
+        // macOS LaunchAgent / Windows registry; `app.autolaunch()` needs it.
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![]),
+        ))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .register_uri_scheme_protocol(ARTWORK_SCHEME, |ctx, request| {
             artwork_response(ctx.app_handle(), &request)
         })
-        .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
-
-            app.handle()
-                .plugin(tauri_plugin_clipboard_manager::init())?;
-
-            // Register the autostart plugin for all builds (macOS LaunchAgent /
-            // Windows registry). This must be registered before any command that
-            // calls `app.autolaunch()`.
-            app.handle().plugin(tauri_plugin_autostart::init(
-                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-                Some(vec![]),
-            ))?;
-
-            migrate_app_support_dir();
-            let dir = app_support_dir();
-            let ui = UiStateStore::load(&dir);
-            let initial = ui.snapshot();
-            // Until the first-run explanation is acknowledged, don't script
-            // Spotify or Music: that is what triggers macOS's permission prompt.
+        .setup(move |app| {
             #[cfg(target_os = "macos")]
-            lyra_core::player::set_automation_enabled(initial.onboarded);
-
-            let runtime = LyraRuntime::new_in(dir.clone());
-            let players = Arc::new(
-                PlayerHub::new(platform_adapters(), artwork_base_url())
-                    .with_media_policy(&dir)
-                    .with_known_players(&dir)
-                    .with_lyric_cache(runtime.cache.clone()),
-            );
-            players.set_lookups_allowed(
-                runtime.settings().behavior.browser_lyrics == BrowserLyrics::Allow,
-            );
-            app.manage(AppState {
-                runtime: Mutex::new(runtime),
-                lyrics: LyricsRefresh::default(),
-                players: Arc::clone(&players),
-                ui,
-                surface_visibility: RuntimeSurfaceVisibility::new_all_hidden(),
-                poll: PollTrigger::default(),
-                island_fit: island_size::IslandFit::default(),
-            });
+            if mediaremote_framework().is_none() {
+                log::warn!("MediaRemoteAdapter.framework not found; Now Playing apps unavailable");
+            }
 
             #[cfg(target_os = "macos")]
             {
@@ -989,7 +997,7 @@ pub fn run() {
             tray::create_tray(app.handle(), &initial)?;
 
             // Background update checks (release builds with a signing key).
-            updater::init(app.handle())?;
+            updater::init(app.handle());
 
             // Windows start hidden (tauri.conf.json visible:false). Each
             // surface's frontend calls `window_ready` once its WebView has
@@ -1192,7 +1200,7 @@ pub fn run() {
                 }
             }
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error building Lyra")
         .run(|app, event| match event {
             tauri::RunEvent::Exit => {

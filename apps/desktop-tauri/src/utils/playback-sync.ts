@@ -92,6 +92,24 @@ function reportSurfaceOcclusion(label: SurfaceLabel) {
   if (document.hidden) report();
 }
 
+const WINDOW_READY_ATTEMPTS = 20;
+const WINDOW_READY_RETRY_MS = 250;
+
+// Surfaces call this once on mount and never again, so one failed call would
+// leave a surface without playback for the whole session. Retry for a few
+// seconds instead.
+async function windowReadyWithRetry(label: SurfaceLabel): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await windowReady(label);
+      return;
+    } catch (err) {
+      if (attempt >= WINDOW_READY_ATTEMPTS) throw err;
+      await new Promise((resolve) => setTimeout(resolve, WINDOW_READY_RETRY_MS));
+    }
+  }
+}
+
 // Build a memoized `window_ready` invoker for a surface. The backend shows the
 // native window per persisted visibility before the frontend issues further
 // IPC — a hidden WKWebView queues `evaluateJavaScript`, so this must resolve
@@ -100,7 +118,7 @@ export function makeWindowReady(label: SurfaceLabel): () => Promise<void> {
   let promise: Promise<void> | null = null;
   let occlusionInstalled = false;
   return () => {
-    promise ??= windowReady(label)
+    promise ??= windowReadyWithRetry(label)
       .then(() => {
         if (!occlusionInstalled) {
           occlusionInstalled = true;
