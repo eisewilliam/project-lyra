@@ -1,3 +1,4 @@
+use crate::island_size;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -19,10 +20,21 @@ pub struct UiState {
     pub island_click_through: bool,
     #[serde(default)]
     pub island_pos: Option<(i32, i32)>,
-    /// Physical pixels — None means use the tauri.conf.json defaults.
+    /// Size, as a multiple of the base design (see `island_size`). `None`
+    /// matches it to the display the island is on.
     #[serde(default)]
+    pub island_scale: Option<f32>,
+    /// Width at Medium size, in points; other sizes scale it.
+    #[serde(default = "default_island_base_width")]
+    pub island_base_width: u32,
+    /// 2 shows the current and next line, 1 only the current one.
+    #[serde(default = "default_island_lines")]
+    pub island_lines: u8,
+    /// Width and height in points from before sizes were scales. Read once
+    /// and converted by `migrate_legacy_island_size`; never written back.
+    #[serde(default, skip_serializing)]
     pub island_width: Option<u32>,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub island_height: Option<u32>,
 
     #[serde(default = "default_font_scale")]
@@ -89,6 +101,12 @@ fn default_true() -> bool {
 fn default_font_scale() -> f32 {
     1.0
 }
+fn default_island_base_width() -> u32 {
+    island_size::DEFAULT_BASE_WIDTH
+}
+fn default_island_lines() -> u8 {
+    island_size::DEFAULT_LINES
+}
 fn default_island_transparency() -> f32 {
     0.5
 }
@@ -111,6 +129,21 @@ fn default_karaoke_lines() -> u8 {
     2
 }
 
+impl UiState {
+    /// Convert a saved width and height from before sizes were scales into
+    /// the closest size, width and line count. States saved without them keep
+    /// matching the display.
+    fn migrate_legacy_island_size(&mut self) {
+        let width = self.island_width.take();
+        if let Some(height) = self.island_height.take() {
+            let prefs = island_size::from_legacy_size(width, height);
+            self.island_scale = prefs.scale;
+            self.island_base_width = prefs.base_width;
+            self.island_lines = prefs.lines;
+        }
+    }
+}
+
 impl Default for UiState {
     fn default() -> Self {
         Self {
@@ -120,6 +153,9 @@ impl Default for UiState {
             island_locked: true,
             island_click_through: false,
             island_pos: None,
+            island_scale: None,
+            island_base_width: island_size::DEFAULT_BASE_WIDTH,
+            island_lines: island_size::DEFAULT_LINES,
             island_width: None,
             island_height: None,
             island_font_scale: 1.0,
@@ -155,10 +191,11 @@ pub struct UiStateStore {
 impl UiStateStore {
     pub fn load(dir: &Path) -> Self {
         let path = dir.join("ui_state.json");
-        let state = std::fs::read_to_string(&path)
+        let mut state = std::fs::read_to_string(&path)
             .ok()
             .and_then(|s| serde_json::from_str::<UiState>(&s).ok())
             .unwrap_or_default();
+        state.migrate_legacy_island_size();
         Self {
             path,
             inner: Mutex::new(state),
@@ -213,5 +250,28 @@ mod tests {
     fn states_saved_before_island_transparency_load_the_standard_look() {
         let state: UiState = serde_json::from_str(r#"{"island_visible":true}"#).unwrap();
         assert_eq!(state.island_transparency, 0.5);
+    }
+
+    #[test]
+    fn states_saved_without_a_size_match_the_display() {
+        let mut state: UiState = serde_json::from_str(r#"{"island_visible":true}"#).unwrap();
+        state.migrate_legacy_island_size();
+        assert_eq!(state.island_scale, None);
+        assert_eq!(state.island_base_width, island_size::DEFAULT_BASE_WIDTH);
+        assert_eq!(state.island_lines, 2);
+    }
+
+    #[test]
+    fn a_saved_width_and_height_become_a_size_and_are_not_saved_again() {
+        let mut state: UiState =
+            serde_json::from_str(r#"{"island_width":500,"island_height":52}"#).unwrap();
+        state.migrate_legacy_island_size();
+        assert_eq!(state.island_scale, Some(1.0));
+        assert_eq!(state.island_base_width, 500);
+        assert_eq!(state.island_lines, 1);
+
+        let saved = serde_json::to_string(&state).unwrap();
+        assert!(!saved.contains("island_width"));
+        assert!(!saved.contains("island_height"));
     }
 }

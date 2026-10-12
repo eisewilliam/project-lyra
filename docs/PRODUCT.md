@@ -22,7 +22,7 @@ Lyra offers three ways to see your lyrics, depending on how you like to work or 
 A full-featured window showing album artwork, playback controls (play/pause, skip, seek), and the complete lyric sheet — scrolling automatically to keep the current line centered. The background glows with colors drawn from the album art.
 
 ### Marquee
-A dynamic panel: a compact, always-on-top overlay that floats above all your other windows. It shows the current lyric line and the next one coming up, with animated audio bars while music plays. You can drag it anywhere on screen, lock it in place, and optionally show a spinning album cover. It snaps to the top of your screen when dragged near the edge.
+A dynamic panel: a compact, always-on-top overlay that floats above all your other windows. It shows the current lyric line and the next one coming up, with animated audio bars while music plays. You can place it anywhere on screen, lock it in place, and optionally show a spinning album cover. It sizes itself to suit each display, or you can choose a size; placed under a MacBook notch, its lyrics sit below the notch.
 
 ### Karaoke Overlay
 A fullscreen transparent overlay — designed for use while watching something or doing anything else on your screen. It displays a small band of lyrics over whatever is behind it, with word-by-word highlighting and customizable position, alignment, size, and opacity.

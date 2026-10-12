@@ -167,8 +167,12 @@ export type UiState = {
   /** The island ignores the mouse; clicks reach the app behind it. */
   island_click_through: boolean;
   island_pos: [number, number] | null;
-  island_width: number | null;
-  island_height: number | null;
+  /** Size as a multiple of the base design; null matches the display. */
+  island_scale: number | null;
+  /** Width at Medium size, in points; other sizes scale it. */
+  island_base_width: number;
+  /** 2 shows the current and next line, 1 only the current one. */
+  island_lines: number;
   island_font_scale: number;
   karaoke_font_scale: number;
   floating_font_scale: number;
@@ -245,7 +249,27 @@ export type IslandSettingsPatch = Partial<{
   cover_circle: boolean;
   cover_spin: boolean;
   transparency: number;
+  /** One of `ISLAND_SCALE_STEPS`. */
+  scale: number;
+  /** `true` returns the size to matching the display. */
+  match_screen: boolean;
+  base_width: number;
+  lines: number;
 }>;
+
+/** The Marquee's size on its current display, as fitted by the host
+    (`island_size.rs`). Lengths are in points. */
+export type IslandFrame = {
+  scale: number;
+  /** `scale` was matched to the display rather than chosen. */
+  auto_scale: boolean;
+  width: number;
+  height: number;
+  /** Extra height at the top that sits behind a MacBook notch. */
+  notch_inset: number;
+  /** The widest the Marquee may be dragged on this display. */
+  max_width: number;
+};
 
 export type KaraokeSettingsPatch = Partial<{
   position: string;

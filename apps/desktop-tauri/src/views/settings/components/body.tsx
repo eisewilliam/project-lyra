@@ -7,6 +7,8 @@ import {
   SnapSlider,
   Toggle,
 } from '@/components/settings-controls';
+import { ISLAND_SCALE_STEPS, islandScaleLabel } from '@/constants/island-size';
+import { useIslandFrame } from '@/hooks/use-island-frame';
 import type { MonitorInfo } from '@/types/tauri-contracts';
 import { runSettingsAction } from '@/utils/settings-action-runner';
 import {
@@ -14,15 +16,14 @@ import {
   FONT_FAMILY_OPTIONS,
   FONT_SCALE_STEPS,
   FONT_SIZE_STEPS,
-  ISLAND_HEIGHT_STEPS,
   ISLAND_TRANSPARENCY_STEPS,
   ISLAND_WIDTH_STEPS,
   KARAOKE_ALIGNMENT_OPTIONS,
   KARAOKE_BACKGROUND_STEPS,
-  KARAOKE_LINE_OPTIONS,
   KARAOKE_OFFSET_STEPS,
   KARAOKE_POSITION_OPTIONS,
   KARAOKE_WIDTH_STEPS,
+  LINE_COUNT_OPTIONS,
   LYRIC_BLUR_STEPS,
   THEME_OPTIONS,
 } from '../settings-options';
@@ -30,6 +31,31 @@ import type { FloatingSurface, SettingsBodyProps } from '../types';
 import { PlayersSection } from './players-section';
 import { AppearancePreview, IslandPreview, KaraokePreview } from './previews';
 import { UpdatesGroup } from './updates-group';
+
+const MATCH_SCREEN = 'match-screen';
+
+/** Size of the Marquee: a fixed size, or matched to whichever display it is
+    on. While matched, the option names the size picked for that display. */
+function IslandSizeRow({
+  scale,
+  onChange,
+}: Readonly<{ scale: number | null; onChange: (scale: number | null) => Promise<void> }>) {
+  const frame = useIslandFrame();
+  const matched = frame?.auto_scale ? ` (${islandScaleLabel(frame.scale)})` : '';
+  const options = [
+    { value: MATCH_SCREEN, label: `Match screen${matched}` },
+    ...ISLAND_SCALE_STEPS.map((step) => ({ value: String(step.value), label: step.label })),
+  ];
+  return (
+    <Row label="Size" hint="Match screen picks a size for each display.">
+      <CustomSelect
+        value={scale === null ? MATCH_SCREEN : String(scale)}
+        options={options}
+        onChange={(v) => onChange(v === MATCH_SCREEN ? null : Number(v))}
+      />
+    </Row>
+  );
+}
 
 function monitorLabel(m: MonitorInfo, idx: number): string {
   const res = `${m.width}×${m.height}`;
@@ -224,7 +250,7 @@ export function Body({
           <Row label="Lines">
             <Segmented
               value={String(ui.karaoke_lines)}
-              options={KARAOKE_LINE_OPTIONS}
+              options={LINE_COUNT_OPTIONS}
               onChange={(v: string) => actions.karaoke('karaoke_lines', Number.parseInt(v, 10))}
             />
           </Row>
@@ -287,14 +313,12 @@ export function Body({
   }
 
   const showCover = ui.island_show_cover ?? true;
-  const islandWidth = ui.island_width ?? 600;
-  const islandHeight = ui.island_height ?? 72;
 
   return (
     <>
       <IslandPreview ui={ui} appearance={app.appearance} artworkSrc={artworkSrc} />
       <Group title="Visibility">
-        <Row label={`Show ${activeLabel}`} hint="The dynamic panel docked at the top of your screen.">
+        <Row label={`Show ${activeLabel}`} hint="A dynamic panel above your other windows, wherever you place it.">
           <Toggle value={ui.island_visible} onChange={() => actions.toggleVisible('island')} />
         </Row>
         <Row label="Show over full-screen apps">
@@ -315,24 +339,25 @@ export function Body({
             className="action-btn"
             onClick={() => runSettingsAction(actions.resetIslandPosition())}
           >
-            Move to top center
+            Reset position
           </button>
         </Row>
       </Group>
 
-      <Group title="Size">
+      <Group title="Layout">
+        <IslandSizeRow scale={ui.island_scale ?? null} onChange={actions.setIslandSize} />
         <Row label="Width">
           <SnapSlider
             steps={ISLAND_WIDTH_STEPS}
-            value={islandWidth}
-            onChange={(v) => actions.setIslandSize(v, islandHeight)}
+            value={ui.island_base_width ?? 600}
+            onChange={(v) => actions.island('island_base_width', v, 'island-width')}
           />
         </Row>
-        <Row label="Height">
-          <SnapSlider
-            steps={ISLAND_HEIGHT_STEPS}
-            value={islandHeight}
-            onChange={(v) => actions.setIslandSize(islandWidth, v)}
+        <Row label="Lines">
+          <Segmented
+            value={String(ui.island_lines ?? 2)}
+            options={LINE_COUNT_OPTIONS}
+            onChange={(v: string) => actions.island('island_lines', Number.parseInt(v, 10))}
           />
         </Row>
         {textScale('island', ui.island_font_scale)}

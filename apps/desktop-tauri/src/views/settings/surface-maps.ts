@@ -28,6 +28,8 @@ export const ISLAND_SETTINGS_FIELDS: Partial<Record<keyof UiState, keyof IslandS
   island_cover_circle: 'cover_circle',
   island_cover_spin: 'cover_spin',
   island_transparency: 'transparency',
+  island_base_width: 'base_width',
+  island_lines: 'lines',
 };
 
 export const KARAOKE_SETTINGS_FIELDS: Partial<Record<keyof UiState, keyof KaraokeSettingsPatch>> = {

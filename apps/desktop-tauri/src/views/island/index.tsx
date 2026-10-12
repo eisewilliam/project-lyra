@@ -17,6 +17,7 @@ import { usePageVisible } from '@/utils/use-page-visible';
 import { useArtworkFallback } from '@/hooks/use-artwork-fallback';
 import { useSurfaceAutoHide } from '@/hooks/use-surface-auto-hide';
 import { useWordColouring } from '@/hooks/use-word-colouring';
+import { useIslandFrame } from '@/hooks/use-island-frame';
 import { makeWindowReady, applySurfaceVisible } from '@/utils/playback-sync';
 import { useIslandInteraction } from './hooks/use-interaction';
 import { useIslandMove } from './hooks/use-move';
@@ -97,7 +98,7 @@ export default function Island() {
   const [coverCircle, setCoverCircle] = useState(false);
   const [coverSpin, setCoverSpin] = useState(false);
   const [surfaceVisible, setSurfaceVisible] = useState(false);
-  const [islandHeight, setIslandHeight] = useState(72);
+  const [islandLines, setIslandLines] = useState(2);
   const [hideWhenPaused, setHideWhenPaused] = useState(false);
   const [hideWhenIdle, setHideWhenIdle] = useState(false);
   const [batterySaver, setBatterySaver] = useState(false);
@@ -145,7 +146,7 @@ export default function Island() {
     setShowCover,
     setCoverCircle,
     setCoverSpin,
-    setIslandHeight,
+    setIslandLines,
     setIsDocked,
     setBatterySaver,
     setTransparency,
@@ -190,8 +191,11 @@ export default function Island() {
     baselineRef,
   });
 
+  const frame = useIslandFrame(ensureIslandWindowReady);
+
   const { hovered, edge, dragging, handlers } = useIslandInteraction({
     ensureWindowReady: ensureIslandWindowReady,
+    frame,
     locked,
     caps,
     onTogglePlaying: togglePlaying,
@@ -225,7 +229,7 @@ export default function Island() {
   const barsActive = (panelState === 'ready' || showTrackIntro) && isPlaying;
 
   const activeContentKey = getActiveContentKey(activeLineWords, activeLine);
-  const isCompactLayout = islandHeight <= 64;
+  const isCompactLayout = islandLines <= 1;
   const currentLineFallback = getCurrentLineFallback(activeLine, nextLine);
   const lineContent = renderLyricContent(activeLineWords, wordRefs, currentLineFallback);
   const panelContent = renderPanelContent({
@@ -250,7 +254,11 @@ export default function Island() {
     <div
       ref={panelRef}
       className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${isDocked ? 'docked' : 'floating'} ${panelState !== 'ready' && !showTrackIntro ? 'has-placeholder' : ''} ${isCompactLayout ? 'is-compact' : ''} ${hovered ? 'is-hovered' : ''} ${dragging ? 'is-dragging' : ''} ${transparency > 0.5 ? 'is-clear' : ''}`}
-      style={{ '--marquee-transparency': String(transparency) } as CSSProperties}
+      style={{
+        '--marquee-transparency': String(transparency),
+        '--marquee-scale': String(frame?.scale ?? 1),
+        '--marquee-notch-inset': `${frame?.notch_inset ?? 0}px`,
+      } as CSSProperties}
       role="application"
       aria-label="Marquee"
       {...handlers}

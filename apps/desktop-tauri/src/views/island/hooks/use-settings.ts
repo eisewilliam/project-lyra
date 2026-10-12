@@ -1,10 +1,7 @@
 import type { RefObject, Dispatch, SetStateAction } from 'react';
 import { getCurrentWindow, currentMonitor } from '@tauri-apps/api/window';
-import { LogicalSize } from '@tauri-apps/api/dpi';
 import { useSurfaceSettings } from '@/hooks/use-surface-settings';
 import { snapToTopEdge, setIslandPanelPosition } from './use-move';
-
-const noop = (...args: unknown[]) => { if (args) return; };
 
 function applyIslandFont(scale: number) {
   document.documentElement.style.setProperty('--font-scale', String(Number.isFinite(scale) ? scale : 1));
@@ -25,7 +22,7 @@ export function useIslandSettings({
   setShowCover,
   setCoverCircle,
   setCoverSpin,
-  setIslandHeight,
+  setIslandLines,
   setIsDocked,
   setBatterySaver,
   setTransparency,
@@ -40,7 +37,7 @@ export function useIslandSettings({
   setShowCover: Dispatch<SetStateAction<boolean>>;
   setCoverCircle: Dispatch<SetStateAction<boolean>>;
   setCoverSpin: Dispatch<SetStateAction<boolean>>;
-  setIslandHeight: Dispatch<SetStateAction<number>>;
+  setIslandLines: Dispatch<SetStateAction<number>>;
   setIsDocked: Dispatch<SetStateAction<boolean>>;
   setBatterySaver: Dispatch<SetStateAction<boolean>>;
   setTransparency: Dispatch<SetStateAction<number>>;
@@ -59,7 +56,7 @@ export function useIslandSettings({
       setShowCover(state.island_show_cover ?? true);
       setCoverCircle(state.island_cover_circle ?? false);
       setCoverSpin(state.island_cover_spin ?? false);
-      setIslandHeight(state.island_height ?? 72);
+      setIslandLines(state.island_lines ?? 2);
       setTransparency(state.island_transparency ?? 0.5);
       applyIslandFont(state.island_font_scale);
 
@@ -93,14 +90,9 @@ export function useIslandSettings({
       setShowCover(state.island_show_cover ?? true);
       setCoverCircle(state.island_cover_circle ?? false);
       setCoverSpin(state.island_cover_spin ?? false);
-      setIslandHeight(state.island_height ?? 72);
+      setIslandLines(state.island_lines ?? 2);
       setTransparency(state.island_transparency ?? 0.5);
       applyIslandFont(state.island_font_scale);
-      if (state.island_width && state.island_height) {
-        getCurrentWindow().setSize(
-          new LogicalSize(state.island_width, state.island_height)
-        ).catch(noop);
-      }
     },
     onAppSettings: (settings) => setBatterySaver(settings.behavior.battery_saver),
     shouldReleaseAutoHide: (settings) => (

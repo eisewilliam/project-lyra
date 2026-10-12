@@ -7,7 +7,7 @@ The current app is built with a Tauri desktop host and a Rust core. It is ready 
 ## Features
 
 - Main Lyra window with album artwork, playback controls, seeking, the full lyric sheet, and current-line highlighting
-- Marquee, a dynamic panel at the top of the screen for compact always-on-top lyrics
+- Marquee, a compact always-on-top dynamic panel you can place anywhere on screen
 - Karaoke overlay with word-progress highlighting and configurable layout
 - Settings for surface visibility, font scale, overlays, pause behavior, autostart, theme, and preferred monitor
 - Player detection on macOS through AppleScript (Spotify, Music) and macOS Now Playing, on Windows through SMTC, and on Linux through MPRIS; see [player support](docs/PLAYER_SUPPORT.md)
@@ -26,7 +26,7 @@ Releases include signed and notarized macOS builds, and Lyra updates itself in t
 | Surface | Purpose |
 |---|---|
 | Lyra window | Full lyric sheet, track context, playback controls, and seekable lyrics |
-| Marquee | Dynamic panel with the active lyric context, docked at the top of the screen or another chosen position |
+| Marquee | Dynamic panel with the active lyric context, placed wherever you like and sized to suit each display |
 | Karaoke overlay | Wide overlay for one or two active lyric lines with configurable position, alignment, width, and opacity |
 | Settings | Visibility and appearance controls for the lyric surfaces plus app behavior settings |
 

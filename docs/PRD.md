@@ -99,7 +99,8 @@ Priority: **P0** = MVP, must ship • **P1** = first follow-up • **P2** = nice
 
 ### 6.5 Marquee: Dynamic Panel (macOS) — P1
 
-- Floating window pinned at top center, sized and positioned to integrate with the notch on supported MacBooks.
+- Floating panel the user places wherever they like: against any edge, floating over their work, or beside other windows. Never assume a top-docked or notch placement.
+- Sized in points as one design at a chosen scale, matched to each display by default; when placed under a MacBook notch, its content clears the notch.
 - Two states: **compact** (scrolling artist + track) and **expanded** (current line).
 - Spring-animated transitions on hover.
 - Click-through everywhere except the active region.

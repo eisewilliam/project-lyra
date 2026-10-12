@@ -1,3 +1,4 @@
+use crate::island_size;
 use crate::tray;
 use crate::ui_state::UiState;
 use crate::AppState;
@@ -176,6 +177,21 @@ pub struct IslandPatch {
     pub cover_circle: Option<bool>,
     pub cover_spin: Option<bool>,
     pub transparency: Option<f32>,
+    /// A size from `island_size::SCALE_STEPS`.
+    pub scale: Option<f32>,
+    /// `true` returns the size to matching the display.
+    pub match_screen: Option<bool>,
+    pub base_width: Option<u32>,
+    pub lines: Option<u8>,
+}
+
+impl IslandPatch {
+    fn changes_size(&self) -> bool {
+        self.scale.is_some()
+            || self.match_screen.is_some()
+            || self.base_width.is_some()
+            || self.lines.is_some()
+    }
 }
 
 #[tauri::command]
@@ -193,8 +209,23 @@ pub fn update_island_settings(patch: IslandPatch, state: State<'_, AppState>, ap
         if let Some(v) = patch.transparency.filter(|v| v.is_finite()) {
             s.island_transparency = v.clamp(0.0, 1.0);
         }
+        if let Some(v) = patch.scale.filter(|v| v.is_finite()) {
+            s.island_scale = Some(island_size::nearest_step(v));
+        }
+        if patch.match_screen == Some(true) {
+            s.island_scale = None;
+        }
+        if let Some(v) = patch.base_width {
+            s.island_base_width = v.clamp(island_size::MIN_BASE_WIDTH, island_size::MAX_BASE_WIDTH);
+        }
+        if let Some(v) = patch.lines {
+            s.island_lines = v.clamp(1, 2);
+        }
     });
     let _ = app.emit("ui-settings-changed", new_state);
+    if patch.changes_size() {
+        island_size::fit_island(&app, true);
+    }
 }
 
 #[tauri::command]
@@ -243,15 +274,11 @@ pub fn save_island_position(x: i32, y: i32, state: State<'_, AppState>, app: tau
     }
 }
 
-/// Resize the island window and persist the new dimensions.
+/// The island's size on its current display, once it has been fitted. Changes
+/// arrive as `island-frame` events.
 #[tauri::command]
-pub fn set_island_size(width: u32, height: u32, state: State<'_, AppState>, app: AppHandle) {
-    let new_state = state.ui.mutate(|s| {
-        s.island_width = Some(width);
-        s.island_height = Some(height);
-    });
-    let _ = crate::macos::set_island_size(&app, width, height);
-    let _ = app.emit("ui-settings-changed", new_state);
+pub fn get_island_frame(state: State<'_, AppState>) -> Option<island_size::IslandFrame> {
+    state.island_fit.current()
 }
 
 // ── Core Runtime ──────────────────────────────────────────────────────────────

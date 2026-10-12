@@ -1,7 +1,9 @@
 import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
 import { emit } from '@tauri-apps/api/event';
+import { islandBaseHeight } from '@/constants/island-size';
 import type {
   AppSettings,
+  IslandFrame,
   IslandSettingsPatch,
   KaraokeSettingsPatch,
   UiState,
@@ -164,8 +166,9 @@ if (!isTauri) {
     island_locked: false,
     island_click_through: false,
     island_pos: null,
-    island_width: null,
-    island_height: null,
+    island_scale: null,
+    island_base_width: 600,
+    island_lines: 2,
     island_font_scale: 1.0,
     karaoke_font_scale: 1.0,
     floating_font_scale: 1.0,
@@ -216,6 +219,19 @@ if (!isTauri) {
   };
   const saveUiState = () => {
     localStorage.setItem(LOCAL_STORAGE_UI_KEY, JSON.stringify(uiState));
+  };
+  /** The host's fit (`island_size.rs`) for a 1512-point laptop display. */
+  const mockIslandFrame = (): IslandFrame => {
+    const scale = uiState.island_scale ?? 0.85;
+    const maxWidth = 680;
+    return {
+      scale,
+      auto_scale: uiState.island_scale == null,
+      width: Math.round(Math.min((uiState.island_base_width ?? 600) * scale, maxWidth)),
+      height: Math.round(islandBaseHeight(uiState.island_lines ?? 2) * scale),
+      notch_inset: 0,
+      max_width: maxWidth,
+    };
   };
 
   // --- Word Interpolation ---
@@ -469,8 +485,13 @@ if (!isTauri) {
         if (patch.cover_circle !== undefined) uiState.island_cover_circle = patch.cover_circle;
         if (patch.cover_spin !== undefined) uiState.island_cover_spin = patch.cover_spin;
         if (patch.transparency !== undefined) uiState.island_transparency = patch.transparency;
+        if (patch.scale !== undefined) uiState.island_scale = patch.scale;
+        if (patch.match_screen) uiState.island_scale = null;
+        if (patch.base_width !== undefined) uiState.island_base_width = patch.base_width;
+        if (patch.lines !== undefined) uiState.island_lines = patch.lines;
         saveUiState();
         void emit('ui-settings-changed', uiState);
+        void emit('island-frame', mockIslandFrame());
         return;
       }
 
@@ -504,14 +525,8 @@ if (!isTauri) {
         return;
       }
 
-      case 'set_island_size': {
-        const { width, height } = args as { width: number; height: number };
-        uiState.island_width = width;
-        uiState.island_height = height;
-        saveUiState();
-        void emit('ui-settings-changed', uiState);
-        return;
-      }
+      case 'get_island_frame':
+        return mockIslandFrame();
 
       case 'get_render_snapshot':
         return computeRenderSnapshot();

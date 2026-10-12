@@ -1,4 +1,5 @@
 mod commands;
+mod island_size;
 mod linux;
 mod macos;
 mod menu;
@@ -36,6 +37,8 @@ pub struct AppState {
     pub surface_visibility: RuntimeSurfaceVisibility,
     /// Wakes the poll loop for an immediate adapter poll.
     pub poll: PollTrigger,
+    /// The Marquee's size on its current display.
+    pub island_fit: island_size::IslandFit,
 }
 
 /// Lets commands request an immediate adapter poll — after a transport
@@ -159,13 +162,11 @@ fn platform_adapters() -> Vec<Box<dyn PlayerAdapter>> {
             Box::new(spotify_macos::SpotifyMacOsAdapter::new()),
             Box::new(apple_music_macos::AppleMusicMacOsAdapter::new()),
         ];
-        match mediaremote_framework() {
-            Some(framework) => adapters.push(Box::new(mediaremote_macos::MediaRemoteAdapter::new(
+        // Runs before the log plugin exists; `setup` warns when it is missing.
+        if let Some(framework) = mediaremote_framework() {
+            adapters.push(Box::new(mediaremote_macos::MediaRemoteAdapter::new(
                 framework,
-            ))),
-            None => {
-                log::warn!("MediaRemoteAdapter.framework not found; Now Playing apps unavailable")
-            }
+            )));
         }
         adapters
     }
@@ -370,9 +371,12 @@ pub(crate) fn apply_preferred_monitor_positioning(app: &tauri::AppHandle, ui: &U
     let mon_h = monitor.size().height as i32;
 
     // Island: top-centred on the target monitor only when the user has no
-    // explicit saved position.
+    // explicit saved position. The fit that follows the move keeps it centred.
     if ui.island_pos.is_none() {
-        let island_w = ui.island_width.unwrap_or(400) as i32;
+        let island_w = app
+            .get_webview_window("island")
+            .and_then(|w| w.outer_size().ok())
+            .map_or(0, |size| size.width as i32);
         let ix = mon_x + (mon_w - island_w) / 2;
         let iy = mon_y + 8;
         let _ = macos::set_overlay_position(app, "island", ix, iy);
@@ -903,60 +907,71 @@ fn set_thread_qos_utility() {}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Tauri creates the windows before `setup` runs, and on Windows creating
+    // each WebView2 pumps the message loop, so a page that loads quickly
+    // (release builds serve it from the binary) can call commands while the
+    // later windows are still being created. Everything a command reaches is
+    // therefore registered on the builder, not in `setup`.
+    migrate_app_support_dir();
+    let dir = app_support_dir();
+    let ui = UiStateStore::load(&dir);
+    let initial = ui.snapshot();
+    // Until the first-run explanation is acknowledged, don't script
+    // Spotify or Music: that is what triggers macOS's permission prompt.
+    #[cfg(target_os = "macos")]
+    lyra_core::player::set_automation_enabled(initial.onboarded);
+
+    let runtime = LyraRuntime::new_in(dir.clone());
+    let players = Arc::new(
+        PlayerHub::new(platform_adapters(), artwork_base_url())
+            .with_media_policy(&dir)
+            .with_known_players(&dir)
+            .with_lyric_cache(runtime.cache.clone()),
+    );
+    players.set_lookups_allowed(runtime.settings().behavior.browser_lyrics == BrowserLyrics::Allow);
+    let state = AppState {
+        runtime: Mutex::new(runtime),
+        lyrics: LyricsRefresh::default(),
+        players: Arc::clone(&players),
+        ui,
+        surface_visibility: RuntimeSurfaceVisibility::new_all_hidden(),
+        poll: PollTrigger::default(),
+        island_fit: island_size::IslandFit::default(),
+    };
+
+    let context = tauri::generate_context!();
+    let updates = updater::Updates::new(context.config());
+
     let builder = tauri::Builder::default();
+    let builder = if cfg!(debug_assertions) {
+        builder.plugin(
+            tauri_plugin_log::Builder::default()
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
+    } else {
+        builder
+    };
     #[cfg(target_os = "macos")]
     let builder = builder.menu(menu::build).on_menu_event(menu::handle_event);
     builder
+        .manage(state)
+        .manage(updates)
+        .plugin(tauri_plugin_clipboard_manager::init())
+        // macOS LaunchAgent / Windows registry; `app.autolaunch()` needs it.
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![]),
+        ))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .register_uri_scheme_protocol(ARTWORK_SCHEME, |ctx, request| {
             artwork_response(ctx.app_handle(), &request)
         })
-        .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
-
-            app.handle()
-                .plugin(tauri_plugin_clipboard_manager::init())?;
-
-            // Register the autostart plugin for all builds (macOS LaunchAgent /
-            // Windows registry). This must be registered before any command that
-            // calls `app.autolaunch()`.
-            app.handle().plugin(tauri_plugin_autostart::init(
-                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-                Some(vec![]),
-            ))?;
-
-            migrate_app_support_dir();
-            let dir = app_support_dir();
-            let ui = UiStateStore::load(&dir);
-            let initial = ui.snapshot();
-            // Until the first-run explanation is acknowledged, don't script
-            // Spotify or Music: that is what triggers macOS's permission prompt.
+        .setup(move |app| {
             #[cfg(target_os = "macos")]
-            lyra_core::player::set_automation_enabled(initial.onboarded);
-
-            let runtime = LyraRuntime::new_in(dir.clone());
-            let players = Arc::new(
-                PlayerHub::new(platform_adapters(), artwork_base_url())
-                    .with_media_policy(&dir)
-                    .with_known_players(&dir)
-                    .with_lyric_cache(runtime.cache.clone()),
-            );
-            players.set_lookups_allowed(
-                runtime.settings().behavior.browser_lyrics == BrowserLyrics::Allow,
-            );
-            app.manage(AppState {
-                runtime: Mutex::new(runtime),
-                lyrics: LyricsRefresh::default(),
-                players: Arc::clone(&players),
-                ui,
-                surface_visibility: RuntimeSurfaceVisibility::new_all_hidden(),
-                poll: PollTrigger::default(),
-            });
+            if mediaremote_framework().is_none() {
+                log::warn!("MediaRemoteAdapter.framework not found; Now Playing apps unavailable");
+            }
 
             #[cfg(target_os = "macos")]
             {
@@ -982,7 +997,7 @@ pub fn run() {
             tray::create_tray(app.handle(), &initial)?;
 
             // Background update checks (release builds with a signing key).
-            updater::init(app.handle())?;
+            updater::init(app.handle());
 
             // Windows start hidden (tauri.conf.json visible:false). Each
             // surface's frontend calls `window_ready` once its WebView has
@@ -990,10 +1005,10 @@ pub fn run() {
             // visibility. This prevents the empty-window flash that occurs
             // when the native frame becomes visible before React renders.
 
-            // Restore persisted island size (before position so the frame is correct).
-            if let (Some(w), Some(h)) = (initial.island_width, initial.island_height) {
-                let _ = macos::set_island_size(app.handle(), w, h);
-            }
+            // Size the island before placing it: the saved position is the
+            // top-left corner of the sized window. Moves below refit it if
+            // they take it to another display or under the notch.
+            island_size::fit_island_now(app.handle(), true);
 
             // Restore persisted island position immediately at startup so the window
             // appears in the right place before the frontend finishes loading.
@@ -1111,7 +1126,7 @@ pub fn run() {
             commands::update_island_settings,
             commands::set_overlay_position,
             commands::save_island_position,
-            commands::set_island_size,
+            commands::get_island_frame,
             commands::get_render_snapshot,
             commands::get_all_lyrics,
             commands::get_all_lines,
@@ -1149,6 +1164,16 @@ pub fn run() {
             updater::install_update,
         ])
         .on_window_event(|window, event| {
+            // A move can take the island to another display, or onto or off
+            // the notch; either can change its size.
+            if window.label() == "island"
+                && matches!(
+                    event,
+                    tauri::WindowEvent::Moved(_) | tauri::WindowEvent::ScaleFactorChanged { .. }
+                )
+            {
+                island_size::fit_island(window.app_handle(), false);
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let label = window.label();
                 if label == "main" || label == "island" || label == "karaoke" {
@@ -1175,7 +1200,7 @@ pub fn run() {
                 }
             }
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error building Lyra")
         .run(|app, event| match event {
             tauri::RunEvent::Exit => {
