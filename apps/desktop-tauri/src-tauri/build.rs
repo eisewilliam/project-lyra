@@ -1,4 +1,8 @@
 fn main() {
+    // `cfg` in a build script describes the machine running the build. Only
+    // a macOS machine can build the framework (xcrun, codesign), and other
+    // hosts lack the Unix symlink API the module uses.
+    #[cfg(target_os = "macos")]
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         mediaremote::build_framework();
     }
@@ -9,6 +13,7 @@ fn main() {
 /// copies it next to the executable (`tauri.macos.conf.json` lists it under
 /// `bundle.macOS.frameworks`). Compiled with clang directly so contributors
 /// do not need CMake.
+#[cfg(target_os = "macos")]
 mod mediaremote {
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -101,7 +106,7 @@ mod mediaremote {
   <key>CFBundleExecutable</key>
   <string>{NAME}</string>
   <key>CFBundleIdentifier</key>
-  <string>com.lyra.{NAME}</string>
+  <string>app.lyralyrics.desktop.{NAME}</string>
   <key>CFBundleName</key>
   <string>{NAME}</string>
   <key>CFBundlePackageType</key>

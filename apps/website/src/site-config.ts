@@ -3,20 +3,36 @@ export type Platform = (typeof platforms)[number];
 
 export const isPlatform = (value: unknown): value is Platform => platforms.some(platform => platform === value);
 
+const repository = 'https://github.com/eisewilliam/project-lyra';
+
+// Turn on once the first release is published; until then the download
+// buttons lead to the downloads page instead of files that don't exist yet.
+const releasesPublished = false;
+
+// Fixed file names from the release workflow (.github/workflows/release.yml),
+// always pointing at the newest published release.
+const latest = (file: string) => `${repository}/releases/latest/download/${file}`;
+
 interface SiteConfig {
   repository: string;
   releases: string;
   downloads: Record<Platform, string | null>;
-  signedBuilds: boolean;
+  /** Signed builds open without a security warning on first launch. */
+  signed: Record<Platform, boolean>;
 }
 
 export const siteConfig: SiteConfig = {
-  repository: 'https://github.com/EiseWilliam/project-lyra',
-  releases: 'https://github.com/EiseWilliam/project-lyra/releases',
-  // Populate with verified public release files when releases are published.
-  downloads: { macos: null, windows: null, linux: null },
-  // Early builds are not signed yet (README: "signing and distribution polish").
-  signedBuilds: false,
+  repository,
+  releases: repository + '/releases',
+  downloads: releasesPublished
+    ? {
+      macos: latest('Lyra-macos-universal.dmg'),
+      windows: latest('Lyra-windows-x64-setup.exe'),
+      linux: latest('Lyra-linux-amd64.AppImage'),
+    }
+    : { macos: null, windows: null, linux: null },
+  // macOS builds are signed and notarized; Windows builds are not signed yet.
+  signed: { macos: true, windows: false, linux: false },
 };
 
 export const platformNames: Record<Platform, string> = { macos: 'macOS', windows: 'Windows', linux: 'Linux' };

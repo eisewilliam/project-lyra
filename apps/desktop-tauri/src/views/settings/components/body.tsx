@@ -28,6 +28,7 @@ import {
 import type { FloatingSurface, SettingsBodyProps } from '../types';
 import { PlayersSection } from './players-section';
 import { AppearancePreview, IslandPreview, KaraokePreview } from './previews';
+import { UpdatesGroup } from './updates-group';
 
 function monitorLabel(m: MonitorInfo, idx: number): string {
   const res = `${m.width}×${m.height}`;
@@ -101,6 +102,8 @@ export function Body({
             </Row>
           </Group>
         )}
+
+        <UpdatesGroup />
       </>
     );
   }

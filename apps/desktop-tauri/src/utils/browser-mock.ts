@@ -5,6 +5,7 @@ import type {
   IslandSettingsPatch,
   KaraokeSettingsPatch,
   UiState,
+  UpdateInfo,
   RenderSnapshot,
   LyricLineSlim,
   LyricWord,
@@ -363,6 +364,11 @@ if (!isTauri) {
 
   mockWindows(surface, 'main', 'island', 'karaoke', 'settings');
 
+  let mockUpdateInfo: UpdateInfo = {
+    current_version: '0.1.0',
+    status: { state: 'up_to_date', checked_at_ms: Date.now() - 3 * 60 * 60 * 1000 },
+  };
+
   mockIPC(async (cmd, args) => {
     switch (cmd) {
       case 'get_ui_state':
@@ -409,6 +415,22 @@ if (!isTauri) {
 
       case 'get_automation_denied':
         return [];
+
+      case 'get_update_status':
+        return mockUpdateInfo;
+
+      case 'check_for_updates': {
+        mockUpdateInfo = { ...mockUpdateInfo, status: { state: 'checking' } };
+        void emit('update-status', mockUpdateInfo);
+        globalThis.setTimeout(() => {
+          mockUpdateInfo = { ...mockUpdateInfo, status: { state: 'up_to_date', checked_at_ms: Date.now() } };
+          void emit('update-status', mockUpdateInfo);
+        }, 900);
+        return;
+      }
+
+      case 'install_update':
+        return;
 
       case 'open_automation_settings':
       case 'copy_text':

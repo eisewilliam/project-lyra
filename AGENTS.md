@@ -56,6 +56,7 @@ cd apps/desktop-tauri && pnpm lint
 - Fetch/cache/retry/persistence: Lyrics pipeline and Persistence stores.
 - Platform adapters: Key lyra-core modules and Linux MPRIS integration.
 - Player and feature support per OS: `docs/PLAYER_SUPPORT.md`.
+- Releases, signing, updater and CI: `docs/RELEASING.md`.
 
 Read only the relevant sections and their code, not the entire reference by default.
 `docs/ARCHITECTURE.md` is the broader implementation map; product plans describe

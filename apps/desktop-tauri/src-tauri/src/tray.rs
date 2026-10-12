@@ -3,7 +3,8 @@ use std::sync::Mutex;
 use lyra_core::domain::{PlaybackState, RenderSnapshot};
 use lyra_core::player::PlayerCommand;
 use tauri::menu::{
-    CheckMenuItem, CheckMenuItemBuilder, MenuBuilder, MenuItem, MenuItemBuilder, PredefinedMenuItem,
+    CheckMenuItem, CheckMenuItemBuilder, Menu, MenuBuilder, MenuItem, MenuItemBuilder,
+    PredefinedMenuItem,
 };
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, Wry};
@@ -22,6 +23,12 @@ pub struct TrayMenuRefs {
     /// Last now-playing state written to the menu, so ticks that change
     /// nothing visible don't touch it.
     shown: Mutex<Option<NowPlaying>>,
+    menu: Menu<Wry>,
+    /// "Restart to Install…", added to the top of the menu once an update
+    /// has downloaded.
+    install_update: MenuItem<Wry>,
+    install_update_separator: PredefinedMenuItem<Wry>,
+    install_update_shown: Mutex<bool>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -81,6 +88,22 @@ impl TrayMenuRefs {
         let _ = self.play_pause.set_enabled(next.can_play_pause);
         let _ = self.next.set_enabled(next.can_next);
         *shown = Some(next);
+    }
+
+    /// Offer the downloaded update at the top of the menu.
+    pub fn show_update_ready(&self, version: &str) {
+        let _ = self
+            .install_update
+            .set_text(format!("Restart to Install Lyra {version}"));
+        let Ok(mut shown) = self.install_update_shown.lock() else {
+            return;
+        };
+        if *shown {
+            return;
+        }
+        let added = self.menu.insert(&self.install_update, 0).is_ok()
+            && self.menu.insert(&self.install_update_separator, 1).is_ok();
+        *shown = added;
     }
 }
 
@@ -143,6 +166,10 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
         ])
         .build()?;
 
+    let install_update = MenuItemBuilder::new("Restart to Install Update")
+        .id("install_update")
+        .build(app)?;
+
     app.manage(TrayMenuRefs {
         show_island,
         show_karaoke,
@@ -151,6 +178,10 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
         play_pause,
         next,
         shown: Mutex::new(None),
+        menu: menu.clone(),
+        install_update,
+        install_update_separator: PredefinedMenuItem::separator(app)?,
+        install_update_shown: Mutex::new(false),
     });
 
     let mut tray = TrayIconBuilder::new()
@@ -164,6 +195,7 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
             "settings" => open_settings(app),
             "tray_play_pause" => send_command(app, PlayerCommand::PlayPause),
             "tray_next" => send_command(app, PlayerCommand::Next),
+            "install_update" => crate::updater::install_and_restart(app),
             "quit" => app.exit(0),
             _ => {}
         });

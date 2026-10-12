@@ -1,58 +1,121 @@
 name: release
 
+# Builds signed installers for every platform into a draft release, then
+# publishes it once every build has succeeded. A tag must match the app
+# version in Cargo.toml (v0.2.0 for version 0.2.0). See docs/RELEASING.md.
+
 on:
     push:
         tags:
             - "v*"
     workflow_dispatch:
         inputs:
-            release-tag:
-                description: Git tag to release, for example v0.1.0
+            tag:
+                description: Existing tag to build, for example v0.2.0
                 required: true
                 type: string
+            publish:
+                description: Publish when every build succeeds (off keeps a draft to inspect)
+                type: boolean
+                default: false
 
 permissions:
     contents: write
 
 concurrency:
-    group: release-${{ github.event_name == 'workflow_dispatch' && inputs.release-tag || github.ref_name }}
+    group: release-${{ inputs.tag || github.ref_name }}
     cancel-in-progress: false
 
 env:
     APP_DIR: apps/desktop-tauri
-    RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release-tag || github.ref_name }}
+    TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
-    publish-tauri:
+    prepare:
+        name: Prepare draft release
+        runs-on: ubuntu-latest
+        outputs:
+            release-id: ${{ steps.release.outputs.id }}
+        steps:
+            - name: Check out the tag
+              uses: actions/checkout@v4
+              with:
+                  ref: ${{ env.TAG }}
+
+            - name: Check the tag matches the app version
+              id: version
+              run: |
+                  version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')
+                  if [ "v$version" != "$TAG" ]; then
+                      echo "::error::Tag $TAG does not match version $version in Cargo.toml. Tag v$version instead, or bump the version first."
+                      exit 1
+                  fi
+                  echo "version=$version" >> "$GITHUB_OUTPUT"
+
+            - name: Check the updater public key is set
+              run: |
+                  if grep -q UPDATER_PUBLIC_KEY_NOT_SET "$APP_DIR/src-tauri/tauri.conf.json"; then
+                      echo "::error::plugins.updater.pubkey in tauri.conf.json is still the placeholder. See docs/RELEASING.md."
+                      exit 1
+                  fi
+
+            - name: Create or reuse the draft release
+              id: release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  VERSION: ${{ steps.version.outputs.version }}
+              run: |
+                  existing=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+                      --jq ".[] | select(.tag_name == \"$TAG\") | [.id, .draft] | @tsv")
+                  if [ -n "$existing" ]; then
+                      read -r id draft <<< "$existing"
+                      if [ "$draft" != "true" ]; then
+                          echo "::error::Release $TAG is already published. Bump the version for a new release."
+                          exit 1
+                      fi
+                  else
+                      # A hyphen marks a pre-release (v0.2.0-beta.1); updates skip those.
+                      prerelease=false
+                      case "$VERSION" in *-*) prerelease=true ;; esac
+                      id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+                          -f tag_name="$TAG" \
+                          -f name="Lyra $VERSION" \
+                          -F draft=true \
+                          -F prerelease="$prerelease" \
+                          -F generate_release_notes=true \
+                          --jq .id)
+                  fi
+                  echo "id=$id" >> "$GITHUB_OUTPUT"
+
+    build:
         name: ${{ matrix.name }}
+        needs: prepare
         runs-on: ${{ matrix.platform }}
         strategy:
             fail-fast: false
             matrix:
                 include:
-                    - name: macOS Apple Silicon
+                    - name: macOS (universal)
                       platform: macos-latest
-                      rust-target: aarch64-apple-darwin
-                      args: --target aarch64-apple-darwin
-                    - name: macOS Intel
-                      platform: macos-latest
-                      rust-target: x86_64-apple-darwin
-                      args: --target x86_64-apple-darwin
+                      rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+                      args: --target universal-apple-darwin
                     - name: Windows x64
                       platform: windows-latest
-                      rust-target: ""
+                      rust-targets: ""
                       args: ""
                     - name: Linux x64
                       platform: ubuntu-22.04
-                      rust-target: ""
+                      rust-targets: ""
                       args: ""
 
         steps:
-            - name: Check out repository
+            - name: Check out the tag
               uses: actions/checkout@v4
+              with:
+                  ref: ${{ env.TAG }}
 
             - name: Install Linux system dependencies
-              if: matrix.platform == 'ubuntu-22.04'
+              if: runner.os == 'Linux'
               run: |
                   sudo apt-get update
                   sudo apt-get install -y \
@@ -65,6 +128,8 @@ jobs:
                       libssl-dev \
                       libayatana-appindicator3-dev \
                       librsvg2-dev \
+                      libdbus-1-dev \
+                      pkg-config \
                       patchelf
 
             - name: Set up pnpm
@@ -81,39 +146,93 @@ jobs:
 
             - name: Install Rust stable
               uses: dtolnay/rust-toolchain@stable
-              if: matrix.rust-target == ''
-
-            - name: Install Rust stable with target
-              uses: dtolnay/rust-toolchain@stable
-              if: matrix.rust-target != ''
               with:
-                  targets: ${{ matrix.rust-target }}
+                  targets: ${{ matrix.rust-targets }}
 
             - name: Restore Rust cache
               uses: swatinem/rust-cache@v2
               with:
-                  workspaces: ./apps/desktop-tauri/src-tauri -> target
+                  key: release-${{ matrix.platform }}
 
             - name: Install frontend dependencies
               working-directory: ${{ env.APP_DIR }}
               run: pnpm install --frozen-lockfile
 
-            - name: Run frontend lint
-              working-directory: ${{ env.APP_DIR }}
-              run: pnpm run lint
-
-            - name: Run core tests
-              run: cargo test -p lyra-core
-
-            - name: Build and publish Tauri bundles
-              uses: tauri-apps/tauri-action@v0
+            # Signing and notarization need every Apple secret; a release
+            # without them would ship builds macOS refuses to open.
+            - name: Prepare macOS signing and notarization
+              if: runner.os == 'macOS'
               env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+                  APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+                  APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+                  APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+                  APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+                  APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+              run: |
+                  missing=""
+                  for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY \
+                      APPLE_API_ISSUER APPLE_API_KEY APPLE_API_PRIVATE_KEY; do
+                      if [ -z "${!name}" ]; then missing="$missing $name"; fi
+                  done
+                  if [ -n "$missing" ]; then
+                      echo "::error::Missing repository secrets:$missing. See docs/RELEASING.md."
+                      exit 1
+                  fi
+                  key_path="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY.p8"
+                  printf '%s\n' "$APPLE_API_PRIVATE_KEY" > "$key_path"
+                  echo "APPLE_API_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+            - name: Build, sign and upload
+              uses: tauri-apps/tauri-action@v1
+              env:
+                  GITHUB_TOKEN: ${{ github.token }}
+                  # Signs update bundles; the app checks them against the
+                  # public key in tauri.conf.json.
+                  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+                  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+                  APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+                  APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+                  APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+                  APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+                  APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
               with:
                   projectPath: ${{ env.APP_DIR }}
-                  tagName: ${{ env.RELEASE_TAG }}
-                  releaseName: Lyra ${{ env.RELEASE_TAG }}
-                  releaseBody: See the assets attached to this release for the Windows, macOS, and Linux bundles.
-                  releaseDraft: false
-                  prerelease: false
-                  args: ${{ matrix.args }}
+                  releaseId: ${{ needs.prepare.outputs.release-id }}
+                  tagName: ${{ env.TAG }}
+                  releaseDraft: true
+                  args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
+                  # Fixed names, so releases/latest/download/<name> is a
+                  # permanent download link for the website.
+                  releaseAssetNamePattern: Lyra-[platform]-[arch][setup][ext]
+                  uploadUpdaterJson: true
+                  updaterJsonPreferNsis: true
+
+    publish:
+        name: Publish release
+        needs: [prepare, build]
+        if: github.event_name == 'push' || inputs.publish
+        runs-on: ubuntu-latest
+        steps:
+            # The website links to these names under releases/latest/download.
+            - name: Check the expected files were uploaded
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  assets=$(gh api "repos/$GITHUB_REPOSITORY/releases/${{ needs.prepare.outputs.release-id }}" --jq '.assets[].name')
+                  missing=""
+                  for name in latest.json Lyra-macos-universal.dmg Lyra-windows-x64-setup.exe \
+                      Lyra-linux-amd64.AppImage Lyra-linux-amd64.deb; do
+                      grep -qxF "$name" <<< "$assets" || missing="$missing $name"
+                  done
+                  if [ -n "$missing" ]; then
+                      echo "::error::Missing release files:$missing. Found: $(tr '\n' ' ' <<< "$assets")"
+                      exit 1
+                  fi
+
+            - name: Publish
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/${{ needs.prepare.outputs.release-id }}" \
+                      -F draft=false --jq '.html_url'

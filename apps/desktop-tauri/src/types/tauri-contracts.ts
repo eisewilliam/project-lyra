@@ -263,3 +263,19 @@ export type MonitorInfo = {
   scale_factor: number;
   is_primary: boolean;
 };
+
+/** Mirrors `updater::UpdateStatus` in the Tauri host. */
+export type UpdateStatus =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'up_to_date'; checked_at_ms: number }
+  | { state: 'downloading'; version: string }
+  | { state: 'ready'; version: string }
+  | { state: 'failed'; checked_at_ms: number }
+  | { state: 'unavailable' };
+
+/** Payload of `get_update_status` and the `update-status` event. */
+export type UpdateInfo = {
+  current_version: string;
+  status: UpdateStatus;
+};

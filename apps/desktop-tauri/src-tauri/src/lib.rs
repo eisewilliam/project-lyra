@@ -4,6 +4,7 @@ mod macos;
 mod menu;
 mod tray;
 mod ui_state;
+mod updater;
 
 use lyra_core::domain::{BrowserLyrics, PlaybackState};
 use lyra_core::lyrics::refresh::LyricsRefresh;
@@ -738,7 +739,7 @@ where
         }
     }
 
-    let queue = DispatchQueue::new("com.lyra.player.poll", None);
+    let queue = DispatchQueue::new("app.lyralyrics.desktop.player-poll", None);
     let timer_type_ptr: *mut dispatch2::dispatch_source_type_s =
         unsafe { &dispatch2::_dispatch_source_type_timer as *const _ as *mut _ };
     let timer = unsafe { DispatchSource::new(timer_type_ptr, 0, 0, Some(&queue)) };
@@ -959,6 +960,9 @@ pub fn run() {
             // Build the system tray menu.
             tray::create_tray(app.handle(), &initial)?;
 
+            // Background update checks (release builds with a signing key).
+            updater::init(app.handle())?;
+
             // Windows start hidden (tauri.conf.json visible:false). Each
             // surface's frontend calls `window_ready` once its WebView has
             // mounted, at which point the backend applies the persisted
@@ -1119,6 +1123,9 @@ pub fn run() {
             commands::set_autostart,
             commands::window_ready,
             commands::set_surface_occluded,
+            updater::get_update_status,
+            updater::check_for_updates,
+            updater::install_update,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

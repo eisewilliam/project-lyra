@@ -25,7 +25,7 @@ function PlatformRow({ id, detected, featured }: { id: Platform; detected: boole
     <dl className="platform-facts">
       <div><dt>You need</dt><dd>{details.needs.join('. ')}.</dd></div>
       <div><dt>How it listens</dt><dd>{details.playback}</dd></div>
-      {!siteConfig.signedBuilds && details.firstLaunch && <div><dt>First launch</dt><dd>{details.firstLaunch}</dd></div>}
+      {!siteConfig.signed[id] && details.firstLaunch && <div><dt>First launch</dt><dd>{details.firstLaunch}</dd></div>}
     </dl>
     <div className="platform-action">
       {url
@@ -36,7 +36,7 @@ function PlatformRow({ id, detected, featured }: { id: Platform; detected: boole
 }
 
 const buildSteps = [
-  'git clone https://github.com/EiseWilliam/project-lyra.git',
+  'git clone https://github.com/eisewilliam/project-lyra.git',
   'cd project-lyra',
   'make install',
   'make build',

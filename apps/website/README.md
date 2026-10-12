@@ -14,8 +14,8 @@ npm run dev -- --host 127.0.0.1 --port 4180 --strictPort
 npm run lint        # oxlint, type-aware, warnings fail
 npm run typecheck   # tsc -b
 npm test            # vitest
-npm run build       # vite build, type check, Sites packaging
-npm run test:sites  # node:test checks for the Sites worker; run after build
+npm run build       # vite build, type check
+npm run test:sites  # node:test checks for the Sites worker
 ```
 
 TypeScript 7 has no programmatic API yet, so the toolchain avoids tools that need one (typescript-eslint, for example). Oxlint's type-aware rules run on `oxlint-tsgolint`, which is built on the same native compiler.
