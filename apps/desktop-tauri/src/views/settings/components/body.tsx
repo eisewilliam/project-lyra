@@ -66,9 +66,6 @@ export function Body({
           <Row label="Hide when paused" hint="Hides every Lyra window while playback is paused.">
             <Toggle value={app.behavior.hide_when_paused} onChange={(v: boolean) => actions.updateAppSetting('behavior', 'hide_when_paused', v)} />
           </Row>
-        </Group>
-
-        <Group title="Startup">
           <Row label="Launch at login">
             <Toggle value={autostartEnabled} onChange={(v: boolean) => actions.setAutostart(v)} />
           </Row>
