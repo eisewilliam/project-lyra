@@ -11,6 +11,12 @@ function hashString(value: string) {
   return hash >>> 0;
 }
 
+/** Bar height at full level, in px (`.audio-bars .bar` in island.css). */
+const METER_MAX_PX = 18;
+const METER_REST_PX = 3;
+/** Bars are drawn at full height and scaled down to their level. */
+export const METER_REST_SCALE = METER_REST_PX / METER_MAX_PX;
+
 function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
 }
@@ -76,7 +82,7 @@ export function useAudioVisualizer({
     const setResting = () => {
       for (const bar of bars) {
         if (!bar) continue;
-        bar.style.setProperty('--meter-height', '3px');
+        bar.style.setProperty('--meter-scale', String(METER_REST_SCALE));
         bar.style.setProperty('--meter-opacity', '0.36');
       }
     };
@@ -99,12 +105,12 @@ export function useAudioVisualizer({
         if (!bar) continue;
         const level = musicAwareLevel(i, pos, seed, words);
         // Quantize to half-pixel / 1% steps so frames with no visible change
-        // skip the style write and the relayout behind it.
-        const height = Math.round((3 + Math.pow(level, 1.1) * 15) * 2) / 2;
+        // skip the style write and the repaint behind it.
+        const height = Math.round((METER_REST_PX + Math.pow(level, 1.1) * (METER_MAX_PX - METER_REST_PX)) * 2) / 2;
         const opacity = Math.round((0.35 + level * 0.65) * 100) / 100;
         if (height !== lastHeight[i]) {
           lastHeight[i] = height;
-          bar.style.setProperty('--meter-height', `${height}px`);
+          bar.style.setProperty('--meter-scale', String(height / METER_MAX_PX));
         }
         if (opacity !== lastOpacity[i]) {
           lastOpacity[i] = opacity;

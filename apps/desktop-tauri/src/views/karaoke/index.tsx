@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { GlidingLine } from '@/components/gliding-line';
+import { GlidingLine, type GlideClock } from '@/components/gliding-line';
 import {
   resolveLyricsSurfaceState,
   type LyricsPlaceholderState,
@@ -34,6 +34,7 @@ function renderKaraokeContent({
   activeContentKey,
   activeLineWords,
   activeLineProgress,
+  glideClock,
   lineContent,
   lines,
   nextLine,
@@ -45,6 +46,7 @@ function renderKaraokeContent({
   activeContentKey: string;
   activeLineWords: LyricWord[];
   activeLineProgress: number;
+  glideClock: GlideClock;
   lineContent: ReactNode;
   lines: number;
   nextLine: string | null;
@@ -60,6 +62,7 @@ function renderKaraokeContent({
           contentClassName="karaoke-lyric-content"
           contentKey={activeContentKey}
           syncProgress={activeLineProgress}
+          clock={glideClock}
         >
           {lineContent}
         </GlidingLine>
@@ -163,6 +166,12 @@ export default function Karaoke() {
     activeContentKey,
     activeLineWords,
     activeLineProgress,
+    glideClock: {
+      words: activeLineWords,
+      baselineRef,
+      isPlaying,
+      running: pageVisible && surfaceVisible,
+    },
     lineContent,
     lines,
     nextLine,

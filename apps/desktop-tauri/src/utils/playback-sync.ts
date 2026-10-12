@@ -162,3 +162,61 @@ export function runWordColouring(
   raf = requestAnimationFrame(tick);
   return () => cancelAnimationFrame(raf);
 }
+
+export type WordAnimations = {
+  sync: (isPlaying: boolean) => void;
+  stop: () => void;
+};
+
+/** Native word wipes, built once per line and reconciled with each snapshot.
+ * Older webviews without registered custom properties use runWordColouring.
+ */
+export function createWordAnimations(
+  words: LyricWord[],
+  wordRefs: { current: (HTMLSpanElement | null)[] },
+  baselineRef: { current: PositionBaseline },
+): WordAnimations | null {
+  if (typeof CSS === 'undefined' || typeof CSS.registerProperty !== 'function'
+    || words.some((_, i) => typeof wordRefs.current[i]?.animate !== 'function')) return null;
+
+  const animations = words.map((word, i) => wordRefs.current[i]!.animate(
+    [{ '--word-progress': '0' }, { '--word-progress': '1' }],
+    { delay: word.start_ms, duration: Math.max(1, word.end_ms - word.start_ms), fill: 'both' },
+  ));
+  for (const animation of animations) animation.pause();
+
+  let blendTimer: ReturnType<typeof setTimeout> | undefined;
+  const sync = (isPlaying: boolean) => {
+    clearTimeout(blendTimer);
+    const now = performance.now();
+    const baseline = baselineRef.current;
+    const position = interpolatePosition(baseline, now, isPlaying);
+    const blendRemaining = baseline.at + baseline.blendDur - now;
+    // Both trajectories have slope 1, so their linear blend also has a
+    // constant slope until the blend ends. Native playback can follow it.
+    const rate = isPlaying && blendRemaining > 0
+      ? 1 + (baseline.targetMs + baseline.at - baseline.targetAt - baseline.ms)
+        / Math.max(1, baseline.blendDur)
+      : isPlaying ? 1 : 0;
+    for (const animation of animations) {
+      // A pause completes on the next native animation frame. A zero rate
+      // keeps its hold time exact while that pause is pending.
+      if (!isPlaying) animation.pause();
+      animation.playbackRate = rate;
+      animation.currentTime = position;
+      if (isPlaying) {
+        if (animation.playState !== 'running' && animation.playState !== 'finished') animation.play();
+      }
+    }
+    if (isPlaying && blendRemaining > 0) {
+      blendTimer = setTimeout(() => sync(true), blendRemaining);
+    }
+  };
+  return {
+    sync,
+    stop: () => {
+      clearTimeout(blendTimer);
+      for (const animation of animations) animation.cancel();
+    },
+  };
+}

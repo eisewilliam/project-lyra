@@ -954,8 +954,15 @@ pub fn run() {
                 app.handle().plugin(tauri_nspanel::init())?;
             }
 
-            // Convert overlay windows to NSPanel so they can float above other apps.
-            let _ = macos::init_overlay_panels(app.handle());
+            // Convert overlay windows to NSPanel so they can float above other
+            // apps. Battery saver keeps the island off the glass.
+            let battery_saver = app
+                .state::<AppState>()
+                .runtime
+                .lock()
+                .map(|rt| rt.settings().behavior.battery_saver)
+                .unwrap_or(false);
+            let _ = macos::init_overlay_panels(app.handle(), !battery_saver);
 
             // Build the system tray menu.
             tray::create_tray(app.handle(), &initial)?;
