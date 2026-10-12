@@ -104,7 +104,6 @@ function App() {
   const [onboarded, setOnboarded] = useState(true);
   const [automationDenied, setAutomationDenied] = useState<string[]>([]);
   const [showDelayControl, setShowDelayControl] = useState(false);
-  const [selectValue, setSelectValue] = useState('');
   const [screenEdgeMotion, setScreenEdgeMotion] = useState<ScreenEdgeMotionMap>({});
 
   const lyricsPaneRef = useRef<HTMLElement | null>(null);
@@ -308,7 +307,11 @@ function App() {
       .catch(noop);
   }, [setLyricOffsetMs]);
 
-  const offsetLabel = `${lyricOffsetMs > 0 ? '+' : ''}${lyricOffsetMs} ms`;
+  const setOffset = useCallback((offsetMs: number) => {
+    setLyricOffset(offsetMs)
+      .then((ms) => setLyricOffsetMs(ms))
+      .catch(noop);
+  }, [setLyricOffsetMs]);
 
   return (
     <main className="lyra-window">
@@ -332,20 +335,18 @@ function App() {
         hasTrack={hasTrack}
         isPlaying={isPlaying}
         lyricOffsetMs={lyricOffsetMs}
-        offsetLabel={offsetLabel}
         onArtworkError={handleArtworkError}
         onNudgeOffset={nudgeOffset}
         onResetOffset={resetOffset}
         onRetryLyrics={retryLyrics}
+        onSetOffset={setOffset}
         positionLabelRef={positionLabelRef}
         progressFillRef={progressFillRef}
         progressPct={progressPct}
         progressTrackRef={progressTrackRef}
-        selectValue={selectValue}
         togglePlaying={togglePlaying}
         onMarkNotMusic={markNotMusic}
         setPositionMs={setPositionMs}
-        setSelectValue={setSelectValue}
         setShowDelayControl={setShowDelayControl}
         showDelayControl={showDelayControl && lyricsStatus === 'Ready'}
         snapshotReady={snapshotReady}
