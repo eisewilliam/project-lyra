@@ -1,6 +1,6 @@
-import { useEffect, type RefObject } from 'react';
+import { useLayoutEffect, useRef, type RefObject } from 'react';
 import type { LyricWord } from '@/types/tauri-contracts';
-import { runWordColouring, type PositionBaseline } from '@/utils/playback-sync';
+import { createWordAnimations, runWordColouring, type PositionBaseline, type WordAnimations } from '@/utils/playback-sync';
 
 export function useWordColouring({
   words,
@@ -17,8 +17,27 @@ export function useWordColouring({
   pageVisible: boolean;
   surfaceVisible: boolean;
 }) {
-  useEffect(() => {
+  const animationsRef = useRef<WordAnimations | null>(null);
+  useLayoutEffect(() => {
     if (words.length === 0 || !pageVisible || !surfaceVisible) return;
+    const animations = createWordAnimations(words, wordRefs, baselineRef);
+    if (animations) {
+      animationsRef.current = animations;
+      return () => {
+        animations.stop();
+        animationsRef.current = null;
+      };
+    }
+  }, [baselineRef, pageVisible, surfaceVisible, wordRefs, words]);
+
+  useLayoutEffect(() => {
+    if (animationsRef.current || words.length === 0 || !pageVisible || !surfaceVisible) return;
     return runWordColouring(words, wordRefs, baselineRef, isPlaying);
   }, [baselineRef, isPlaying, pageVisible, surfaceVisible, wordRefs, words]);
+
+  // Playback baselines are refs updated by snapshots. Reconcile after each
+  // render without rebuilding the animations for every position update.
+  useLayoutEffect(() => {
+    animationsRef.current?.sync(isPlaying);
+  });
 }

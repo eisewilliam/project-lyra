@@ -110,6 +110,14 @@ export const ISLAND_WIDTH_STEPS: SliderStep[] = [
   { value: 900, label: 'Full' },
 ];
 
+export const ISLAND_TRANSPARENCY_STEPS: SliderStep[] = [
+  { value: 0, label: 'Solid' },
+  { value: 0.25, label: 'Low' },
+  { value: 0.5, label: 'Standard' },
+  { value: 0.75, label: 'High' },
+  { value: 1, label: 'Clear' },
+];
+
 export const ISLAND_HEIGHT_STEPS: SliderStep[] = [
   { value: 52, label: 'Compact' },
   { value: 64, label: 'Small' },

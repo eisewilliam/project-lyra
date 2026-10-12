@@ -175,6 +175,8 @@ export type UiState = {
   island_show_cover: boolean;
   island_cover_circle: boolean;
   island_cover_spin: boolean;
+  /** 0 solid … 1 clearest; 0.5 is the standard look. */
+  island_transparency: number;
   island_show_on_fullscreen: boolean;
   karaoke_show_on_fullscreen: boolean;
   floating_show_on_fullscreen: boolean;
@@ -242,6 +244,7 @@ export type IslandSettingsPatch = Partial<{
   show_cover: boolean;
   cover_circle: boolean;
   cover_spin: boolean;
+  transparency: number;
 }>;
 
 export type KaraokeSettingsPatch = Partial<{

@@ -172,6 +172,7 @@ if (!isTauri) {
     island_show_cover: true,
     island_cover_circle: true,
     island_cover_spin: true,
+    island_transparency: 0.5,
     island_show_on_fullscreen: false,
     karaoke_show_on_fullscreen: false,
     floating_show_on_fullscreen: false,
@@ -467,6 +468,7 @@ if (!isTauri) {
         if (patch.show_cover !== undefined) uiState.island_show_cover = patch.show_cover;
         if (patch.cover_circle !== undefined) uiState.island_cover_circle = patch.cover_circle;
         if (patch.cover_spin !== undefined) uiState.island_cover_spin = patch.cover_spin;
+        if (patch.transparency !== undefined) uiState.island_transparency = patch.transparency;
         saveUiState();
         void emit('ui-settings-changed', uiState);
         return;

@@ -63,7 +63,7 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-fn updates_enabled(app: &AppHandle) -> bool {
+pub(crate) fn updates_enabled(app: &AppHandle) -> bool {
     if cfg!(debug_assertions) {
         return false;
     }

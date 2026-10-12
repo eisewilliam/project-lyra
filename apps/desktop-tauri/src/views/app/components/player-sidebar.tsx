@@ -3,7 +3,7 @@ import { useCrossfadeSrc } from '@/hooks/use-crossfade-src';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { PlaybackCaps, TrackRef } from '@/types/tauri-contracts';
 import type { PositionBaseline } from '@/utils/playback-sync';
-import { DelayControl } from './delay-control';
+import { SyncLyricsPanel } from './sync-lyrics-panel';
 import { ProgressBar } from './progress-bar';
 import { SourceBadge } from './source-badge';
 import { TrackInfo } from './track-info';
@@ -26,23 +26,21 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   hasSyncedLyrics,
   isPlaying,
   lyricOffsetMs,
-  offsetLabel,
   onArtworkError,
   onMarkNotMusic,
   onNudgeOffset,
   onResetOffset,
   onRetryLyrics,
+  onSetOffset,
   positionLabelRef,
   progressFillRef,
   progressPct,
   progressTrackRef,
   setPositionMs,
-  setSelectValue,
   setShowDelayControl,
   showDelayControl,
   snapshotReady,
   baselineRef,
-  selectValue,
   togglePlaying,
   track,
   lyrics,
@@ -59,23 +57,21 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   hasSyncedLyrics: boolean;
   isPlaying: boolean;
   lyricOffsetMs: number;
-  offsetLabel: string;
   onArtworkError: () => void;
   onMarkNotMusic: () => void;
   onNudgeOffset: (deltaMs: number) => void;
   onResetOffset: () => void;
   onRetryLyrics: () => void;
+  onSetOffset: (offsetMs: number) => void;
   positionLabelRef: RefObject<HTMLSpanElement | null>;
   progressFillRef: RefObject<HTMLDivElement | null>;
   progressPct: number;
   progressTrackRef: RefObject<HTMLDivElement | null>;
   setPositionMs: React.Dispatch<React.SetStateAction<number>>;
   setShowDelayControl: React.Dispatch<React.SetStateAction<boolean>>;
-  setSelectValue: React.Dispatch<React.SetStateAction<string>>;
   showDelayControl: boolean;
   snapshotReady: boolean;
   baselineRef: RefObject<PositionBaseline>;
-  selectValue: string;
   togglePlaying: () => void;
   track: TrackRef | null;
   /** Lyric lines for the progress bar's scrub preview. */
@@ -118,7 +114,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
       <div className="player-controls-bottom">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
-            key={showDelayControl ? 'delay-control' : 'track-info'}
+            key={showDelayControl ? 'sync-lyrics' : 'track-info'}
             className="w-full"
             initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
@@ -126,21 +122,23 @@ export const PlayerSidebar = memo(function PlayerSidebar({
             transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.18, ease: INLINE_CONTROL_EASE }}
           >
             {showDelayControl ? (
-              <DelayControl
+              <SyncLyricsPanel
+                baselineRef={baselineRef}
+                isPlaying={isPlaying}
+                lines={lyrics}
                 lyricOffsetMs={lyricOffsetMs}
-                offsetLabel={offsetLabel}
                 onClose={() => setShowDelayControl(false)}
                 onNudgeOffset={onNudgeOffset}
                 onResetOffset={onResetOffset}
+                onSetOffset={onSetOffset}
               />
             ) : (
               <TrackInfo
                 hasTrack={hasTrack}
                 hasSyncedLyrics={hasSyncedLyrics}
+                lyricOffsetMs={lyricOffsetMs}
                 onMarkNotMusic={onMarkNotMusic}
                 onRetryLyrics={onRetryLyrics}
-                selectValue={selectValue}
-                setSelectValue={setSelectValue}
                 setShowDelayControl={setShowDelayControl}
                 snapshotReady={snapshotReady}
                 track={track}

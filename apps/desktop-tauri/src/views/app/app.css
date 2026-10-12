@@ -66,6 +66,7 @@ body[data-os="windows"] .lyra-window {
  */
 @media (prefers-reduced-motion: reduce) {
   .lyra-window { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(18, 18, 22, 0.82); }
+  :root .scrub-preview { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(20, 20, 24, 0.86); }
   .ambient-bg img { filter: none; transform: translate(-50%, -50%) scale(20); opacity: 0.2; }
   /* Respect reduced motion: keep only colour/opacity fades — no scale,
      translate, or enter animation. */
@@ -76,6 +77,7 @@ body[data-os="windows"] .lyra-window {
   .lyrics-pane { scroll-behavior: auto; }
 }
 :root[data-low-power="true"] .lyra-window { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(18, 18, 22, 0.82); }
+:root[data-low-power="true"] .scrub-preview { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(20, 20, 24, 0.86); }
 /* The ambient wash keeps its look: it is already a blurred 80px thumbnail,
    cheap enough that dropping its blur would only cost quality. */
 :root[data-low-power="true"] .lyric-line { will-change: auto !important; }
@@ -147,7 +149,10 @@ body[data-os="windows"] .lyra-window {
   justify-content: space-between;
   padding: 64px 48px 48px;
   position: relative;
-  z-index: 1; /* Above ambient bg */
+  /* Above the ambient background, and above the lyrics pane so the track
+     menu and scrub preview can extend over it. The pane clips its own
+     content, so nothing of it ever needs to sit above the sidebar. */
+  z-index: 2;
 }
 
 /* Large Sidebar Album Art */
@@ -397,19 +402,17 @@ button.source-badge:focus-visible {
     background-color var(--duration-fast) var(--ease-standard);
 }
 
-.track-action-btn:not(:disabled):hover,
-.track-menu:hover .track-action-btn:not(:disabled) {
+.track-action-btn:not(:disabled):hover {
   color: #fff;
   background: rgba(255, 255, 255, 0.1);
 }
 
 .btn-icon:focus-visible,
 .track-action-btn:focus-visible,
-.track-menu-select:focus-visible ~ .track-action-btn,
-.delay-control-btn:focus-visible,
-.delay-control-reset:focus-visible,
-.delay-control-close:focus-visible,
-.track-menu-select:focus-visible {
+.sync-text-btn:focus-visible,
+.sync-done-btn:focus-visible,
+.sync-tap-skip:focus-visible,
+.sync-nudge-btn:focus-visible {
   outline: 2px solid rgba(255, 255, 255, 0.48);
   outline-offset: 4px;
   border-radius: 8px;
@@ -764,8 +767,8 @@ button.lyric-line:focus-visible {
 
 /* Word-by-word karaoke highlighting inside the active line.
    Every word uses the SAME gradient mechanism — the visual state (upcoming /
-   singing / passed) is driven entirely by --word-progress (0..1), set 60fps
-   via refs. No class-swap repaint, so transitions between states are seamless. */
+   singing / passed) is driven by the shared native --word-progress animation,
+   with a frame-loop fallback for older webviews. */
 .lyric-line.is-active .lyric-word {
   display: inline;
   color: transparent;
@@ -1057,115 +1060,406 @@ button.lyric-line:focus-visible {
   background: rgba(255, 255, 255, 0.12);
 }
 
-/* Native Select Overlay Option */
-.track-menu-select {
+/* Smoked glass like the window itself. Groups: this track's lyrics, the
+   track, the app. TrackMenu sets `top` to where it fits in the window. */
+.track-menu-panel {
   position: absolute;
+  right: -4px;
   top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: default;
-  border: none;
-  background: transparent;
-  -webkit-appearance: none;
-  appearance: none;
-  z-index: 2;
-}
-
-.track-menu:hover .track-action-btn {
-  color: #fff;
-}
-
-.track-menu-select:active ~ .track-action-btn {
-  color: rgba(255, 255, 255, 0.95);
-  background: rgba(255, 255, 255, 0.12);
-}
-
-
-/* Inline Timing Control Layout */
-.delay-control-inline {
+  z-index: 30;
+  box-sizing: border-box;
+  min-width: 236px;
+  max-width: min(288px, calc(100vw - 32px));
+  padding: 5px;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-  height: 40px;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  border-radius: 13px;
+  background: rgba(34, 34, 40, 0.72);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  backdrop-filter: blur(28px) saturate(170%);
+  border: 0.5px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.1),
+    0 22px 48px -16px rgba(0, 0, 0, 0.72),
+    0 4px 12px rgba(0, 0, 0, 0.28);
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+  transform-origin: bottom right;
+  --menu-enter-y: 4px;
+  animation: track-menu-in var(--duration-fast) var(--ease-standard);
 }
 
-.delay-control-meta {
+.track-menu-panel[data-placement="below"] {
+  transform-origin: top right;
+  --menu-enter-y: -4px;
+}
+
+.track-menu-panel[data-placement="over"] {
+  transform-origin: center right;
+  --menu-enter-y: 0px;
+}
+
+@keyframes track-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--menu-enter-y)) scale(0.97);
+  }
+}
+
+/* Icon, text, trailing state. Cells align to the label's line, so an item
+   with a hint keeps its icon beside the label. */
+.track-menu-item {
+  flex: none;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 10px;
+  padding: 7px 10px 7px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.92);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+  outline: none;
+}
+
+.track-menu-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.track-menu-text {
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
 
-.delay-control-title {
-  font-size: 0.75rem;
+.track-menu-label {
+  line-height: 18px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.track-menu-hint {
+  font-size: 11.5px;
+  line-height: 15px;
+  color: rgba(255, 255, 255, 0.46);
+}
+
+.track-menu-detail {
+  line-height: 18px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.46);
+  white-space: nowrap;
+}
+
+/* Pointer and keyboard share one highlight, as in a native menu. */
+.track-menu-item:focus {
+  background: rgba(255, 255, 255, 0.13);
+  color: #fff;
+}
+
+.track-menu-item:focus .track-menu-icon {
+  color: #fff;
+}
+
+.track-menu-item:focus :is(.track-menu-hint, .track-menu-detail) {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.track-menu-item:active:not([aria-disabled="true"]) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.track-menu-item[aria-disabled="true"],
+.track-menu-item[aria-disabled="true"] .track-menu-icon {
+  color: rgba(255, 255, 255, 0.32);
+}
+
+.track-menu-separator {
+  flex: none;
+  height: 1px;
+  margin: 4px 10px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-low-power="true"] .track-menu-panel {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: rgba(36, 36, 42, 0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track-menu-panel {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: rgba(36, 36, 42, 0.97);
+    animation: none;
+  }
+}
+
+
+/* ── Sync lyrics ───────────────────────────────────────────────────────────
+   Takes the track title's place. Tap as a line is sung to line the lyrics up
+   with the singer, then nudge earlier or later to fine-tune. Monochrome like
+   the rest of the window; the only colour is the lyric colour in the tap
+   flash, since that is what is being aligned. */
+.sync-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  outline: none;
+}
+
+.sync-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sync-panel-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+
+.sync-panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sync-text-btn,
+.sync-done-btn,
+.sync-tap-skip,
+.sync-nudge-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  font-family: inherit;
   font-weight: 600;
+  cursor: default;
+  white-space: nowrap;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
+}
+
+.sync-text-btn {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 14px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12.5px;
+}
+
+.sync-text-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.sync-text-btn:disabled {
+  opacity: 0.4;
+}
+
+/* The one solid control: leaving is the expected end of the task. */
+.sync-done-btn {
+  height: 28px;
+  padding: 0 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  color: rgb(22, 22, 26);
+  font-size: 12.5px;
+}
+
+.sync-done-btn:hover {
+  background: #fff;
+}
+
+.sync-tap {
+  position: relative;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.sync-tap:not(.is-idle):hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Room on the right for Skip. */
+.sync-tap-button {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-height: 68px;
+  box-sizing: border-box;
+  padding: 12px 64px 12px 14px;
+  border: none;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: default;
+  outline: none;
+  touch-action: manipulation;
+}
+
+.sync-tap.is-empty .sync-tap-button {
+  min-height: 0;
+}
+
+.sync-tap-button:not([aria-disabled="true"]):active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sync-tap-button:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.48);
+}
+
+.sync-tap-prompt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.sync-tap-prompt svg {
+  color: var(--lyric-color, #fff);
+}
+
+.sync-tap.is-idle .sync-tap-prompt svg {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* The upcoming line, in the lyrics' own weight. */
+.sync-tap-line {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: #fff;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.sync-tap.is-idle .sync-tap-line {
   color: rgba(255, 255, 255, 0.55);
 }
 
-.delay-control-value {
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: #fff;
-  font-variant-numeric: tabular-nums;
+/* Confirms the tap landed: a wash of the lyric colour that fades out. */
+.sync-tap-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--lyric-color, #fff) 24%, transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--lyric-color, #fff) 70%, transparent);
+  pointer-events: none;
+  animation: sync-tap-flash 600ms var(--ease-standard) forwards;
 }
 
-.delay-control-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+@keyframes sync-tap-flash {
+  to {
+    opacity: 0;
+  }
 }
 
-.delay-control-btn,
-.delay-control-close {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: default;
-  transition:
-    background-color var(--duration-base) var(--ease-control),
-    border-color var(--duration-base) var(--ease-control),
-    color var(--duration-base) var(--ease-control);
-  padding: 0;
+.sync-tap-skip {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 11.5px;
 }
 
-.delay-control-btn:hover,
-.delay-control-close:hover {
+.sync-tap-skip:hover {
   background: rgba(255, 255, 255, 0.14);
   color: #fff;
 }
 
-.delay-control-reset {
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 6px;
-  border: none;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 11px;
-  font-weight: 600;
-  cursor: default;
-  transition:
-    background-color var(--duration-base) var(--ease-control),
-    color var(--duration-base) var(--ease-control),
-    opacity var(--duration-base) var(--ease-control);
+.sync-nudge {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
 }
 
-.delay-control-reset:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.16);
+.sync-nudge-btn {
+  gap: 2px;
+  height: 32px;
+  padding: 0 12px 0 8px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12.5px;
+  user-select: none;
+  touch-action: none;
+}
+
+.sync-nudge-btn.is-later {
+  padding: 0 8px 0 12px;
+}
+
+.sync-nudge-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
   color: #fff;
 }
 
-.delay-control-reset:disabled {
-  opacity: 0.35;
-  cursor: default;
+.sync-nudge-btn:active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.sync-readout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+  text-align: center;
+}
+
+.sync-readout-value {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.sync-readout-note {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
 }
 
 /* ── Karaoke mode (main window): show only active + next line, centered ────── */
@@ -1299,12 +1593,19 @@ button.lyric-line:focus-visible {
   align-items: center;
   gap: 2px;
   max-width: 240px;
-  padding: 6px 10px;
+  padding: 5px 9px;
   border-radius: 10px;
-  background: rgba(20, 20, 24, 0.82);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  /* Glass like the Marquee: a light tint over a strong blur of the artwork
+     wash behind, a bright rim, and a shadow under the text so it reads over
+     any artwork. */
+  background: rgba(22, 22, 26, 0.38);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
+  backdrop-filter: blur(20px) saturate(170%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 8px 24px rgba(0, 0, 0, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   pointer-events: none;
   opacity: 0;
   transform: translate(-50%, 4px);
@@ -1321,7 +1622,7 @@ button.lyric-line:focus-visible {
 .scrub-preview-time {
   font-size: 11px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.78);
   font-variant-numeric: tabular-nums;
 }
 

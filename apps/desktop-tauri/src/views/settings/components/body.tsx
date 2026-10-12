@@ -15,6 +15,7 @@ import {
   FONT_SCALE_STEPS,
   FONT_SIZE_STEPS,
   ISLAND_HEIGHT_STEPS,
+  ISLAND_TRANSPARENCY_STEPS,
   ISLAND_WIDTH_STEPS,
   KARAOKE_ALIGNMENT_OPTIONS,
   KARAOKE_BACKGROUND_STEPS,
@@ -65,9 +66,6 @@ export function Body({
           <Row label="Hide when paused" hint="Hides every Lyra window while playback is paused.">
             <Toggle value={app.behavior.hide_when_paused} onChange={(v: boolean) => actions.updateAppSetting('behavior', 'hide_when_paused', v)} />
           </Row>
-        </Group>
-
-        <Group title="Startup">
           <Row label="Launch at login">
             <Toggle value={autostartEnabled} onChange={(v: boolean) => actions.setAutostart(v)} />
           </Row>
@@ -338,6 +336,16 @@ export function Body({
           />
         </Row>
         {textScale('island', ui.island_font_scale)}
+      </Group>
+
+      <Group title="Background">
+        <Row label="Transparency" hint="Lyrics keep their contrast at every level.">
+          <SnapSlider
+            steps={ISLAND_TRANSPARENCY_STEPS}
+            value={ui.island_transparency ?? 0.5}
+            onChange={(v) => actions.island('island_transparency', v, 'island-transparency')}
+          />
+        </Row>
       </Group>
 
       <Group title="Cover art">

@@ -55,9 +55,8 @@
     0 4px 24px rgba(0, 0, 0, 0.58);
 }
 
-/* All word states share one gradient rule. --word-progress (0..1) is updated
-   60fps via refs; the dim → bright wipe moves with the cursor without any
-   class-swap repaint. */
+/* Registered --word-progress is animated natively and resynced to playback;
+   older webviews receive the same values through the shared frame loop. */
 .karaoke-current .lyric-word {
   display: inline;
   color: transparent;

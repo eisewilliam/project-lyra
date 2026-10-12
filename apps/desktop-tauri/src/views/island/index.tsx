@@ -1,5 +1,5 @@
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { GlidingLine } from '@/components/gliding-line';
+import { GlidingLine, type GlideClock } from '@/components/gliding-line';
 import { TransportGlyph } from '@/components/transport-glyph';
 import {
   resolveLyricsSurfaceState,
@@ -20,7 +20,7 @@ import { useWordColouring } from '@/hooks/use-word-colouring';
 import { makeWindowReady, applySurfaceVisible } from '@/utils/playback-sync';
 import { useIslandInteraction } from './hooks/use-interaction';
 import { useIslandMove } from './hooks/use-move';
-import { useAudioVisualizer } from './hooks/use-audio-visualizer';
+import { METER_REST_SCALE, useAudioVisualizer } from './hooks/use-audio-visualizer';
 import { useProgressRing } from './hooks/use-progress-ring';
 import { useIslandPlayback } from './hooks/use-playback';
 import { useIslandSettings } from './hooks/use-settings';
@@ -41,6 +41,7 @@ function renderPanelContent({
   activeContentKey,
   hasActiveLyric,
   activeLineProgress,
+  glideClock,
   lineContent,
   nextLine,
   trackTitle,
@@ -51,6 +52,7 @@ function renderPanelContent({
   activeContentKey: string;
   hasActiveLyric: boolean;
   activeLineProgress: number;
+  glideClock: GlideClock;
   lineContent: ReactNode;
   nextLine: string | null;
   trackTitle: string;
@@ -65,6 +67,7 @@ function renderPanelContent({
           contentClassName="panel-lyric-content"
           contentKey={activeContentKey}
           syncProgress={activeLineProgress}
+          clock={glideClock}
         >
           {lineContent}
         </GlidingLine>
@@ -98,6 +101,7 @@ export default function Island() {
   const [hideWhenPaused, setHideWhenPaused] = useState(false);
   const [hideWhenIdle, setHideWhenIdle] = useState(false);
   const [batterySaver, setBatterySaver] = useState(false);
+  const [transparency, setTransparency] = useState(0.5);
 
   const {
     activeLine,
@@ -144,6 +148,7 @@ export default function Island() {
     setIslandHeight,
     setIsDocked,
     setBatterySaver,
+    setTransparency,
   });
 
   useIslandMove({
@@ -229,6 +234,12 @@ export default function Island() {
     activeContentKey,
     hasActiveLyric,
     activeLineProgress,
+    glideClock: {
+      words: activeLineWords,
+      baselineRef,
+      isPlaying,
+      running: pageVisible && surfaceVisible,
+    },
     lineContent,
     nextLine,
     trackTitle,
@@ -238,7 +249,8 @@ export default function Island() {
   return (
     <div
       ref={panelRef}
-      className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${isDocked ? 'docked' : 'floating'} ${panelState !== 'ready' && !showTrackIntro ? 'has-placeholder' : ''} ${isCompactLayout ? 'is-compact' : ''} ${hovered ? 'is-hovered' : ''} ${dragging ? 'is-dragging' : ''}`}
+      className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${isDocked ? 'docked' : 'floating'} ${panelState !== 'ready' && !showTrackIntro ? 'has-placeholder' : ''} ${isCompactLayout ? 'is-compact' : ''} ${hovered ? 'is-hovered' : ''} ${dragging ? 'is-dragging' : ''} ${transparency > 0.5 ? 'is-clear' : ''}`}
+      style={{ '--marquee-transparency': String(transparency) } as CSSProperties}
       role="application"
       aria-label="Marquee"
       {...handlers}
@@ -304,7 +316,7 @@ export default function Island() {
                   ref={(el) => { visualizerRefs.current[i] = el; }}
                   className="bar"
                   style={{
-                    '--meter-height': '3px',
+                    '--meter-scale': String(METER_REST_SCALE),
                     '--meter-opacity': '0.36',
                   } as CSSProperties}
                 />

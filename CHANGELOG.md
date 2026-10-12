@@ -1,0 +1,69 @@
+# Changelog
+
+All notable changes to Lyra are recorded here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+A version with a hyphen, such as `0.1.0-beta.1`, is a pre-release for testers:
+it is downloaded from its release page, and installed copies of Lyra are never
+offered it as an update.
+
+## [Unreleased]
+
+## [0.1.0-beta.1] - 2026-10-12
+
+The first pre-release, for internal testing ahead of 0.1.0.
+
+### Added
+
+- Synced lyrics for whatever is playing, from LRCLIB, with word-by-word
+  highlighting where the lyrics are timed per word. Songs with only untimed
+  lyrics show them as plain text. Lyrics are cached, and Refresh lyrics fetches
+  them again.
+- Lyra follows the music player you are using rather than one service:
+  - macOS: Spotify and Music, plus browsers and other Now Playing apps.
+  - Windows: Spotify, Apple Music, browsers and other apps that report what's
+    playing to Windows.
+  - Linux: Spotify, browsers and other MPRIS players.
+- Videos, podcasts and other media that isn't music are recognised and left
+  alone. Settings → Players chooses which player to follow and whether to look
+  up lyrics for media playing in a browser. Mark as not music stops Lyra
+  following a track it mistook for music.
+- Three places to read lyrics, each with its own settings:
+  - The main window: cover art, playback controls, a progress bar that
+    previews the lyric at any point, and lyrics you can click to jump to.
+  - The Marquee: a dynamic panel docked at the top of the screen, on native
+    glass on macOS, with a Transparency setting and cover art options.
+  - The karaoke overlay: large lyrics at the top or bottom of the screen that
+    clicks pass through, with position, width, alignment, line count and
+    background settings.
+- Sync lyrics: tap as a line is sung to line the lyrics up with the singer, or
+  nudge them earlier or later. The timing is remembered for each song.
+- A track menu in the main window with Sync lyrics, Refresh lyrics, Mark as not
+  music and Settings.
+- A menu-bar menu showing the playing track, with playback controls, Show
+  Marquee, Show Karaoke Lyrics and Lock Marquee Position.
+- Settings for theme, lyric font, size and colour, background darkness, lyric
+  blur, battery saver, hiding Lyra while playback is paused, launching at
+  login, and the display Lyra appears on.
+- Keyboard: Space plays and pauses, ← and → seek, and on macOS ⌘← and ⌘→ skip
+  tracks.
+- A macOS app menu with About Lyra, Check for Updates…, Settings… (⌘,),
+  Playback and Help.
+- Automatic updates: release builds check in the background, download and
+  verify signed updates, and install them when you choose Restart to Install.
+- Installers for macOS (one universal build for Apple silicon and Intel, signed
+  and notarized), Windows (setup `.exe` and `.msi`), and Linux (AppImage,
+  `.deb` and `.rpm`).
+
+### Known issues
+
+- Windows installers are not code-signed yet, so Windows shows a SmartScreen
+  warning on first launch.
+- Most player and OS combinations are implemented but not yet verified; see
+  [docs/PLAYER_SUPPORT.md](docs/PLAYER_SUPPORT.md).
+- As a pre-release, this build is not offered as an update; install each beta
+  from its release page.
+
+[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.1.0-beta.1...HEAD
+[0.1.0-beta.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.1.0-beta.1

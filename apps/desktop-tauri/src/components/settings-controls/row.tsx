@@ -19,7 +19,7 @@ export function Row({
   const hintId = useId();
   return (
     <div
-      className={`row flex min-h-11 items-center justify-between box-border px-4 py-1.5 text-[13.5px]${disabled ? ' is-disabled' : ''}`}
+      className={`row flex min-h-11 items-center justify-between gap-4 box-border px-4 py-1.5 text-[13.5px]${disabled ? ' is-disabled' : ''}`}
     >
       <span className="row-label flex flex-1 flex-col gap-0.5">
         <span id={labelId}>{label}</span>

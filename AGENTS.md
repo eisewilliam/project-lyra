@@ -42,6 +42,9 @@ cd apps/desktop-tauri && pnpm lint
   `PlayerHub::control`. Do not call adapters from Tauri commands directly.
 - Keep `docs/PLAYER_SUPPORT.md` current in the same change whenever player,
   transport, or feature support changes or is verified on an OS.
+- Record every user-visible change in `CHANGELOG.md` under **Unreleased** in
+  the same change, written for users (what changed for them, not how).
+  Releases move those entries under the new version; see `docs/RELEASING.md`.
 - The `island` surface is called the **Marquee** in everything users see
   (described as a "dynamic panel"). Code identifiers, commands, events and
   saved `island_*` settings keep the `island` name until the code rename in

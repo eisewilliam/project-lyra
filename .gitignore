@@ -51,3 +51,4 @@ apps/website/design-qa.md
 # Python
 __pycache__/
 *.pyc
+apps/desktop-swiftui-poc/

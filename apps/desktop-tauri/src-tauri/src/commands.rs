@@ -175,6 +175,7 @@ pub struct IslandPatch {
     pub show_cover: Option<bool>,
     pub cover_circle: Option<bool>,
     pub cover_spin: Option<bool>,
+    pub transparency: Option<f32>,
 }
 
 #[tauri::command]
@@ -188,6 +189,9 @@ pub fn update_island_settings(patch: IslandPatch, state: State<'_, AppState>, ap
         }
         if let Some(v) = patch.cover_spin {
             s.island_cover_spin = v;
+        }
+        if let Some(v) = patch.transparency.filter(|v| v.is_finite()) {
+            s.island_transparency = v.clamp(0.0, 1.0);
         }
     });
     let _ = app.emit("ui-settings-changed", new_state);
@@ -412,9 +416,10 @@ use lyra_core::domain::SettingsPatch;
 #[tauri::command]
 pub fn update_settings(patch: SettingsPatch, state: State<'_, AppState>, app: AppHandle) {
     let behavior_changed = patch.behavior.is_some();
-    let s = {
+    let (s, battery_saver_was) = {
         let mut rt = lock_runtime(&state);
         let mut s = rt.settings().clone();
+        let battery_saver_was = s.behavior.battery_saver;
 
         if let Some(w) = patch.window {
             s.window = w;
@@ -427,13 +432,17 @@ pub fn update_settings(patch: SettingsPatch, state: State<'_, AppState>, app: Ap
         }
 
         rt.update_settings(s.clone());
-        s
+        (s, battery_saver_was)
     };
 
     // Apply OS-level window flags to the main window. The overlay panels
     // (island/karaoke) manage their own click-through/level natively, so only
     // the regular main window is driven from these settings.
     crate::apply_main_window_settings(&app, &s.window);
+    // Battery saver drops the island's glass along with the CSS effects.
+    if s.behavior.battery_saver != battery_saver_was {
+        crate::macos::set_island_glass(&app, !s.behavior.battery_saver);
+    }
     state
         .players
         .set_lookups_allowed(s.behavior.browser_lyrics == BrowserLyrics::Allow);
@@ -666,6 +675,7 @@ pub fn window_ready(label: String, state: State<'_, AppState>, app: AppHandle) {
         "island" => {
             if let Some(win) = app.get_webview_window(&label) {
                 crate::linux::apply_ignore_cursor_events_when_ready(&win, ui.island_click_through);
+                crate::macos::sync_island_glass_state(&win);
             }
         }
         _ => {}
@@ -705,6 +715,11 @@ pub fn set_surface_occluded(
     if !matches!(label.as_str(), "main" | "island" | "karaoke") {
         return;
     }
+    // Rare, and a surface that stops updating is first explained here.
+    log::info!(
+        "{label} page reported {}",
+        if occluded { "hidden" } else { "visible" }
+    );
     state.surface_visibility.set_occluded(&label, occluded);
     if !occluded {
         state.poll.request_poll();

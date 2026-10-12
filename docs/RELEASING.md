@@ -64,23 +64,29 @@ pnpm tauri signer generate -w ~/.tauri/lyra-updater.key
 
 ## Cutting a release
 
-1. Set the new version in the root `Cargo.toml` under `[workspace.package]`. It is the only version number; the app and `lyra-core` inherit it. Run `cargo check` to update `Cargo.lock`, then land the change on `main` through a pull request.
-2. Tag the merge commit and push the tag:
+1. Set the new version in the root `Cargo.toml` under `[workspace.package]`. It is the only version number; the app and `lyra-core` inherit it. Run `cargo check` to update `Cargo.lock`.
+2. In `CHANGELOG.md`, move the entries under **Unreleased** into a new section for the version, dated today, and update the comparison links at the bottom. Land both changes on `main` through a pull request.
+3. Tag the merge commit and push the tag:
 
    ```bash
    git tag v0.2.0
    git push origin v0.2.0
    ```
 
-3. The **release** workflow then runs three jobs:
+4. The **release** workflow then runs three jobs:
    - **prepare** refuses a tag that doesn't match the version or an updater key that is still the placeholder, then creates a draft release with generated notes.
    - **build** builds, signs and uploads all three platforms. macOS notarization usually adds 5 to 15 minutes.
    - **publish** checks that the download files exist, then publishes the release.
-4. If any build fails, the release stays a draft and nothing reaches users. Fix the problem, then rerun the failed jobs from the workflow run. To start the release again from the beginning, delete the draft and push the tag again.
+5. If any build fails, the release stays a draft and nothing reaches users. Fix the problem, then rerun the failed jobs from the workflow run. To start the release again from the beginning, delete the draft and push the tag again.
 
 To inspect a release before anyone can download it, run the workflow from the **Actions** tab (**release → Run workflow**) with the tag and **Publish** turned off. Publish the draft from the Releases page when it looks right.
 
-A version with a hyphen, such as `v0.2.0-beta.1`, becomes a pre-release. It is downloadable from its release page, but installed copies are not offered it.
+A version with a hyphen, such as `v0.2.0-beta.1`, becomes a pre-release. It is downloadable from its release page, but installed copies are not offered it. In a private repository only collaborators can see it, which suits internal testing.
+
+Two installer formats are stricter than semver about pre-release versions:
+
+- **Windows MSI** accepts only numeric versions, so the bundler refuses `-beta.1`. Set `bundle.windows.wix.version` in `tauri.conf.json` to the version with the beta number as a fourth field (`0.2.0.1` for `0.2.0-beta.1`), and remove it again for the final release. The setup `.exe` needs nothing.
+- **Linux RPM** forbids a hyphen in its version. The bundler writes it anyway, so the `.rpm` builds, but `rpm` tooling may order it oddly against later versions. Testers on Fedora and openSUSE should uninstall a beta before installing the final release.
 
 ### First release only
 

@@ -47,7 +47,8 @@
         "skipTaskbar": true,
         "acceptFirstMouse": true,
         "hiddenTitle": true,
-        "visible": false
+        "visible": false,
+        "backgroundThrottling": "disabled"
       },
       {
         "label": "settings",
@@ -84,7 +85,8 @@
         "skipTaskbar": true,
         "hiddenTitle": true,
         "focus": false,
-        "visible": false
+        "visible": false,
+        "backgroundThrottling": "disabled"
       }
     ],
     "security": {
@@ -106,6 +108,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "windows": {
+      "wix": {
+        "version": "0.1.0.1"
+      }
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

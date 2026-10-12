@@ -15,7 +15,7 @@
   --knob-shadow: 0 2px 6px rgba(0, 0, 0, 0.18), 0 1px 2px rgba(0, 0, 0, 0.12);
   --accent: #0A84FF;
   --slider-rail: rgba(0, 0, 0, 0.1);
-  --slider-fill: rgba(0, 0, 0, 0.42);
+  --slider-stop: rgba(0, 0, 0, 0.26);
   --nav-hover: rgba(0, 0, 0, 0.04);
   --nav-selected: rgba(0, 0, 0, 0.09);
   --panel-radius: 12px;
@@ -36,7 +36,7 @@
     --item-active-bg: #0A84FF;
     --knob-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
     --slider-rail: rgba(255, 255, 255, 0.14);
-    --slider-fill: rgba(255, 255, 255, 0.6);
+    --slider-stop: rgba(255, 255, 255, 0.3);
     --nav-hover: rgba(255, 255, 255, 0.05);
     --nav-selected: rgba(255, 255, 255, 0.13);
   }
@@ -111,11 +111,11 @@ body {
   color: var(--text-primary);
 }
 
+
 .nav-item:focus-visible,
 select:focus-visible,
 .action-btn:focus-visible,
 input[type="checkbox"]:focus-visible,
-.native-snap-slider:focus-visible,
 .segmented-option:focus-visible,
 .custom-select-trigger:focus-visible,
 .color-well:focus-visible,
@@ -469,9 +469,12 @@ body[data-os="macos"] .player-session-summary:focus-visible {
 }
 
 .snap-slider-control {
+  /* Thumb size; the rail and stops are inset by half of it so each stop
+     sits under the thumb's centre. */
+  --thumb: 20px;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: clamp(220px, 34vw, 340px);
   max-width: 100%;
 }
@@ -488,10 +491,11 @@ body[data-os="macos"] .player-session-summary:focus-visible {
   z-index: 2;
   display: block;
   width: 100%;
-  height: 22px;
+  height: 24px;
   margin: 0;
   background: transparent;
   cursor: default;
+  outline: none;
   -webkit-appearance: none;
   appearance: none;
 }
@@ -503,45 +507,59 @@ body[data-os="macos"] .player-session-summary:focus-visible {
 .native-snap-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 18px;
+  width: var(--thumb);
+  height: var(--thumb);
   border-radius: 50%;
   background: #ffffff;
   cursor: default;
   z-index: 3;
   position: relative;
   border: 0.5px solid rgba(0, 0, 0, 0.12);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
-  transition: transform var(--duration-fast) var(--ease-standard);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 0 transparent;
+  transition:
+    transform var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.native-snap-slider:hover::-webkit-slider-thumb {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 5px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .native-snap-slider:active::-webkit-slider-thumb {
-  transform: scale(1.08);
+  transform: scale(1.1);
+}
+
+/* Keyboard focus rings the thumb, the part that moves, not the whole row. */
+.native-snap-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 3px color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
 .native-snap-slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
+  width: var(--thumb);
+  height: var(--thumb);
   border-radius: 50%;
   background: #ffffff;
   cursor: default;
   border: 0.5px solid rgba(0, 0, 0, 0.12);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.native-snap-slider:focus-visible::-moz-range-thumb {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 3px color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
 .snap-slider-range {
   position: relative;
   width: 100%;
-  height: 22px;
+  height: 24px;
   display: flex;
   align-items: center;
 }
 
-/* Inset by the thumb radius so stops line up with the thumb's centre. */
 .snap-slider-track-container {
   position: absolute;
-  left: 9px;
-  right: 9px;
+  left: calc(var(--thumb) / 2);
+  right: calc(var(--thumb) / 2);
   top: 0;
   bottom: 0;
   pointer-events: none;
@@ -552,23 +570,29 @@ body[data-os="macos"] .player-session-summary:focus-visible {
 .snap-slider-fill {
   position: absolute;
   top: 50%;
-  height: 4px;
+  height: 6px;
   transform: translateY(-50%);
   border-radius: 999px;
 }
 
 .snap-slider-rail {
-  left: -9px;
-  right: -9px;
+  left: calc(var(--thumb) / -2);
+  right: calc(var(--thumb) / -2);
   background: var(--slider-rail);
+  transition: background-color var(--duration-fast) var(--ease-standard);
 }
 
+.snap-slider-range:hover .snap-slider-rail {
+  background: color-mix(in srgb, var(--slider-rail), var(--text-primary) 6%);
+}
+
+/* Accent, like the toggles. Starts at the rail's rounded end and reaches
+   the thumb's centre. */
 .snap-slider-fill {
-  left: -9px;
-  /* Reach the thumb's centre from the rail's rounded start. */
-  padding-left: 9px;
+  left: calc(var(--thumb) / -2);
+  padding-left: calc(var(--thumb) / 2);
   box-sizing: content-box;
-  background: var(--slider-fill);
+  background: var(--accent);
   transition: width var(--duration-fast) var(--ease-standard);
 }
 
@@ -577,23 +601,33 @@ body[data-os="macos"] .player-session-summary:focus-visible {
   inset: 0;
 }
 
-/* Stops sit under the rail, as on a native ticked slider. */
+/* Each stop is a dot on the rail: the slider only lands on these. */
 .snap-slider-tick {
   position: absolute;
-  top: calc(50% + 6px);
-  width: 1px;
+  top: 50%;
+  width: 4px;
   height: 4px;
-  background: var(--text-secondary);
-  opacity: 0.45;
-  transform: translateX(-50%);
+  border-radius: 50%;
+  background: var(--slider-stop);
+  transform: translate(-50%, -50%);
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.snap-slider-tick.is-filled {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.snap-slider-tick.active {
+  opacity: 0;
 }
 
 .snap-slider-value {
   flex: none;
-  min-width: 4.5em;
+  min-width: 5em;
   font-size: 12px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   text-align: right;
   white-space: nowrap;
 }

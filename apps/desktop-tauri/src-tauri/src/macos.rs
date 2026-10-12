@@ -2,18 +2,25 @@ use tauri::AppHandle;
 use tauri::Manager;
 
 #[cfg(target_os = "macos")]
+use objc2::ffi::{
+    objc_getAssociatedObject, objc_setAssociatedObject, OBJC_ASSOCIATION_RETAIN_NONATOMIC,
+};
+#[cfg(target_os = "macos")]
 use objc2::rc::Retained;
 #[cfg(target_os = "macos")]
-use objc2::runtime::{AnyClass, AnyObject, Imp, Sel};
+use objc2::runtime::{AnyClass, AnyObject, Bool, Imp, Sel};
 #[cfg(target_os = "macos")]
 use objc2::{define_class, msg_send, sel, AllocAnyThread, MainThreadMarker, MainThreadOnly};
 #[cfg(target_os = "macos")]
 use objc2_app_kit::{
-    NSEvent, NSTrackingArea, NSTrackingAreaOptions, NSWindow, NSWindowCollectionBehavior,
-    NSWindowStyleMask,
+    NSAppearance, NSAppearanceCustomization, NSAppearanceNameDarkAqua, NSEvent, NSTrackingArea,
+    NSTrackingAreaOptions, NSWindow, NSWindowCollectionBehavior, NSWindowStyleMask, NSWorkspace,
+    NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification,
 };
 #[cfg(target_os = "macos")]
-use objc2_foundation::{NSObject, NSObjectProtocol, NSPoint, NSRect};
+use objc2_foundation::{NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect};
+#[cfg(target_os = "macos")]
+use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "macos")]
 use tauri_nspanel::{ManagerExt, WebviewWindowExt};
 
@@ -75,11 +82,14 @@ fn ns_window(window: &tauri::WebviewWindow) -> Option<Retained<NSWindow>> {
 }
 
 #[cfg(target_os = "macos")]
-pub fn init_overlay_panels(app: &AppHandle) -> tauri::Result<()> {
+pub fn init_overlay_panels(app: &AppHandle, island_glass: bool) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("island") {
         let _ = window.to_panel::<LyraOverlayPanel>()?;
         unconstrain_from_screen(&window);
+        keep_glass_active(&window);
         track_island_hover(app, &window);
+        set_dark_appearance(&window);
+        set_island_glass(app, island_glass);
     }
     if let Some(window) = app.get_webview_window("karaoke") {
         let _ = window.to_panel::<LyraOverlayPanel>()?;
@@ -144,6 +154,58 @@ fn unconstrain_from_screen(window: &tauri::WebviewWindow) {
     });
 }
 
+/// Liquid Glass in a window that isn't key draws a grey, frosted "inactive"
+/// veil, and the island is a non-activating panel that is almost never key.
+/// AppKit asks these two private methods whether a window draws the active
+/// look; its own menu windows answer YES the same way. They are installed on
+/// the overlay panel class, so the karaoke panel (which has no glass) gets
+/// them too. Where macOS lacks them they are never called and the glass
+/// keeps the inactive look; focus and key status are unchanged.
+#[cfg(target_os = "macos")]
+unsafe extern "C-unwind" fn always_active_appearance(_this: *mut AnyObject, _cmd: Sel) -> Bool {
+    Bool::YES
+}
+
+/// Type encoding for a `- (BOOL)method` getter; `BOOL` is `bool` on arm64
+/// and `signed char` on x86_64.
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+const BOOL_GETTER_TYPES: &std::ffi::CStr = c"B@:";
+#[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+const BOOL_GETTER_TYPES: &std::ffi::CStr = c"c@:";
+
+#[cfg(target_os = "macos")]
+fn keep_glass_active(window: &tauri::WebviewWindow) {
+    let window_clone = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        let Some(ns_window) = ns_window(&window_clone) else {
+            return;
+        };
+        let object: &AnyObject = &ns_window;
+        let class: *const AnyClass = object.class();
+        let imp: unsafe extern "C-unwind" fn(*mut AnyObject, Sel) -> Bool =
+            always_active_appearance;
+        // SAFETY: the function matches a BOOL getter, described by the type
+        // encoding; method implementations are stored erased as `Imp`.
+        unsafe {
+            let imp = std::mem::transmute::<
+                unsafe extern "C-unwind" fn(*mut AnyObject, Sel) -> Bool,
+                Imp,
+            >(imp);
+            for selector in [
+                sel!(_hasActiveAppearance),
+                sel!(_hasActiveAppearanceIgnoringKeyFocus),
+            ] {
+                objc2::ffi::class_replaceMethod(
+                    class.cast_mut(),
+                    selector,
+                    imp,
+                    BOOL_GETTER_TYPES.as_ptr(),
+                );
+            }
+        }
+    });
+}
+
 #[cfg(target_os = "macos")]
 pub fn set_overlay_position(app: &AppHandle, label: &str, x: i32, y: i32) -> tauri::Result<()> {
     if !matches!(label, "island" | "karaoke") {
@@ -182,6 +244,13 @@ pub fn set_overlay_position(app: &AppHandle, label: &str, x: i32, y: i32) -> tau
             // Override clamped Y and snap back flush to the exact requested coordinate
             let new_y = screen_top - top_offset_points - window_frame.size.height;
             ns_window.setFrameOrigin(NSPoint::new(window_frame.origin.x, new_y));
+
+            if window_clone.label() == "island" {
+                let docked = top_offset_points.abs() < 0.5;
+                if ISLAND_DOCKED.swap(docked, Ordering::AcqRel) != docked {
+                    fit_island_glass(&ns_window, docked);
+                }
+            }
         });
     }
 
@@ -295,8 +364,8 @@ fn edge_of(event: &NSEvent, mtm: MainThreadMarker) -> Option<i8> {
 
 #[cfg(target_os = "macos")]
 define_class!(
-    /// Receives the island tracking area's callbacks. One instance lives for
-    /// the process, like the panel.
+    /// Receives hover and accessibility callbacks. The content view retains
+    /// it without replacing Tauri's window delegate.
     #[unsafe(super(NSObject))]
     #[thread_kind = MainThreadOnly]
     #[name = "LyraIslandHoverOwner"]
@@ -320,6 +389,16 @@ define_class!(
         fn mouse_moved(&self, event: &NSEvent) {
             if let Some(edge) = edge_of(event, self.mtm()) {
                 emit_island_edge(edge);
+            }
+        }
+
+        #[unsafe(method(accessibilityDisplayOptionsChanged:))]
+        fn accessibility_display_options_changed(&self, _notification: &NSNotification) {
+            if let Some(app) = HOVER_APP.get() {
+                let battery_saver = app.state::<crate::AppState>().runtime.lock()
+                    .map(|rt| rt.settings().behavior.battery_saver)
+                    .unwrap_or(false);
+                set_island_glass(app, !battery_saver);
             }
         }
     }
@@ -347,6 +426,10 @@ pub fn island_pointer_inside(app: &AppHandle) -> bool {
 
 #[cfg(target_os = "macos")]
 fn track_island_hover(app: &AppHandle, window: &tauri::WebviewWindow) {
+    // tauri-nspanel's hover handler replaces the window delegate instead of
+    // forwarding to Tao. Keep this tracking owner so onMoved/onResized (and
+    // docking/position persistence) continue to reach Tauri.
+    static OWNER_KEY: u8 = 0;
     let _ = HOVER_APP.set(app.clone());
     let window_clone = window.clone();
     let _ = window.run_on_main_thread(move || {
@@ -356,6 +439,13 @@ fn track_island_hover(app: &AppHandle, window: &tauri::WebviewWindow) {
         let Some(content_view) = ns_window(&window_clone).and_then(|w| w.contentView()) else {
             return;
         };
+        let view_ptr = Retained::as_ptr(&content_view) as *mut AnyObject;
+        let key = std::ptr::from_ref(&OWNER_KEY).cast();
+        // SAFETY: both pointers remain valid on the main thread. Avoid adding
+        // duplicate tracking areas if panel setup is called again.
+        if !unsafe { objc_getAssociatedObject(view_ptr, key) }.is_null() {
+            return;
+        }
         // SAFETY: `init` is NSObject's designated initialiser.
         let owner: Retained<HoverOwner> = unsafe { msg_send![HoverOwner::alloc(mtm), init] };
         // Moves are delivered only while the pointer is over the island and
@@ -375,16 +465,144 @@ fn track_island_hover(app: &AppHandle, window: &tauri::WebviewWindow) {
                 None,
             )
         };
+        // SAFETY: the view retains the owner for its lifetime. The selector
+        // observer is automatically removed when the owner is deallocated.
+        unsafe {
+            objc_setAssociatedObject(
+                view_ptr,
+                key,
+                Retained::as_ptr(&owner) as *mut AnyObject,
+                OBJC_ASSOCIATION_RETAIN_NONATOMIC,
+            );
+            NSWorkspace::sharedWorkspace()
+                .notificationCenter()
+                .addObserver_selector_name_object(
+                    owner_object,
+                    sel!(accessibilityDisplayOptionsChanged:),
+                    Some(NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification),
+                    None,
+                );
+        }
         content_view.addTrackingArea(&area);
-        // A tracking area doesn't retain its owner; keep it for the process.
-        std::mem::forget(owner);
     });
 }
 
+// ── Island glass ───────────────────────────────────────────────────────────────
+//
+// The island's backdrop is native: Liquid Glass on macOS 26+, the HUD material
+// before that (Tauri falls back by itself). A CSS backdrop-filter can't do
+// this: in a transparent webview it blurs only the page, never the desktop
+// behind the window.
+
+/// Corner radius of the glass; matches `.floating-panel` in island.css.
+#[cfg(target_os = "macos")]
+const ISLAND_GLASS_RADIUS: f64 = 20.0;
+
+/// Whether the island sits flush with the top of its screen. Docked, it has
+/// square top corners, so its glass reaches one corner radius above the window
+/// and the window edge cuts those corners off.
+#[cfg(target_os = "macos")]
+static ISLAND_DOCKED: AtomicBool = AtomicBool::new(false);
+
+/// The island is always styled dark, so its glass should be too. Set on this
+/// window only: Tauri's `set_theme` changes the appearance of the whole app.
+#[cfg(target_os = "macos")]
+fn set_dark_appearance(window: &tauri::WebviewWindow) {
+    let window_clone = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        let Some(ns_window) = ns_window(&window_clone) else {
+            return;
+        };
+        // SAFETY: an AppKit constant, valid for the life of the process.
+        let dark = NSAppearance::appearanceNamed(unsafe { NSAppearanceNameDarkAqua });
+        ns_window.setAppearance(dark.as_deref());
+    });
+}
+
+/// Put the glass behind the island, or take it away (battery saver).
+#[cfg(target_os = "macos")]
+pub fn set_island_glass(app: &AppHandle, enabled: bool) {
+    use tauri::window::{Effect, EffectState, EffectsBuilder};
+    let Some(window) = app.get_webview_window("island") else {
+        return;
+    };
+    let reduced_transparency =
+        NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceTransparency();
+    let effects = (enabled && !reduced_transparency).then(|| {
+        EffectsBuilder::new()
+            .effects([Effect::LiquidGlassRegular, Effect::HudWindow])
+            // The panel never becomes key; keep the material lit regardless.
+            .state(EffectState::Active)
+            .radius(ISLAND_GLASS_RADIUS)
+            .build()
+    });
+    // Both run in order on the main thread, so the glass exists by the fit.
+    if let Err(error) = window.set_effects(effects) {
+        log::warn!("Could not update Marquee glass: {error}");
+    }
+    let window_clone = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        if let Some(ns_window) = ns_window(&window_clone) {
+            fit_island_glass(&ns_window, ISLAND_DOCKED.load(Ordering::Acquire));
+            sync_island_glass_state(&window_clone);
+        }
+    });
+}
+
+/// Publish the actual native effect state after setup and window readiness.
+#[cfg(target_os = "macos")]
+pub fn sync_island_glass_state(window: &tauri::WebviewWindow) {
+    let has_glass = ns_window(window)
+        .and_then(|w| w.contentView())
+        .is_some_and(|view| {
+            view.subviews().iter().any(|child| {
+                [c"NSGlassEffectView", c"NSVisualEffectView"]
+                    .into_iter()
+                    .filter_map(AnyClass::get)
+                    .any(|class| child.isKindOfClass(class))
+            })
+        });
+    let reduced_transparency =
+        NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceTransparency();
+    let _ = window.eval(format!(
+        "document.documentElement.dataset.nativeGlass = '{has_glass}'; document.documentElement.dataset.reducedTransparency = '{reduced_transparency}';"
+    ));
+}
+
+/// Size the glass view to the island, reaching above it while docked. Call on
+/// the main thread.
+#[cfg(target_os = "macos")]
+fn fit_island_glass(ns_window: &NSWindow, docked: bool) {
+    let Some(content_view) = ns_window.contentView() else {
+        return;
+    };
+    let glass_classes: Vec<&AnyClass> = [c"NSGlassEffectView", c"NSVisualEffectView"]
+        .into_iter()
+        .filter_map(AnyClass::get)
+        .collect();
+    let lift = if docked { ISLAND_GLASS_RADIUS } else { 0.0 };
+    let mut frame = content_view.bounds();
+    frame.size.height += lift;
+    if content_view.isFlipped() {
+        frame.origin.y -= lift;
+    }
+    for view in content_view.subviews().iter() {
+        if glass_classes.iter().any(|class| view.isKindOfClass(class)) {
+            view.setFrame(frame);
+        }
+    }
+}
+
 #[cfg(not(target_os = "macos"))]
-pub fn init_overlay_panels(_app: &AppHandle) -> tauri::Result<()> {
+pub fn init_overlay_panels(_app: &AppHandle, _island_glass: bool) -> tauri::Result<()> {
     Ok(())
 }
+
+#[cfg(not(target_os = "macos"))]
+pub fn set_island_glass(_app: &AppHandle, _enabled: bool) {}
+
+#[cfg(not(target_os = "macos"))]
+pub fn sync_island_glass_state(_window: &tauri::WebviewWindow) {}
 
 #[cfg(not(target_os = "macos"))]
 pub fn set_overlay_position(app: &AppHandle, label: &str, x: i32, y: i32) -> tauri::Result<()> {

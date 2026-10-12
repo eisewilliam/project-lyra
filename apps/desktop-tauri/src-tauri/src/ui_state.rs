@@ -38,6 +38,10 @@ pub struct UiState {
     pub island_cover_circle: bool,
     #[serde(default)]
     pub island_cover_spin: bool,
+    /// How much of the backdrop shows through the island: 0 is solid, 1 the
+    /// clearest. 0.5 is the standard look.
+    #[serde(default = "default_island_transparency")]
+    pub island_transparency: f32,
 
     #[serde(default = "default_true")]
     pub island_show_on_fullscreen: bool,
@@ -85,6 +89,9 @@ fn default_true() -> bool {
 fn default_font_scale() -> f32 {
     1.0
 }
+fn default_island_transparency() -> f32 {
+    0.5
+}
 fn default_theme() -> String {
     "auto".into()
 }
@@ -121,6 +128,7 @@ impl Default for UiState {
             island_show_cover: true,
             island_cover_circle: false,
             island_cover_spin: false,
+            island_transparency: 0.5,
             island_show_on_fullscreen: true,
             karaoke_show_on_fullscreen: true,
             floating_show_on_fullscreen: false,
@@ -194,5 +202,16 @@ impl UiStateStore {
                 let _ = std::fs::write(path, json);
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn states_saved_before_island_transparency_load_the_standard_look() {
+        let state: UiState = serde_json::from_str(r#"{"island_visible":true}"#).unwrap();
+        assert_eq!(state.island_transparency, 0.5);
     }
 }

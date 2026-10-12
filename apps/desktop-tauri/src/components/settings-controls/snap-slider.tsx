@@ -46,10 +46,12 @@ export function SnapSlider({
             <span className="snap-slider-ticks">
               {steps.map((s, i) => {
                 const tickProgress = steps.length > 1 ? (i / (steps.length - 1)) * 100 : 0;
+                // Stops the fill has reached light up; the thumb covers its own.
+                const state = i === idx ? ' active' : i < idx ? ' is-filled' : '';
                 return (
                   <span
                     key={`${s.value}-${s.label}`}
-                    className={`snap-slider-tick${i === idx ? ' active' : ''}`}
+                    className={`snap-slider-tick${state}`}
                     style={{ left: `${tickProgress}%` }}
                   />
                 );
