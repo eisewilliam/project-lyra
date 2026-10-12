@@ -91,6 +91,22 @@ export function useSettings() {
     };
   }, []);
 
+  // The app menu's Check for Updates… opens General, where updates live.
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    listen<Section>('settings-show-section', (e) => setSection(e.payload))
+      .then((stop) => {
+        if (cancelled) stop();
+        else unlisten = stop;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
   useEffect(() => {
     let unlistenTick: (() => void) | undefined;
     let cancelled = false;

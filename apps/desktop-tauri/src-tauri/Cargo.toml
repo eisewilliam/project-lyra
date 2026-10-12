@@ -36,8 +36,8 @@ gtk = "0.18"
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = "2.1.1"
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSDictionary", "NSEnumerator", "NSGeometry", "NSNotification", "NSString"] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSAccessibility", "NSAppearance", "NSEvent", "NSResponder", "NSScreen", "NSTrackingArea", "NSView", "NSWindow", "NSWorkspace"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSDictionary", "NSEnumerator", "NSGeometry", "NSNotification", "NSProcessInfo", "NSString"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSAccessibility", "NSAppearance", "NSApplication", "NSEvent", "NSImage", "NSMenu", "NSMenuItem", "NSResponder", "NSScreen", "NSTrackingArea", "NSView", "NSWindow", "NSWorkspace"] }
 libc = "0.2"
 dispatch2 = { version = "0.3", default-features = false, features = ["std", "libc"] }
 window-vibrancy = "0.8.1"

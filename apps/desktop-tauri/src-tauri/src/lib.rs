@@ -974,6 +974,10 @@ pub fn run() {
                 .unwrap_or(false);
             let _ = macos::init_overlay_panels(app.handle(), !battery_saver);
 
+            // The app menu is installed by now; give its items their icons.
+            #[cfg(target_os = "macos")]
+            menu::apply_symbols();
+
             // Build the system tray menu.
             tray::create_tray(app.handle(), &initial)?;
 
