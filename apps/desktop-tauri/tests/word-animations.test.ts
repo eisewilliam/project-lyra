@@ -19,6 +19,7 @@ function fixture() {
     currentTime: 0,
     playbackRate: 1,
     playState: 'paused',
+    ready: Promise.resolve(),
     play: mock(function (this: { playState: string }) { this.playState = 'running'; }),
     pause: mock(function (this: { playState: string }) { this.playState = 'paused'; }),
     cancel: mock(function (this: { playState: string }) { this.playState = 'idle'; }),
@@ -42,7 +43,6 @@ describe('native word animations', () => {
     expect(animations.every((animation) => animation.playState === 'running')).toBe(true);
     controller.sync(false);
     expect(animations.every((animation) => animation.playState === 'paused')).toBe(true);
-    expect(animations.every((animation) => animation.playbackRate === 0)).toBe(true);
     baselineRef.current = { ms: 1700, at: 100, targetMs: 1700, targetAt: 100, blendDur: 1 };
     controller.sync(false);
     expect(animations.map((animation) => animation.currentTime)).toEqual([1700, 1700]);
@@ -50,6 +50,7 @@ describe('native word animations', () => {
     baselineRef.current = { ms: 1100, at: 100, targetMs: 1100, targetAt: 100, blendDur: 1 };
     controller.sync(true);
     expect(animations.map((animation) => animation.currentTime)).toEqual([1100, 1100]);
+    expect(animations.every((animation) => animation.playbackRate === 1)).toBe(true);
     expect(elements.every((element) => element.animate.mock.calls.length === 1)).toBe(true);
     expect(elements[1]!.animate.mock.calls[0]).toEqual([
       [{ '--word-progress': '0' }, { '--word-progress': '1' }],
@@ -57,16 +58,29 @@ describe('native word animations', () => {
     ]);
   });
 
-  test('follows the shared clock while it blends a corrected snapshot', () => {
+  test('takes a snapshot correction in one step without changing the rate', () => {
     const { animations, baselineRef, controller } = fixture();
     baselineRef.current = { ms: 1000, at: 0, targetMs: 1100, targetAt: 0, blendDur: 500 };
     controller.sync(true);
-    expect(animations[0]!.currentTime).toBe(1120);
-    expect(animations[0]!.playbackRate).toBeCloseTo(1.2);
-    spyOn(performance, 'now').mockReturnValue(600);
+    expect(animations.map((animation) => animation.currentTime)).toEqual([1200, 1200]);
+    expect(animations.every((animation) => animation.playbackRate === 1)).toBe(true);
+  });
+
+  test('leaves running and finished words alone unless a correction would show', () => {
+    const { animations, baselineRef, controller } = fixture();
     controller.sync(true);
-    expect(animations[0]!.currentTime).toBe(1700);
-    expect(animations[0]!.playbackRate).toBe(1);
+    // Native playback moved the first word on; a 15 ms correction stays put.
+    animations[0]!.currentTime = 1210;
+    baselineRef.current = { ms: 1225, at: 100, targetMs: 1225, targetAt: 100, blendDur: 1 };
+    controller.sync(true);
+    expect(animations[0]!.currentTime).toBe(1210);
+    // Later both words have finished and hold their ends while the song
+    // continues: nothing to seek.
+    animations[0]!.currentTime = 1500;
+    animations[1]!.currentTime = 2000;
+    baselineRef.current = { ms: 2400, at: 100, targetMs: 2400, targetAt: 100, blendDur: 1 };
+    controller.sync(true);
+    expect(animations.map((animation) => animation.currentTime)).toEqual([1500, 2000]);
   });
 
   test('cancels every animation on line replacement or hiding', () => {

@@ -168,8 +168,24 @@ export type WordAnimations = {
   stop: () => void;
 };
 
+/** A running word wipe is re-seeked only when it is off by more than this.
+ * Seeking every word on every snapshot made lit words shimmer. */
+const WORD_SEEK_TOLERANCE_MS = 30;
+
+/** Where playback is now with any snapshot correction applied in full. The
+ * frame loops blend into corrections; native wipes take them in one step,
+ * and only when they are large enough to see. */
+function targetPosition(b: PositionBaseline, now: number, playing: boolean): number {
+  return playing ? b.targetMs + (now - b.targetAt) : b.ms;
+}
+
 /** Native word wipes, built once per line and reconciled with each snapshot.
  * Older webviews without registered custom properties use runWordColouring.
+ *
+ * The playback rate is never changed. Each animation's time is the song
+ * position, tens of seconds in, so an engine that rebuilds a just-finished
+ * animation from its old start time at a new rate moves it by song time ×
+ * rate change: a lit word dropped back by ~150 ms on a 0.2% blend.
  */
 export function createWordAnimations(
   words: LyricWord[],
@@ -179,43 +195,56 @@ export function createWordAnimations(
   if (typeof CSS === 'undefined' || typeof CSS.registerProperty !== 'function'
     || words.some((_, i) => typeof wordRefs.current[i]?.animate !== 'function')) return null;
 
-  const animations = words.map((word, i) => wordRefs.current[i]!.animate(
+  const spans = words.map((word) => {
+    const duration = Math.max(1, word.end_ms - word.start_ms);
+    return { start: word.start_ms, end: word.start_ms + duration, duration };
+  });
+  const animations = spans.map((span, i) => wordRefs.current[i]!.animate(
     [{ '--word-progress': '0' }, { '--word-progress': '1' }],
-    { delay: word.start_ms, duration: Math.max(1, word.end_ms - word.start_ms), fill: 'both' },
+    { delay: span.start, duration: span.duration, fill: 'both' },
   ));
   for (const animation of animations) animation.pause();
 
-  let blendTimer: ReturnType<typeof setTimeout> | undefined;
+  let syncs = 0;
   const sync = (isPlaying: boolean) => {
-    clearTimeout(blendTimer);
-    const now = performance.now();
-    const baseline = baselineRef.current;
-    const position = interpolatePosition(baseline, now, isPlaying);
-    const blendRemaining = baseline.at + baseline.blendDur - now;
-    // Both trajectories have slope 1, so their linear blend also has a
-    // constant slope until the blend ends. Native playback can follow it.
-    const rate = isPlaying && blendRemaining > 0
-      ? 1 + (baseline.targetMs + baseline.at - baseline.targetAt - baseline.ms)
-        / Math.max(1, baseline.blendDur)
-      : isPlaying ? 1 : 0;
-    for (const animation of animations) {
-      // A pause completes on the next native animation frame. A zero rate
-      // keeps its hold time exact while that pause is pending.
-      if (!isPlaying) animation.pause();
-      animation.playbackRate = rate;
-      animation.currentTime = position;
-      if (isPlaying) {
-        if (animation.playState !== 'running' && animation.playState !== 'finished') animation.play();
+    const token = ++syncs;
+    const position = targetPosition(baselineRef.current, performance.now(), isPlaying);
+    animations.forEach((animation, i) => {
+      if (!isPlaying) {
+        // A pause lands on the next animation frame and holds the time
+        // reached by then; seek again once it has, so the word holds exactly
+        // where playback stopped.
+        animation.pause();
+        animation.currentTime = position;
+        animation.ready
+          .then(() => {
+            if (token === syncs && animation.playState === 'paused') animation.currentTime = position;
+          })
+          .catch(() => undefined);
+        return;
       }
-    }
-    if (isPlaying && blendRemaining > 0) {
-      blendTimer = setTimeout(() => sync(true), blendRemaining);
-    }
+      if (animation.playState === 'paused') {
+        // Play before seeking: play() rewinds an animation whose time is
+        // past its end, which would dim a word already sung.
+        animation.play();
+        animation.currentTime = position;
+        return;
+      }
+      // Running or finished: seek only on a correction that would show.
+      // Compare inside the word's own window; a finished word holds its end
+      // time while playback moves on.
+      const span = spans[i]!;
+      const clamp = (t: number) => Math.min(span.end, Math.max(span.start, t));
+      const current = Number(animation.currentTime ?? position);
+      if (Math.abs(clamp(position) - clamp(current)) > WORD_SEEK_TOLERANCE_MS) {
+        animation.currentTime = position;
+      }
+    });
   };
   return {
     sync,
     stop: () => {
-      clearTimeout(blendTimer);
+      syncs++;
       for (const animation of animations) animation.cancel();
     },
   };
