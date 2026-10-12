@@ -711,6 +711,11 @@ pub fn set_surface_occluded(
     if !matches!(label.as_str(), "main" | "island" | "karaoke") {
         return;
     }
+    // Rare, and a surface that stops updating is first explained here.
+    log::info!(
+        "{label} page reported {}",
+        if occluded { "hidden" } else { "visible" }
+    );
     state.surface_visibility.set_occluded(&label, occluded);
     if !occluded {
         state.poll.request_poll();

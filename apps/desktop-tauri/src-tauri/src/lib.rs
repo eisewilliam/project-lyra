@@ -106,7 +106,11 @@ impl RuntimeSurfaceVisibility {
         }
     }
 
+    /// Called once per page load. A reloaded page starts visible and reports
+    /// only changes, while the page it replaced reported hidden as it
+    /// unloaded, so drop that report or the surface never gets ticks again.
     pub fn set_ready(&self, label: &str) {
+        self.set_occluded(label, false);
         let Ok(mut ready) = self.ready_surfaces.lock() else {
             return;
         };
@@ -232,7 +236,13 @@ fn poll_players(
     app: &tauri::AppHandle,
     players: &PlayerHub,
 ) -> lyra_core::domain::PlaybackSnapshot {
+    let started = std::time::Instant::now();
     let snapshot = players.poll();
+    // Polls share one queue, so a slow player delays every surface's ticks.
+    let took = started.elapsed();
+    if took >= std::time::Duration::from_millis(1500) {
+        log::warn!("Player poll took {} ms", took.as_millis());
+    }
     for track in players.take_probes() {
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
@@ -1202,6 +1212,20 @@ mod tests {
         assert!(!visibility.is_visible("main", true));
         visibility.set_occluded("main", false);
         assert!(visibility.is_visible("main", true));
+    }
+
+    #[test]
+    fn reloaded_page_does_not_inherit_hidden_report_from_unloaded_page() {
+        let visibility = RuntimeSurfaceVisibility::new_all_hidden();
+        visibility.set_ready("island");
+        visibility.set_visible("island", true);
+
+        // The unloading page reports hidden; its replacement starts visible
+        // and only reports when that changes.
+        visibility.set_occluded("island", true);
+        visibility.set_ready("island");
+
+        assert!(visibility.is_visible("island", true));
     }
 
     #[test]

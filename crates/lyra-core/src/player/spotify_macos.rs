@@ -20,16 +20,22 @@ const PLAYER_NAME: &str = "Spotify";
 
 /// Lightweight poll: only the values that change between polls. The running
 /// check is outside the `tell` block so polling never launches Spotify.
+// Every poll script bounds its Apple events with `with timeout`: polls
+// share one queue, and AppleScript's default 2-minute wait on a busy
+// Spotify would freeze every surface. A timed-out poll reuses the last
+// observation, which the runtime keeps extrapolating.
 static LITE: Script = Script::new(
     r#"
 if application "Spotify" is not running then return "not_running"
-tell application "Spotify"
-    set ps to player state as string
-    if ps is "stopped" then return "stopped"
-    set tid to id of current track
-    set pos to player position
-    return ps & "|" & tid & "|" & (pos as string)
-end tell
+with timeout of 2 seconds
+    tell application "Spotify"
+        set ps to player state as string
+        if ps is "stopped" then return "stopped"
+        set tid to id of current track
+        set pos to player position
+        return ps & "|" & tid & "|" & (pos as string)
+    end tell
+end timeout
 "#,
 );
 
@@ -38,20 +44,22 @@ end tell
 static META: Script = Script::new(
     r#"
 if application "Spotify" is not running then return "not_running"
-tell application "Spotify"
-    set ps to player state as string
-    if ps is "stopped" then return "stopped"
-    set tid to id of current track
-    set tn to name of current track
-    set ta to artist of current track
-    set tal to album of current track
-    set tdur to duration of current track
-    set tart to ""
-    try
-        set tart to artwork url of current track
-    end try
-    return tid & "|" & tn & "|" & ta & "|" & tal & "|" & (tdur as string) & "|" & tart
-end tell
+with timeout of 4 seconds
+    tell application "Spotify"
+        set ps to player state as string
+        if ps is "stopped" then return "stopped"
+        set tid to id of current track
+        set tn to name of current track
+        set ta to artist of current track
+        set tal to album of current track
+        set tdur to duration of current track
+        set tart to ""
+        try
+            set tart to artwork url of current track
+        end try
+        return tid & "|" & tn & "|" & ta & "|" & tal & "|" & (tdur as string) & "|" & tart
+    end tell
+end timeout
 "#,
 );
 

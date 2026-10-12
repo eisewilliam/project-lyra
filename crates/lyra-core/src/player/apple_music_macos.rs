@@ -26,24 +26,30 @@ const MAX_ARTWORK_BYTES: usize = 10 * 1024 * 1024;
 
 /// State, persistent ID and position. The running check is outside the
 /// `tell` block so polling never launches Music.
+// Every poll script bounds its Apple events with `with timeout`: polls
+// share one queue, and AppleScript's default 2-minute wait on a busy
+// Music would freeze every surface. A timed-out poll reuses the last
+// observation, which the runtime keeps extrapolating.
 static LITE: Script = Script::new(
     r#"
 if application "Music" is not running then return "not_running"
-tell application "Music"
-    set ps to player state as string
-    if ps is "stopped" then return "stopped"
-    try
-        set tid to persistent ID of current track
-    on error
-        return "no_track"
-    end try
-    set pos to ""
-    try
-        set pos to (player position as string)
-    end try
-    set sep to character id 31
-    return ps & sep & tid & sep & pos
-end tell
+with timeout of 2 seconds
+    tell application "Music"
+        set ps to player state as string
+        if ps is "stopped" then return "stopped"
+        try
+            set tid to persistent ID of current track
+        on error
+            return "no_track"
+        end try
+        set pos to ""
+        try
+            set pos to (player position as string)
+        end try
+        set sep to character id 31
+        return ps & sep & tid & sep & pos
+    end tell
+end timeout
 "#,
 );
 
@@ -52,49 +58,53 @@ end tell
 static META: Script = Script::new(
     r#"
 if application "Music" is not running then return ""
-tell application "Music"
-    try
-        set t to current track
-        set tid to persistent ID of t
-    on error
-        return ""
-    end try
-    set tn to ""
-    set ta to ""
-    set tal to ""
-    set tdur to ""
-    set loc to ""
-    try
-        set tn to (name of t as string)
-    end try
-    try
-        set ta to (artist of t as string)
-    end try
-    try
-        set tal to (album of t as string)
-    end try
-    try
-        set tdur to (duration of t as string)
-    end try
-    try
-        if class of t is file track then set loc to POSIX path of (location of t)
-    end try
-    set sep to character id 31
-    return tid & sep & tn & sep & ta & sep & tal & sep & tdur & sep & loc
-end tell
+with timeout of 4 seconds
+    tell application "Music"
+        try
+            set t to current track
+            set tid to persistent ID of t
+        on error
+            return ""
+        end try
+        set tn to ""
+        set ta to ""
+        set tal to ""
+        set tdur to ""
+        set loc to ""
+        try
+            set tn to (name of t as string)
+        end try
+        try
+            set ta to (artist of t as string)
+        end try
+        try
+            set tal to (album of t as string)
+        end try
+        try
+            set tdur to (duration of t as string)
+        end try
+        try
+            if class of t is file track then set loc to POSIX path of (location of t)
+        end try
+        set sep to character id 31
+        return tid & sep & tn & sep & ta & sep & tal & sep & tdur & sep & loc
+    end tell
+end timeout
 "#,
 );
 
 static ARTWORK: Script = Script::new(
     r#"
 if application "Music" is not running then return ""
-tell application "Music"
-    try
-        return raw data of artwork 1 of current track
-    on error
-        return ""
-    end try
-end tell
+with timeout of 4 seconds
+    tell application "Music"
+        try
+            return raw data of artwork 1 of current track
+        on error
+            return ""
+        end try
+    end tell
+end timeout
 "#,
 );
 
