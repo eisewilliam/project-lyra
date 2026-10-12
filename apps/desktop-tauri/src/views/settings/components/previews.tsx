@@ -57,6 +57,7 @@ export function IslandPreview({
   const width = ui.island_width ?? 600;
   const height = ui.island_height ?? 72;
   const compact = height <= 64;
+  const transparency = ui.island_transparency ?? 0.5;
   return (
     <div
       className="settings-preview preview-island"
@@ -75,9 +76,10 @@ export function IslandPreview({
           // The island reads these from its own root; mirror them here.
           '--bg-darkness': String(appearance.background_opacity),
           '--lyric-color': appearance.text_color || '#ffffff',
+          '--marquee-transparency': String(transparency),
         } as CSSProperties}
       >
-        <div className={`floating-panel docked ${compact ? 'is-compact' : ''}`}>
+        <div className={`floating-panel docked ${compact ? 'is-compact' : ''} ${transparency > 0.5 ? 'is-clear' : ''}`}>
           <div className="island-background">
             <img src={artworkSrc} alt="" className="island-bg-img" />
             <div className="island-bg-dimmer" />
@@ -99,7 +101,7 @@ export function IslandPreview({
             <div className="island-meter">
               <div className="audio-bars is-playing">
                 {[9, 15, 11, 6].map((h, i) => (
-                  <span key={i} className="bar" style={{ '--meter-height': `${h}px`, '--meter-opacity': '0.85' } as CSSProperties} />
+                  <span key={i} className="bar" style={{ '--meter-scale': String(h / 18), '--meter-opacity': '0.85' } as CSSProperties} />
                 ))}
               </div>
             </div>

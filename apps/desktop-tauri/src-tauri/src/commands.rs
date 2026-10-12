@@ -175,6 +175,7 @@ pub struct IslandPatch {
     pub show_cover: Option<bool>,
     pub cover_circle: Option<bool>,
     pub cover_spin: Option<bool>,
+    pub transparency: Option<f32>,
 }
 
 #[tauri::command]
@@ -188,6 +189,9 @@ pub fn update_island_settings(patch: IslandPatch, state: State<'_, AppState>, ap
         }
         if let Some(v) = patch.cover_spin {
             s.island_cover_spin = v;
+        }
+        if let Some(v) = patch.transparency.filter(|v| v.is_finite()) {
+            s.island_transparency = v.clamp(0.0, 1.0);
         }
     });
     let _ = app.emit("ui-settings-changed", new_state);

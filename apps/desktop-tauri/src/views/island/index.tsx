@@ -101,6 +101,7 @@ export default function Island() {
   const [hideWhenPaused, setHideWhenPaused] = useState(false);
   const [hideWhenIdle, setHideWhenIdle] = useState(false);
   const [batterySaver, setBatterySaver] = useState(false);
+  const [transparency, setTransparency] = useState(0.5);
 
   const {
     activeLine,
@@ -147,6 +148,7 @@ export default function Island() {
     setIslandHeight,
     setIsDocked,
     setBatterySaver,
+    setTransparency,
   });
 
   useIslandMove({
@@ -247,7 +249,8 @@ export default function Island() {
   return (
     <div
       ref={panelRef}
-      className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${isDocked ? 'docked' : 'floating'} ${panelState !== 'ready' && !showTrackIntro ? 'has-placeholder' : ''} ${isCompactLayout ? 'is-compact' : ''} ${hovered ? 'is-hovered' : ''} ${dragging ? 'is-dragging' : ''}`}
+      className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${isDocked ? 'docked' : 'floating'} ${panelState !== 'ready' && !showTrackIntro ? 'has-placeholder' : ''} ${isCompactLayout ? 'is-compact' : ''} ${hovered ? 'is-hovered' : ''} ${dragging ? 'is-dragging' : ''} ${transparency > 0.5 ? 'is-clear' : ''}`}
+      style={{ '--marquee-transparency': String(transparency) } as CSSProperties}
       role="application"
       aria-label="Marquee"
       {...handlers}

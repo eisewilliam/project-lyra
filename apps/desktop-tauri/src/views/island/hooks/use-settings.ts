@@ -28,6 +28,7 @@ export function useIslandSettings({
   setIslandHeight,
   setIsDocked,
   setBatterySaver,
+  setTransparency,
 }: {
   ensureWindowReady: () => Promise<void>;
   desiredVisibleRef: RefObject<boolean>;
@@ -42,6 +43,7 @@ export function useIslandSettings({
   setIslandHeight: Dispatch<SetStateAction<number>>;
   setIsDocked: Dispatch<SetStateAction<boolean>>;
   setBatterySaver: Dispatch<SetStateAction<boolean>>;
+  setTransparency: Dispatch<SetStateAction<number>>;
 }) {
   useSurfaceSettings({
     ensureWindowReady,
@@ -58,6 +60,7 @@ export function useIslandSettings({
       setCoverCircle(state.island_cover_circle ?? false);
       setCoverSpin(state.island_cover_spin ?? false);
       setIslandHeight(state.island_height ?? 72);
+      setTransparency(state.island_transparency ?? 0.5);
       applyIslandFont(state.island_font_scale);
 
       try {
@@ -91,6 +94,7 @@ export function useIslandSettings({
       setCoverCircle(state.island_cover_circle ?? false);
       setCoverSpin(state.island_cover_spin ?? false);
       setIslandHeight(state.island_height ?? 72);
+      setTransparency(state.island_transparency ?? 0.5);
       applyIslandFont(state.island_font_scale);
       if (state.island_width && state.island_height) {
         getCurrentWindow().setSize(

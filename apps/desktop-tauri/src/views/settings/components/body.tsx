@@ -15,6 +15,7 @@ import {
   FONT_SCALE_STEPS,
   FONT_SIZE_STEPS,
   ISLAND_HEIGHT_STEPS,
+  ISLAND_TRANSPARENCY_STEPS,
   ISLAND_WIDTH_STEPS,
   KARAOKE_ALIGNMENT_OPTIONS,
   KARAOKE_BACKGROUND_STEPS,
@@ -338,6 +339,16 @@ export function Body({
           />
         </Row>
         {textScale('island', ui.island_font_scale)}
+      </Group>
+
+      <Group title="Background">
+        <Row label="Transparency" hint="Lyrics keep their contrast at every level.">
+          <SnapSlider
+            steps={ISLAND_TRANSPARENCY_STEPS}
+            value={ui.island_transparency ?? 0.5}
+            onChange={(v) => actions.island('island_transparency', v, 'island-transparency')}
+          />
+        </Row>
       </Group>
 
       <Group title="Cover art">

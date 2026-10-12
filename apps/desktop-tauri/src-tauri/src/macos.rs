@@ -8,13 +8,14 @@ use objc2::ffi::{
 #[cfg(target_os = "macos")]
 use objc2::rc::Retained;
 #[cfg(target_os = "macos")]
-use objc2::runtime::{AnyClass, AnyObject, Imp, Sel};
+use objc2::runtime::{AnyClass, AnyObject, Bool, Imp, Sel};
 #[cfg(target_os = "macos")]
 use objc2::{define_class, msg_send, sel, AllocAnyThread, MainThreadMarker, MainThreadOnly};
 #[cfg(target_os = "macos")]
 use objc2_app_kit::{
-    NSEvent, NSTrackingArea, NSTrackingAreaOptions, NSWindow, NSWindowCollectionBehavior,
-    NSWindowStyleMask, NSWorkspace, NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification,
+    NSAppearance, NSAppearanceCustomization, NSAppearanceNameDarkAqua, NSEvent, NSTrackingArea,
+    NSTrackingAreaOptions, NSWindow, NSWindowCollectionBehavior, NSWindowStyleMask, NSWorkspace,
+    NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification,
 };
 #[cfg(target_os = "macos")]
 use objc2_foundation::{NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect};
@@ -85,9 +86,9 @@ pub fn init_overlay_panels(app: &AppHandle, island_glass: bool) -> tauri::Result
     if let Some(window) = app.get_webview_window("island") {
         let _ = window.to_panel::<LyraOverlayPanel>()?;
         unconstrain_from_screen(&window);
+        keep_glass_active(&window);
         track_island_hover(app, &window);
-        // The island is always styled dark, so its glass should be too.
-        let _ = window.set_theme(Some(tauri::Theme::Dark));
+        set_dark_appearance(&window);
         set_island_glass(app, island_glass);
     }
     if let Some(window) = app.get_webview_window("karaoke") {
@@ -149,6 +150,58 @@ fn unconstrain_from_screen(window: &tauri::WebviewWindow) {
                 imp,
                 CONSTRAIN_FRAME_RECT_TYPES.as_ptr(),
             );
+        }
+    });
+}
+
+/// Liquid Glass in a window that isn't key draws a grey, frosted "inactive"
+/// veil, and the island is a non-activating panel that is almost never key.
+/// AppKit asks these two private methods whether a window draws the active
+/// look; its own menu windows answer YES the same way. They are installed on
+/// the overlay panel class, so the karaoke panel (which has no glass) gets
+/// them too. Where macOS lacks them they are never called and the glass
+/// keeps the inactive look; focus and key status are unchanged.
+#[cfg(target_os = "macos")]
+unsafe extern "C-unwind" fn always_active_appearance(_this: *mut AnyObject, _cmd: Sel) -> Bool {
+    Bool::YES
+}
+
+/// Type encoding for a `- (BOOL)method` getter; `BOOL` is `bool` on arm64
+/// and `signed char` on x86_64.
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+const BOOL_GETTER_TYPES: &std::ffi::CStr = c"B@:";
+#[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+const BOOL_GETTER_TYPES: &std::ffi::CStr = c"c@:";
+
+#[cfg(target_os = "macos")]
+fn keep_glass_active(window: &tauri::WebviewWindow) {
+    let window_clone = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        let Some(ns_window) = ns_window(&window_clone) else {
+            return;
+        };
+        let object: &AnyObject = &ns_window;
+        let class: *const AnyClass = object.class();
+        let imp: unsafe extern "C-unwind" fn(*mut AnyObject, Sel) -> Bool =
+            always_active_appearance;
+        // SAFETY: the function matches a BOOL getter, described by the type
+        // encoding; method implementations are stored erased as `Imp`.
+        unsafe {
+            let imp = std::mem::transmute::<
+                unsafe extern "C-unwind" fn(*mut AnyObject, Sel) -> Bool,
+                Imp,
+            >(imp);
+            for selector in [
+                sel!(_hasActiveAppearance),
+                sel!(_hasActiveAppearanceIgnoringKeyFocus),
+            ] {
+                objc2::ffi::class_replaceMethod(
+                    class.cast_mut(),
+                    selector,
+                    imp,
+                    BOOL_GETTER_TYPES.as_ptr(),
+                );
+            }
         }
     });
 }
@@ -450,6 +503,21 @@ const ISLAND_GLASS_RADIUS: f64 = 20.0;
 /// and the window edge cuts those corners off.
 #[cfg(target_os = "macos")]
 static ISLAND_DOCKED: AtomicBool = AtomicBool::new(false);
+
+/// The island is always styled dark, so its glass should be too. Set on this
+/// window only: Tauri's `set_theme` changes the appearance of the whole app.
+#[cfg(target_os = "macos")]
+fn set_dark_appearance(window: &tauri::WebviewWindow) {
+    let window_clone = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        let Some(ns_window) = ns_window(&window_clone) else {
+            return;
+        };
+        // SAFETY: an AppKit constant, valid for the life of the process.
+        let dark = NSAppearance::appearanceNamed(unsafe { NSAppearanceNameDarkAqua });
+        ns_window.setAppearance(dark.as_deref());
+    });
+}
 
 /// Put the glass behind the island, or take it away (battery saver).
 #[cfg(target_os = "macos")]

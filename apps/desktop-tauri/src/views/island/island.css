@@ -7,7 +7,22 @@ html, body {
 }
 
 .floating-panel {
-  background: rgba(22, 22, 26, 0.4);
+  /* Transparency (Settings → Marquee) arrives as `--marquee-transparency`:
+     0 solid, 1 clearest, 0.5 the standard look. From it:
+     - `--marquee-body` (1, falling to 0 as it clears past standard) scales
+       the panel's tint, artwork wash and dim;
+     - `--marquee-solid` (0, rising to 1 as it goes solid) fills the tint in;
+     - `--marquee-clear` (0, rising to 1 as it clears) raises the contrast
+       guards that keep the lyrics readable over any backdrop.
+     `--panel-tint` and `--panel-wash` are the standard tint alpha and
+     artwork wash opacity, which differ by context below. */
+  --marquee-body: min(1, calc(2 - 2 * var(--marquee-transparency, 0.5)));
+  --marquee-solid: max(0, calc(1 - 2 * var(--marquee-transparency, 0.5)));
+  --marquee-clear: max(0, calc(2 * var(--marquee-transparency, 0.5) - 1));
+  --panel-tint-rgb: 22 22 26;
+  --panel-tint: 0.4;
+  --panel-wash: 0.65;
+  background: rgb(var(--panel-tint-rgb) / calc(var(--panel-tint) * var(--marquee-body) + (1 - var(--panel-tint)) * var(--marquee-solid)));
   border-radius: 20px;
   width: 100%;
   height: 100%;
@@ -15,7 +30,8 @@ html, body {
   display: flex;
   align-items: center;
   cursor: default;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  /* A clearer panel gets a slightly brighter rim so its edge still reads. */
+  border: 1px solid rgba(255, 255, 255, calc(0.1 + 0.08 * var(--marquee-clear)));
   user-select: none;
   position: relative;
   overflow: hidden;
@@ -29,18 +45,18 @@ html, body {
    removes the glass and reduced motion keeps the opaque look, so both keep
    the fall-backs below. */
 @media (prefers-reduced-motion: no-preference) {
-  :root[data-native-glass="true"]:not([data-low-power="true"]) .floating-panel { background: rgba(22, 22, 26, 0.1); }
-  :root[data-native-glass="true"]:not([data-low-power="true"]) .island-bg-img { opacity: 0.5; }
+  :root[data-native-glass="true"]:not([data-low-power="true"]) .floating-panel { --panel-tint: 0.1; --panel-wash: 0.5; }
 }
 
 /* See `app.css` for the rationale. Same flag triggers, same fall-backs. */
 @media (prefers-reduced-motion: reduce) {
-  .floating-panel { background: rgba(18, 18, 22, 0.86); }
-  .island-bg-img { filter: none; width: 100%; height: 100%; transform: translate(-50%, -50%); opacity: 0.2; }
+  .floating-panel { --panel-tint-rgb: 18 18 22; --panel-tint: 0.86; --panel-wash: 0.2; }
+  .island-bg-img { filter: none; width: 100%; height: 100%; transform: translate(-50%, -50%); }
   .panel-art.is-spinning { animation: none; }
 }
-:root[data-low-power="true"] .floating-panel { background: rgba(18, 18, 22, 0.86); }
+:root[data-low-power="true"] .floating-panel { --panel-tint-rgb: 18 18 22; --panel-tint: 0.86; }
 :root[data-low-power="true"] .panel-art.is-spinning { animation: none; }
+/* Reduce transparency (an accessibility setting) overrides the slider. */
 :root[data-reduced-transparency="true"] .floating-panel { background: rgb(18, 18, 22); }
 :root[data-reduced-transparency="true"] .island-bg-img { opacity: 0.2; }
 
@@ -75,7 +91,8 @@ html, body {
   object-fit: cover;
   filter: blur(4px) saturate(160%);
   transform: translate(-50%, -50%) scale(16);
-  opacity: 0.65;
+  /* Even the clearest panel keeps a hint of the cover's colour. */
+  opacity: calc(var(--panel-wash, 0.65) * max(0.3, var(--marquee-body, 1)));
   will-change: transform;
 }
 
@@ -86,11 +103,39 @@ html, body {
   --island-dim: calc(var(--bg-darkness, 0.6) / 0.6);
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    to bottom,
-    rgba(10, 10, 12, calc(0.2 * var(--island-dim))),
-    rgba(10, 10, 12, calc(0.7 * var(--island-dim)))
-  );
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(10, 10, 12, calc(0.2 * var(--island-dim) * var(--marquee-body, 1))),
+      rgba(10, 10, 12, calc(0.7 * var(--island-dim) * var(--marquee-body, 1)))
+    ),
+    /* Contrast guard: as the panel clears, a light smoke takes over from
+       the dim so the panel never turns into a bright patch. It ignores
+       Background darkness on purpose; the text guard below does the rest. */
+    linear-gradient(
+      to bottom,
+      rgba(8, 8, 10, calc(0.22 * var(--marquee-clear, 0))),
+      rgba(8, 8, 10, calc(0.34 * var(--marquee-clear, 0)))
+    );
+}
+
+/* Contrast guard for the lyrics themselves once the panel is clearer than
+   standard: a tight shadow outlines each glyph, then two soft ones build a
+   dark haze only where there are words, so the rest of the panel stays
+   clear while white text keeps its contrast over a white window. A filter
+   rather than text-shadow, so the word wipe's transparent glyph fill isn't
+   darkened from inside. */
+.floating-panel.is-clear .panel-lyrics-stack {
+  filter:
+    drop-shadow(0 1px 1px rgba(0, 0, 0, calc(0.3 + 0.35 * var(--marquee-clear))))
+    drop-shadow(0 0 5px rgba(0, 0, 0, calc(0.5 * var(--marquee-clear))))
+    drop-shadow(0 0 14px rgba(0, 0, 0, calc(0.35 * var(--marquee-clear))));
+}
+.floating-panel.is-clear .panel-lyric-active {
+  text-shadow: none;
+}
+:root[data-low-power="true"] .floating-panel.is-clear .panel-lyrics-stack {
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
 }
 
 .panel-content {
@@ -197,27 +242,43 @@ html, body {
 /* Registered --word-progress is animated natively and resynced to playback;
    older webviews receive the same values through the shared frame loop. */
 .panel-lyric-active .lyric-word {
+  --unsung: color-mix(in srgb, var(--lyric-color, #ffffff) 55%, transparent);
   display: inline;
   color: transparent;
   background-image: linear-gradient(
     to right,
     var(--lyric-color, #ffffff) 0%,
     var(--lyric-color, #ffffff) calc(var(--word-progress, 0) * 100%),
-    color-mix(in srgb, var(--lyric-color, #ffffff) 55%, transparent) calc(var(--word-progress, 0) * 100%),
-    color-mix(in srgb, var(--lyric-color, #ffffff) 55%, transparent) 100%
+    var(--unsung) calc(var(--word-progress, 0) * 100%),
+    var(--unsung) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
+/* Over a clearer panel, unsung words need more weight to stay legible. */
+.floating-panel.is-clear .panel-lyric-active .lyric-word {
+  --unsung: color-mix(in srgb, var(--lyric-color, #ffffff) 72%, transparent);
+}
+
 .panel-lyric-next {
   font-size: calc(0.85rem * var(--font-scale, 1));
   font-weight: 600;
   /* The only read-ahead line: readable at a glance, but kept below the
-     current line's unsung words (55%) so it never competes with them. */
-  color: rgba(255, 255, 255, 0.45);
-  filter: blur(calc(0.75px * var(--lyric-blur, 1) * var(--blur-power, 1)));
+     current line's unsung words (55%, 72% when clear) so it never competes
+     with them. A clearer panel lifts it and halves its blur.
+
+     The blur is a centred text-shadow under transparent glyphs, not a
+     filter. When the current line rises in, its compositing layer overlaps
+     this one and WebKit gives this line a layer too, where a filter blur
+     is not drawn: each new next line arrived sharp and blurred once the
+     rise ended. A shadow is painted content, the same on any layer. WebKit
+     draws a shadow's blur lighter than a filter's: 3px matches the old
+     blur(0.75px), measured on screen captures of the panel. */
+  --next-blur: calc(3px * var(--lyric-blur, 1) * var(--blur-power, 1) * (1 - 0.5 * var(--marquee-clear, 0)));
+  color: transparent;
+  text-shadow: 0 0 var(--next-blur) rgba(255, 255, 255, calc(0.45 + 0.2 * var(--marquee-clear, 0)));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -233,7 +294,7 @@ html, body {
 
 .panel-lyric-next.is-track-intro {
   color: rgba(255, 255, 255, 0.7);
-  filter: none;
+  text-shadow: none;
 }
 
 .panel-placeholder {

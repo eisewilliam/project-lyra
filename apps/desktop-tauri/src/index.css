@@ -29,8 +29,7 @@
 }
 
 /* Lyric blur set to Off: drop the filter instead of blurring by 0. */
-:root[data-lyric-blur="off"] .lyric-line,
-:root[data-lyric-blur="off"] .panel-lyric-next {
+:root[data-lyric-blur="off"] .lyric-line {
   filter: none !important;
 }
 

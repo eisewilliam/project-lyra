@@ -234,12 +234,16 @@ export function useSettings() {
         () => debounced(`font-${surface}`, 80, () => setFontScale(surface, scale)),
       );
     },
-    island: async (key: keyof UiState, value: unknown) => {
+    island: async (key: keyof UiState, value: unknown, dbKey?: string) => {
       const payload = {};
       const field = ISLAND_SETTINGS_FIELDS[key];
       if (!field) return;
-      Object.assign(payload, { [field]: Boolean(value) });
-      await optimisticUiAction({ [key]: value }, () => updateIslandSettings(payload));
+      Object.assign(payload, { [field]: typeof value === 'number' ? value : Boolean(value) });
+      const send = () => updateIslandSettings(payload);
+      await optimisticUiAction(
+        { [key]: value },
+        () => (dbKey ? debounced(dbKey, 80, send) : send()),
+      );
     },
     setTheme: async (theme: string) => {
       await optimisticUiAction({ theme }, () => setTheme(theme));

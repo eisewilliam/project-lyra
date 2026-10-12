@@ -24,7 +24,7 @@ export type Actions = {
     value: unknown,
     dbKey?: string,
   ) => Promise<void>;
-  island: (key: keyof UiState, value: unknown) => Promise<void>;
+  island: (key: keyof UiState, value: unknown, dbKey?: string) => Promise<void>;
   karaoke: (key: keyof UiState, value: unknown, dbKey?: string) => Promise<void>;
   setAutostart: (enabled: boolean) => Promise<void>;
   clearCache: () => Promise<void>;
