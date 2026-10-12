@@ -32,6 +32,10 @@ All windows are served from one Vite SPA. `main.tsx` routes by `window.location.
 
 `island` and `karaoke` are macOS NSPanels (always-on-top, non-activating). See `src-tauri/src/macos.rs` for the Objective-C bridge. On Windows and Linux, the same helper functions fall back to regular Tauri window positioning and visibility APIs.
 
+On macOS the island's backdrop is native glass applied with Tauri window effects (`set_island_glass` in `macos.rs`): Liquid Glass on macOS 26+, the HUD material on older versions. A CSS `backdrop-filter` can't replace it, because in a transparent webview it never blurs the desktop. While the island is docked, the glass reaches one corner radius above the window so its top corners are square. Battery saver and macOS Reduce Transparency remove the glass; Reduce Transparency also makes the CSS backdrop opaque. The host publishes the actual effect state through `data-native-glass` after applying effects and on `window_ready`.
+
+Hover tracking retains its callback owner on the content view rather than leaking it for the process lifetime. It deliberately preserves Tauri/Tao's window delegate: `tauri-nspanel` 2.1.1's built-in hover event handler replaces that delegate and does not forward move/resize events required for docking and position persistence.
+
 ### Rust state in `AppState`
 
 `lib.rs` manages one `AppState` registered with Tauri:
@@ -139,9 +143,9 @@ Important Linux behavior:
 
 UI-layer state (window lock, position, font scale) flows through `ui-settings-changed` Tauri events. Playback state arrives through the initial `get_render_snapshot` call and `playback-tick` events.
 
-Per-frame work stays on surfaces that need it. Word wipes use `requestAnimationFrame`. Progress bars and rings step on a 100–250 ms timer quantized to 0.1% and skip unchanged style writes. Animating island elements (meter, ring, artwork wash) sit on their own compositor layers so they do not repaint each other. A track with `duration_ms == 0` renders an inert progress rail with a `–:––` total.
+Per-frame work stays on surfaces that need it. Word wipes use Web Animations on registered `--word-progress`, resynchronized from the shared playback baseline after snapshots. Their playback rate follows the baseline's linear correction, returning to normal at the blend boundary. Older webviews use the existing `requestAnimationFrame` fallback. Hidden surfaces cancel both paths. Word-timed long lines in the island and karaoke glide directly from the interpolated clock without React updates per frame; replacing a line clears its transform and edge fades. Progress bars and rings step on a 100–250 ms timer quantized to 0.1% and skip unchanged style writes. The island meter scales fixed-height bars instead of changing layout height. A track with `duration_ms == 0` renders an inert progress rail with a `–:––` total.
 
-Battery saver (`BehaviorSettings::battery_saver`) is core policy: `effective_poll_interval_ms()` returns 1 s while it is on, and otherwise the saved interval capped to 100–500 ms. Settings no longer offers an interval picker, so a slow value saved by an older build is capped. `useSurfaceSettings` mirrors the setting to `<html data-low-power>`. Each surface's CSS then drops backdrop blur, edge animations and compositing hints, halves the lyric depth blur, and the island rests its decorative meter.
+Battery saver (`BehaviorSettings::battery_saver`) is core policy: `effective_poll_interval_ms()` returns 1 s while it is on, and otherwise the saved interval capped to 100–500 ms. Settings no longer offers an interval picker, so a slow value saved by an older build is capped. `useSurfaceSettings` mirrors the setting to `<html data-low-power>`. Each surface's CSS then drops backdrop blur, edge animations and compositing hints, halves the lyric depth blur, and the island rests its decorative meter. The host also removes the island's native glass.
 
 The lyric depth blur is user-controlled: `AppearanceSettings::lyric_blur` (0 off, 0.5 subtle, 1 standard, 1.5 strong) becomes `--lyric-blur`. Every lyric blur radius is `base × --lyric-blur × --blur-power`, and `data-lyric-blur="off"` removes the filter. Battery saver sets `--blur-power` to 0.5; Reduce Motion leaves blur alone because blur is not motion.
 

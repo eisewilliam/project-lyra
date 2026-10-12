@@ -764,8 +764,8 @@ button.lyric-line:focus-visible {
 
 /* Word-by-word karaoke highlighting inside the active line.
    Every word uses the SAME gradient mechanism — the visual state (upcoming /
-   singing / passed) is driven entirely by --word-progress (0..1), set 60fps
-   via refs. No class-swap repaint, so transitions between states are seamless. */
+   singing / passed) is driven by the shared native --word-progress animation,
+   with a frame-loop fallback for older webviews. */
 .lyric-line.is-active .lyric-word {
   display: inline;
   color: transparent;
