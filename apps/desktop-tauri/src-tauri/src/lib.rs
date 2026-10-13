@@ -3,6 +3,7 @@ mod island_size;
 mod linux;
 mod macos;
 mod menu;
+mod native_menu;
 mod touch_bar;
 mod tray;
 mod ui_state;
@@ -1162,6 +1163,7 @@ pub fn run() {
             commands::island_pointer_inside,
             commands::get_touch_bar_support,
             commands::customize_touch_bar,
+            commands::show_native_menu,
             commands::set_touch_bar_control_strip,
             commands::complete_onboarding,
             commands::copy_text,

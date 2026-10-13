@@ -443,6 +443,10 @@ if (!isTauri) {
       case 'customize_touch_bar':
         return;
 
+      // A plain browser can't draw a system menu; nothing is chosen.
+      case 'show_native_menu':
+        return null;
+
       case 'set_touch_bar_control_strip': {
         const { enabled } = args as { enabled: boolean };
         uiState.touch_bar_control_strip = enabled;

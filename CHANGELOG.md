@@ -30,6 +30,10 @@ offered it as an update.
 - Theme has moved from General to Appearance, and its Auto choice is now
   called System. Lyric blur is now four buttons: Off, Subtle, Standard and
   Strong.
+- The main window's track menu (···) is now a standard system menu, so it
+  looks and works like menus in other apps and is no longer cut off by the
+  edge of a small window. On macOS 26 its items and the lyric line menu's
+  have icons, as in Apple's own menus.
 - The Marquee's size now looks about the same on every display: a new Size
   setting (Small to Extra large) scales the whole panel together, and Match
   screen, the default, picks the size for whichever display it is on. It never
@@ -41,6 +45,8 @@ offered it as an update.
 
 ### Fixed
 
+- On macOS, lyrics keep moving while a menu is open. Right-clicking a lyric
+  line used to stop them until the menu closed.
 - On Windows, Lyra could start with its window hidden and, once opened, stay
   on the loading screen without ever showing the playing song or its lyrics.
 - With Keep window on top turned on, a maximized or full-screen Lyra window

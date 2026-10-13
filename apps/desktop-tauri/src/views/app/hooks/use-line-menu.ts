@@ -1,13 +1,13 @@
 import { useCallback, useRef, useEffect } from 'react';
-import { Menu, PredefinedMenuItem } from '@tauri-apps/api/menu';
+import { showMenu, type MenuEntry } from '@/utils/native-menu';
 import { copyText } from '@/utils/tauri-commands';
 import type { LineRef } from '../types';
 import { noop } from '../utils';
 
 /**
- * Native context menu for the lyrics pane: copy the line under the pointer
- * or every line, and play from a line. Built per open so it always reflects
- * the current track.
+ * Native context menu for the lyrics pane, at the pointer: copy the line
+ * under it or every line, and play from a line. Built per open so it always
+ * reflects the current track.
  */
 export function useLineMenu({
   lyrics,
@@ -33,25 +33,16 @@ export function useLineMenu({
       : (plain ?? '').trim();
     if (!line && !allText) return;
 
-    void (async () => {
-      const items = [];
-      if (line?.text.trim()) {
-        items.push({ id: 'copy-line', text: 'Copy Line', action: () => { copyText(line.text).catch(noop); } });
-      }
-      if (allText) {
-        items.push({ id: 'copy-all', text: 'Copy All Lyrics', action: () => { copyText(allText).catch(noop); } });
-      }
-      if (line && index !== null) {
-        items.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-        items.push({
-          id: 'play-from-line',
-          text: 'Play From Here',
-          enabled: seekable,
-          action: () => seek(index, performance.now()),
-        });
-      }
-      const menu = await Menu.new({ items });
-      await menu.popup();
-    })().catch(noop);
+    const copy: MenuEntry[] = [];
+    if (line?.text.trim()) {
+      copy.push({ id: 'copy-line', label: 'Copy Line', symbol: 'doc.on.doc', onSelect: () => { copyText(line.text).catch(noop); } });
+    }
+    if (allText) {
+      copy.push({ id: 'copy-all', label: 'Copy All Lyrics', symbol: 'doc.on.clipboard', onSelect: () => { copyText(allText).catch(noop); } });
+    }
+    const play: MenuEntry[] = line && index !== null
+      ? [{ id: 'play-from-line', label: 'Play From Here', symbol: 'play', disabled: !seekable, onSelect: () => seek(index, performance.now()) }]
+      : [];
+    showMenu([copy, play].filter((group) => group.length > 0)).catch(noop);
   }, []);
 }

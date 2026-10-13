@@ -83,6 +83,19 @@ pub fn get_touch_bar_support() -> crate::touch_bar::Support {
     crate::touch_bar::support()
 }
 
+/// Show a menu with SF Symbols and second lines at a point in the window,
+/// or at the pointer, and return the chosen row's id. macOS only; elsewhere
+/// the web view uses Tauri's menu.
+#[tauri::command]
+pub async fn show_native_menu(
+    window: tauri::WebviewWindow,
+    items: Vec<crate::native_menu::NativeMenuItem>,
+    x: Option<f64>,
+    y: Option<f64>,
+) -> Result<Option<String>, String> {
+    crate::native_menu::show(&window, items, x.zip(y)).await
+}
+
 /// Open AppKit's palette for arranging Lyra's Touch Bar, the same as View →
 /// Customize Touch Bar…, from Settings → Touch Bar.
 #[tauri::command]

@@ -1,20 +1,15 @@
 import type { TrackRef } from '@/types/tauri-contracts';
+import type { MenuGroups } from '@/utils/native-menu';
 import { detectHostOs } from '@/utils/os';
 import { toggleSurface } from '@/utils/tauri-commands';
-import { formatOffsetShort } from '../sync-timing';
-import {
-  IconNotMusic,
-  IconRefresh,
-  IconSettings,
-  IconTiming,
-  TrackMenu,
-  type TrackMenuItem,
-} from './track-menu';
+import { describeOffset, formatOffsetShort } from '../sync-timing';
+import { TrackMenu } from './track-menu';
 
 const noop = () => {};
 
-// The app menu's Settings… item answers ⌘, on macOS only.
-const SETTINGS_SHORTCUT = detectHostOs() === 'macos' ? '⌘,' : undefined;
+// Only macOS menus take symbols and second lines; elsewhere the sync offset
+// goes in the title instead.
+const isMac = detectHostOs() === 'macos';
 
 export function TrackInfo({
   hasTrack,
@@ -36,26 +31,31 @@ export function TrackInfo({
   snapshotReady: boolean;
   track: TrackRef | null;
 }>) {
-  const menu: TrackMenuItem[][] = [
+  // Title case, like native menus. Groups: this track's lyrics, the track,
+  // the app. The sync offset shows only once it differs from the original,
+  // so it reads as state: as a second line on macOS, in the title elsewhere.
+  const offset = hasSyncedLyrics && lyricOffsetMs !== 0 ? lyricOffsetMs : 0;
+  let syncHint: string | undefined;
+  if (!hasSyncedLyrics) syncHint = 'Needs synced lyrics';
+  else if (offset !== 0) syncHint = describeOffset(offset);
+  const menu: MenuGroups = [
     [
       {
         id: 'sync',
-        label: 'Sync lyrics…',
-        icon: <IconTiming />,
-        // Shown only once it differs from the default, so it reads as state.
-        detail: hasSyncedLyrics && lyricOffsetMs !== 0 ? formatOffsetShort(lyricOffsetMs) : undefined,
-        hint: hasSyncedLyrics ? undefined : 'Needs synced lyrics',
+        label: !isMac && offset !== 0 ? `Sync Lyrics (${formatOffsetShort(offset)})…` : 'Sync Lyrics…',
+        symbol: 'timer',
+        hint: syncHint,
         disabled: !hasSyncedLyrics,
         onSelect: () => setShowDelayControl(true),
       },
-      { id: 'refresh', label: 'Refresh lyrics', icon: <IconRefresh />, onSelect: onRetryLyrics },
+      { id: 'refresh', label: 'Refresh Lyrics', symbol: 'arrow.clockwise', onSelect: onRetryLyrics },
     ],
     [
       {
         id: 'not-music',
-        label: 'Mark as not music',
-        icon: <IconNotMusic />,
-        hint: 'Lyra stops following this track',
+        label: 'Mark as Not Music',
+        symbol: 'music.note.slash',
+        hint: 'Stops following this track',
         onSelect: onMarkNotMusic,
       },
     ],
@@ -63,8 +63,9 @@ export function TrackInfo({
       {
         id: 'settings',
         label: 'Settings…',
-        icon: <IconSettings />,
-        detail: SETTINGS_SHORTCUT,
+        // No ⌘, here: it lives in the app menu, and the shortcut column
+        // would widen the whole menu for one item.
+        symbol: 'gearshape',
         onSelect: () => {
           toggleSurface('settings').catch(noop);
         },

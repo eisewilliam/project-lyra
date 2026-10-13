@@ -176,7 +176,7 @@ Main window feedback:
 - The paused cover scales to 0.92.
 - The lyric reel supports free scrolling (`isBrowsing`, `returnToCurrent`, 4 s idle return).
 - The progress bar shows a scrub preview with the time and the lyric line at that point.
-- Lyric lines have a native context menu (`useLineMenu`, with `copy_text` through the clipboard plugin).
+- Lyric lines have a native context menu (`useLineMenu`, with `copy_text` through the clipboard plugin), and the track ··· button opens a native menu (`TrackMenu`). Both go through `utils/native-menu.ts` (`showMenu`). On macOS the host builds the NSMenu (`native_menu.rs`, `show_native_menu`) with SF Symbols on macOS 26+, like the app menu, and second lines on 14.4+, and returns the chosen id for the web view to act on. It starts the menu from the main dispatch queue: Tauri's `Menu.popup` runs AppKit's menu tracking inside a tao event-loop callback, and tao holds every event until that callback returns, so `playback-tick` stops and the current line freezes while the menu is open. Don't use `Menu.popup` on macOS. Other platforms use Tauri's menu.
 - Keyboard shortcuts show a brief on-screen confirmation.
 
 First run and permission (macOS): `UiState::onboarded` (a fresh install starts with false; saved states without the field count as true) gates `player::set_automation_enabled`. Until the user continues past `FirstRunCard`, the AppleScript readers stay idle, so macOS's Automation prompt follows Lyra's explanation. The readers record `errAEEventNotPermitted` (-1743) per player. `get_automation_denied` feeds the empty state's "Open Privacy Settings" guidance (`open_automation_settings`).

@@ -232,6 +232,24 @@ export function getTouchBarSupport(): Promise<TouchBarSupport> {
   return invoke('get_touch_bar_support');
 }
 
+/** One row of a host-drawn menu, or a separator when `id` is absent. */
+export type NativeMenuRow = {
+  id?: string;
+  title?: string;
+  symbol?: string;
+  subtitle?: string;
+  enabled?: boolean;
+};
+
+/** macOS only: show a system menu at a point in the window (or at the
+ * pointer) and resolve with the chosen row's id once it closes. */
+export function showNativeMenu(
+  items: NativeMenuRow[],
+  at: { x: number; y: number } | null,
+): Promise<string | null> {
+  return invoke('show_native_menu', { items, x: at?.x ?? null, y: at?.y ?? null });
+}
+
 export function customizeTouchBar(): Promise<void> {
   return invoke('customize_touch_bar');
 }
