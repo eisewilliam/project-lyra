@@ -25,6 +25,9 @@ offered it as an update.
 
 - On Windows, Lyra could start with its window hidden and, once opened, stay
   on the loading screen without ever showing the playing song or its lyrics.
+- With Keep window on top turned on, a maximized or full-screen Lyra window
+  no longer hides every other window until it is minimized. It stays on top
+  only at its normal size.
 
 ## [0.1.0-beta.1] - 2026-10-12
 

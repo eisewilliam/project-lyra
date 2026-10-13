@@ -294,7 +294,7 @@ export function Body({
         </Group>
 
         <Group title="Window">
-          <Row label="Keep window on top">
+          <Row label="Keep window on top" hint="Not while the window is maximized or full screen.">
             <Toggle value={app.window.always_on_top} onChange={(v: boolean) => actions.updateAppSetting('window', 'always_on_top', v)} />
           </Row>
           <Row label="Click-through" hint="Clicks pass to the window behind Lyra.">

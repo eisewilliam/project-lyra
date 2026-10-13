@@ -421,7 +421,34 @@ pub(crate) fn apply_main_window_settings(
 ) {
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.set_ignore_cursor_events(window.click_through);
-        let _ = main.set_always_on_top(window.always_on_top);
+        sync_main_window_on_top(&main, window.always_on_top);
+    }
+}
+
+/// "Keep window on top" only holds while `main` is a normal-sized window. A
+/// maximized or full-screen window that stays on top covers every other app,
+/// and on Windows nothing can be brought in front of it until it is
+/// minimized.
+fn main_window_on_top(keep_on_top: bool, maximized: bool, fullscreen: bool) -> bool {
+    keep_on_top && !maximized && !fullscreen
+}
+
+/// Apply "Keep window on top" for the main window's current size. Runs when
+/// the setting changes and whenever the window is resized, so maximizing
+/// drops the window to the normal level and restoring puts it back on top.
+fn sync_main_window_on_top(main: &tauri::WebviewWindow, keep_on_top: bool) {
+    // A minimized window reports itself as not maximized; leave its level
+    // alone until it is restored.
+    if main.is_minimized().unwrap_or(false) {
+        return;
+    }
+    let on_top = main_window_on_top(
+        keep_on_top,
+        main.is_maximized().unwrap_or(false),
+        main.is_fullscreen().unwrap_or(false),
+    );
+    if main.is_always_on_top().ok() != Some(on_top) {
+        let _ = main.set_always_on_top(on_top);
     }
 }
 
@@ -1174,6 +1201,20 @@ pub fn run() {
             {
                 island_size::fit_island(window.app_handle(), false);
             }
+            // Maximizing, going full screen, or restoring changes whether
+            // "Keep window on top" applies.
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::Resized(_)) {
+                let app = window.app_handle();
+                let keep_on_top = app
+                    .state::<AppState>()
+                    .runtime
+                    .lock()
+                    .map(|rt| rt.settings().window.always_on_top)
+                    .unwrap_or(false);
+                if let Some(main) = app.get_webview_window("main") {
+                    sync_main_window_on_top(&main, keep_on_top);
+                }
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let label = window.label();
                 if label == "main" || label == "island" || label == "karaoke" {
@@ -1217,7 +1258,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::RuntimeSurfaceVisibility;
+    use super::{main_window_on_top, RuntimeSurfaceVisibility};
 
     #[test]
     fn runtime_surfaces_start_hidden_until_marked_visible() {
@@ -1265,5 +1306,13 @@ mod tests {
         visibility.set_visible("island", true);
 
         assert!(!visibility.is_visible("island", false));
+    }
+
+    #[test]
+    fn keep_on_top_only_applies_to_a_normal_sized_main_window() {
+        assert!(main_window_on_top(true, false, false));
+        assert!(!main_window_on_top(true, true, false));
+        assert!(!main_window_on_top(true, false, true));
+        assert!(!main_window_on_top(false, false, false));
     }
 }
