@@ -25,6 +25,8 @@ const PREVIOUS: &str = "playback_previous";
 #[cfg(target_os = "macos")]
 const REFRESH_LYRICS: &str = "lyrics_refresh";
 #[cfg(target_os = "macos")]
+const CUSTOMIZE_TOUCH_BAR: &str = "view_customize_touch_bar";
+#[cfg(target_os = "macos")]
 const RELEASE_NOTES: &str = "help_release_notes";
 #[cfg(target_os = "macos")]
 const REPORT_ISSUE: &str = "help_report_issue";
@@ -42,6 +44,7 @@ const ITEMS: &[(&str, &str, &str)] = &[
     (NEXT, "Next Track", "forward"),
     (PREVIOUS, "Previous Track", "backward"),
     (REFRESH_LYRICS, "Refresh Lyrics", "arrow.clockwise"),
+    (CUSTOMIZE_TOUCH_BAR, "Customize Touch Bar…", "touchbar"),
     (RELEASE_NOTES, "Release Notes", "doc.text"),
     (REPORT_ISSUE, "Report an Issue…", "exclamationmark.bubble"),
 ];
@@ -118,7 +121,17 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         .item(&refresh)
         .build()?;
 
-    let view_menu = SubmenuBuilder::new(app, "View").fullscreen().build()?;
+    let view_menu = SubmenuBuilder::new(app, "View").fullscreen();
+    // AppKit's own automatic item is not added reliably to a menu Tauri
+    // installs, so Lyra adds the same command where there is a Touch Bar.
+    let view_menu = if crate::touch_bar::support().present {
+        let customize =
+            MenuItemBuilder::with_id(CUSTOMIZE_TOUCH_BAR, title(CUSTOMIZE_TOUCH_BAR)).build(app)?;
+        view_menu.separator().item(&customize)
+    } else {
+        view_menu
+    }
+    .build()?;
 
     let window_menu = SubmenuBuilder::new(app, "Window")
         .minimize()
@@ -228,6 +241,10 @@ pub fn handle_event(app: &AppHandle, event: MenuEvent) {
         }
         REPORT_ISSUE => {
             open_url(&format!("{REPOSITORY}/issues/new"));
+            return;
+        }
+        CUSTOMIZE_TOUCH_BAR => {
+            crate::touch_bar::customize(app);
             return;
         }
         REFRESH_LYRICS => {

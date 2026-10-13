@@ -189,6 +189,7 @@ if (!isTauri) {
     karaoke_bold: true,
     autostart_enabled: false,
     preferred_monitor: null,
+    touch_bar_control_strip: false,
     onboarded: true,
   };
 
@@ -435,6 +436,17 @@ if (!isTauri) {
 
       case 'get_update_status':
         return mockUpdateInfo;
+
+      case 'get_touch_bar_support':
+        return { present: true, control_strip: true };
+
+      case 'set_touch_bar_control_strip': {
+        const { enabled } = args as { enabled: boolean };
+        uiState.touch_bar_control_strip = enabled;
+        saveUiState();
+        void emit('ui-settings-changed', uiState);
+        return;
+      }
 
       case 'check_for_updates': {
         mockUpdateInfo = { ...mockUpdateInfo, status: { state: 'checking' } };

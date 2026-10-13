@@ -3,6 +3,7 @@ mod island_size;
 mod linux;
 mod macos;
 mod menu;
+mod touch_bar;
 mod tray;
 mod ui_state;
 mod updater;
@@ -495,9 +496,10 @@ fn any_surface_visible(handle: &tauri::AppHandle) -> bool {
         return true; // fail open — better to poll than to stall
     };
     let (floating_cfg, island_cfg, karaoke_cfg) = app_state.ui.visibility_triple();
-    app_state
-        .surface_visibility
-        .is_visible("island", island_cfg)
+    touch_bar::is_visible()
+        || app_state
+            .surface_visibility
+            .is_visible("island", island_cfg)
         || app_state
             .surface_visibility
             .is_visible("main", floating_cfg)
@@ -530,9 +532,12 @@ fn process_tick(
     let karaoke_vis = app_state
         .surface_visibility
         .is_visible("karaoke", karaoke_cfg);
-    let any_visible = island_vis || floating_vis || karaoke_vis;
+    let any_window_visible = island_vis || floating_vis || karaoke_vis;
+    // The Touch Bar takes no events; it only keeps the poll loop awake.
+    let touch_bar_vis = touch_bar::is_visible();
+    let any_visible = any_window_visible || touch_bar_vis;
 
-    let (render_opt, base_interval_ms, next_transition_playback) = {
+    let (render_opt, base_interval_ms, next_transition_playback, appearance) = {
         let mut rt = match app_state.runtime.lock() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
@@ -546,7 +551,9 @@ fn process_tick(
         let render = rt.tick();
         let current_pos = render.playback.position_ms.unwrap_or(0);
         let next_t = rt.next_transition_playback_ms(current_pos);
-        (Some(render), base, next_t)
+        // Font face and lyric colour, only while the Touch Bar shows them.
+        let appearance = touch_bar_vis.then(|| rt.settings().appearance.clone());
+        (Some(render), base, next_t, appearance)
     };
 
     let mut lyrics_ready = false;
@@ -556,6 +563,10 @@ fn process_tick(
         handle.try_state::<tray::TrayMenuRefs>(),
     ) {
         refs.sync_now_playing(render);
+    }
+
+    if let (Some(render), Some(appearance)) = (render_opt.as_ref(), appearance.as_ref()) {
+        touch_bar::sync(handle, render, appearance);
     }
 
     if let Some(render) = render_opt.as_ref() {
@@ -595,7 +606,9 @@ fn process_tick(
                 .unwrap_or_else(|e| *e.into_inner());
             now_ms.saturating_sub(last) > 10_000
         };
-        let should_emit = any_visible
+        // Only windows take the event; with just the Touch Bar on screen,
+        // skip serializing a payload nobody receives.
+        let should_emit = any_window_visible
             && if is_fast_tick {
                 changed
             } else {
@@ -1023,6 +1036,10 @@ pub fn run() {
             // Build the system tray menu.
             tray::create_tray(app.handle(), &initial)?;
 
+            // Previous, play/pause, next and the current line on the Touch
+            // Bar of MacBook Pros that have one.
+            touch_bar::install(app.handle(), initial.touch_bar_control_strip);
+
             // Background update checks (release builds with a signing key).
             updater::init(app.handle());
 
@@ -1143,6 +1160,8 @@ pub fn run() {
             commands::set_island_click_through,
             commands::open_main_window,
             commands::island_pointer_inside,
+            commands::get_touch_bar_support,
+            commands::set_touch_bar_control_strip,
             commands::complete_onboarding,
             commands::copy_text,
             commands::get_automation_denied,
@@ -1249,6 +1268,8 @@ pub fn run() {
                 if let Some(state) = app.try_state::<AppState>() {
                     state.players.shutdown();
                 }
+                // Leave no dead Lyra button in the Control Strip.
+                touch_bar::shutdown();
             }
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen { .. } => crate::tray::open_lyra(app),

@@ -30,6 +30,7 @@ export type Actions = {
   setAutostart: (enabled: boolean) => Promise<void>;
   clearCache: () => Promise<void>;
   setPreferredMonitor: (name: string | null) => Promise<void>;
+  setTouchBarControlStrip: (enabled: boolean) => Promise<void>;
 };
 
 export type SettingsBodyProps = {

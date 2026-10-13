@@ -10,6 +10,17 @@ offered it as an update.
 
 ## [Unreleased]
 
+### Added
+
+- On a MacBook Pro with a Touch Bar, Lyra's Touch Bar shows previous,
+  play/pause and next, then the line being sung with the next line after it,
+  in your lyric font and color. Tap the lyrics to open Lyra. Choose which
+  buttons it shows with View → Customize Touch Bar….
+- To see lyrics on the Touch Bar while you use other apps, turn on Settings →
+  General → Touch Bar → Show Lyra in the Control Strip, then tap the Lyra
+  button. Tap × to put the other app's controls back. The Lyra button takes
+  the place of the Control Strip's Now Playing button.
+
 ### Changed
 
 - The Marquee's size now looks about the same on every display: a new Size

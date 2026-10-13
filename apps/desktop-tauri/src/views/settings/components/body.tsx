@@ -30,6 +30,7 @@ import {
 import type { FloatingSurface, SettingsBodyProps } from '../types';
 import { PlayersSection } from './players-section';
 import { AppearancePreview, IslandPreview, KaraokePreview } from './previews';
+import { TouchBarGroup } from './touch-bar-group';
 import { UpdatesGroup } from './updates-group';
 
 const MATCH_SCREEN = 'match-screen';
@@ -126,6 +127,11 @@ export function Body({
             </Row>
           </Group>
         )}
+
+        <TouchBarGroup
+          controlStrip={ui.touch_bar_control_strip}
+          onControlStripChange={(v: boolean) => actions.setTouchBarControlStrip(v)}
+        />
 
         <UpdatesGroup />
       </>

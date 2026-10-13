@@ -13,6 +13,7 @@ import type {
   PlayerSessionInfo,
   RenderSnapshot,
   SettingsPatch,
+  TouchBarSupport,
   UiState,
   UpdateInfo,
 } from '@/types/tauri-contracts';
@@ -225,6 +226,14 @@ export function getAutomationDenied(): Promise<string[]> {
 
 export function openAutomationSettings(): Promise<void> {
   return invoke('open_automation_settings');
+}
+
+export function getTouchBarSupport(): Promise<TouchBarSupport> {
+  return invoke('get_touch_bar_support');
+}
+
+export function setTouchBarControlStrip(enabled: boolean): Promise<void> {
+  return invoke('set_touch_bar_control_strip', { enabled });
 }
 
 export function getUpdateStatus(): Promise<UpdateInfo> {
