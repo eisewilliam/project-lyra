@@ -2,11 +2,13 @@ import {
   ActionFeedbackButton,
   CustomSelect,
   Group,
+  nearestStepIndex,
   Row,
   Segmented,
   SnapSlider,
   Toggle,
 } from '@/components/settings-controls';
+import { useRowAria } from '@/components/settings-controls/row-context';
 import { ISLAND_SCALE_STEPS, islandScaleLabel } from '@/constants/island-size';
 import { useIslandFrame } from '@/hooks/use-island-frame';
 import type { MonitorInfo } from '@/types/tauri-contracts';
@@ -27,9 +29,10 @@ import {
   LYRIC_BLUR_STEPS,
   THEME_OPTIONS,
 } from '../settings-options';
-import type { FloatingSurface, SettingsBodyProps } from '../types';
+import type { ConsolidatedState, FloatingSurface, Section, SettingsBodyProps } from '../types';
 import { PlayersSection } from './players-section';
 import { AppearancePreview, IslandPreview, KaraokePreview } from './previews';
+import { TouchBarSection } from './touch-bar-section';
 import { UpdatesGroup } from './updates-group';
 
 const MATCH_SCREEN = 'match-screen';
@@ -57,6 +60,44 @@ function IslandSizeRow({
   );
 }
 
+const LYRIC_BLUR_OPTIONS = LYRIC_BLUR_STEPS.map((step) => ({ value: String(step.value), label: step.label }));
+
+/** Snaps a saved blur multiplier to the nearest named level. */
+function lyricBlurLevel(value: number | undefined): string {
+  const step = LYRIC_BLUR_STEPS[nearestStepIndex(LYRIC_BLUR_STEPS, value ?? 1)];
+  return String(step?.value ?? 1);
+}
+
+/** The system colour picker in a compact well, named by its row. */
+function ColorWell({ value, onChange }: Readonly<{ value: string; onChange: (color: string) => void }>) {
+  const aria = useRowAria();
+  return (
+    <input
+      {...aria}
+      type="color"
+      className="color-well"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
+/** The preview that stays above Marquee's and Karaoke's scrolling settings. */
+export function PinnedPreview({
+  section,
+  state,
+  artworkSrc,
+}: Readonly<{ section: Section; state: ConsolidatedState; artworkSrc: string }>) {
+  const { ui, app } = state;
+  if (section === 'island') {
+    return <IslandPreview ui={ui} appearance={app.appearance} artworkSrc={artworkSrc} />;
+  }
+  if (section === 'karaoke') {
+    return <KaraokePreview ui={ui} appearance={app.appearance} artworkSrc={artworkSrc} />;
+  }
+  return null;
+}
+
 function monitorLabel(m: MonitorInfo, idx: number): string {
   const res = `${m.width}×${m.height}`;
   const rawName = m.name?.replace(/^\\\\\.\\/u, '') ?? null;
@@ -72,20 +113,25 @@ export function Body({
   autostartEnabled,
   monitors,
   artworkSrc,
+  touchBar,
 }: Readonly<SettingsBodyProps>) {
   const { ui, app } = state;
+
+  if (section === 'touchbar') {
+    if (!touchBar?.present) return null;
+    return (
+      <TouchBarSection
+        support={touchBar}
+        controlStrip={ui.touch_bar_control_strip}
+        onControlStripChange={(v: boolean) => actions.setTouchBarControlStrip(v)}
+      />
+    );
+  }
 
   if (section === 'general') {
     return (
       <>
         <Group title="System">
-          <Row label="Theme">
-            <CustomSelect
-              value={ui.theme}
-              options={THEME_OPTIONS}
-              onChange={(val) => actions.setTheme(val)}
-            />
-          </Row>
           <Row label="Battery saver" hint="Checks the player once a second and lightens blur effects.">
             <Toggle value={app.behavior.battery_saver} onChange={(v: boolean) => actions.updateAppSetting('behavior', 'battery_saver', v)} />
           </Row>
@@ -145,8 +191,18 @@ export function Body({
     return (
       <>
         <AppearancePreview appearance={app.appearance} artworkSrc={artworkSrc} />
-        <Group title="Text">
-          <Row label="Font face">
+        <div className="group-rows">
+          <Row label="Theme">
+            <CustomSelect
+              value={ui.theme}
+              options={THEME_OPTIONS}
+              onChange={(val) => actions.setTheme(val)}
+            />
+          </Row>
+        </div>
+
+        <Group title="Typography">
+          <Row label="Font">
             <CustomSelect
               value={app.appearance.font_family}
               options={FONT_FAMILY_OPTIONS}
@@ -161,19 +217,15 @@ export function Body({
             />
           </Row>
           <Row label="Lyric color">
-            <input
-              type="color"
-              className="color-well"
+            <ColorWell
               value={app.appearance.text_color || '#ffffff'}
-              onChange={(e) =>
-                actions.updateAppSetting('appearance', 'text_color', e.target.value, 'text-color')
-              }
+              onChange={(color) => actions.updateAppSetting('appearance', 'text_color', color, 'text-color')}
             />
           </Row>
         </Group>
 
         <Group title="Background">
-          <Row label="Background darkness" hint="Main window and Marquee.">
+          <Row label="Background darkness" hint="Main Window and Marquee.">
             <SnapSlider
               steps={BACKGROUND_OPACITY_STEPS}
               value={app.appearance.background_opacity}
@@ -181,10 +233,11 @@ export function Body({
             />
           </Row>
           <Row label="Lyric blur" hint="Softens the lines around the current one.">
-            <SnapSlider
-              steps={LYRIC_BLUR_STEPS}
-              value={app.appearance.lyric_blur}
-              onChange={(v) => actions.updateAppSetting('appearance', 'lyric_blur', v, 'lyric-blur')}
+            <Segmented
+              wide
+              value={lyricBlurLevel(app.appearance.lyric_blur)}
+              options={LYRIC_BLUR_OPTIONS}
+              onChange={(v) => actions.updateAppSetting('appearance', 'lyric_blur', Number(v), 'lyric-blur')}
             />
           </Row>
         </Group>
@@ -195,7 +248,6 @@ export function Body({
   if (section === 'karaoke') {
     return (
       <>
-        <KaraokePreview ui={ui} appearance={app.appearance} />
         <Group title="Visibility">
           <Row label="Show Karaoke Lyrics">
             <Toggle value={ui.karaoke_visible} onChange={() => actions.toggleVisible('karaoke')} />
@@ -294,7 +346,7 @@ export function Body({
         </Group>
 
         <Group title="Window">
-          <Row label="Keep window on top">
+          <Row label="Keep window on top" hint="Not while the window is maximized or full screen.">
             <Toggle value={app.window.always_on_top} onChange={(v: boolean) => actions.updateAppSetting('window', 'always_on_top', v)} />
           </Row>
           <Row label="Click-through" hint="Clicks pass to the window behind Lyra.">
@@ -316,7 +368,6 @@ export function Body({
 
   return (
     <>
-      <IslandPreview ui={ui} appearance={app.appearance} artworkSrc={artworkSrc} />
       <Group title="Visibility">
         <Row label={`Show ${activeLabel}`} hint="A dynamic panel above your other windows, wherever you place it.">
           <Toggle value={ui.island_visible} onChange={() => actions.toggleVisible('island')} />

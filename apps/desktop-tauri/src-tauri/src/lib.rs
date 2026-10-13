@@ -3,6 +3,8 @@ mod island_size;
 mod linux;
 mod macos;
 mod menu;
+mod native_menu;
+mod touch_bar;
 mod tray;
 mod ui_state;
 mod updater;
@@ -421,7 +423,34 @@ pub(crate) fn apply_main_window_settings(
 ) {
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.set_ignore_cursor_events(window.click_through);
-        let _ = main.set_always_on_top(window.always_on_top);
+        sync_main_window_on_top(&main, window.always_on_top);
+    }
+}
+
+/// "Keep window on top" only holds while `main` is a normal-sized window. A
+/// maximized or full-screen window that stays on top covers every other app,
+/// and on Windows nothing can be brought in front of it until it is
+/// minimized.
+fn main_window_on_top(keep_on_top: bool, maximized: bool, fullscreen: bool) -> bool {
+    keep_on_top && !maximized && !fullscreen
+}
+
+/// Apply "Keep window on top" for the main window's current size. Runs when
+/// the setting changes and whenever the window is resized, so maximizing
+/// drops the window to the normal level and restoring puts it back on top.
+fn sync_main_window_on_top(main: &tauri::WebviewWindow, keep_on_top: bool) {
+    // A minimized window reports itself as not maximized; leave its level
+    // alone until it is restored.
+    if main.is_minimized().unwrap_or(false) {
+        return;
+    }
+    let on_top = main_window_on_top(
+        keep_on_top,
+        main.is_maximized().unwrap_or(false),
+        main.is_fullscreen().unwrap_or(false),
+    );
+    if main.is_always_on_top().ok() != Some(on_top) {
+        let _ = main.set_always_on_top(on_top);
     }
 }
 
@@ -468,9 +497,10 @@ fn any_surface_visible(handle: &tauri::AppHandle) -> bool {
         return true; // fail open — better to poll than to stall
     };
     let (floating_cfg, island_cfg, karaoke_cfg) = app_state.ui.visibility_triple();
-    app_state
-        .surface_visibility
-        .is_visible("island", island_cfg)
+    touch_bar::is_visible()
+        || app_state
+            .surface_visibility
+            .is_visible("island", island_cfg)
         || app_state
             .surface_visibility
             .is_visible("main", floating_cfg)
@@ -503,9 +533,12 @@ fn process_tick(
     let karaoke_vis = app_state
         .surface_visibility
         .is_visible("karaoke", karaoke_cfg);
-    let any_visible = island_vis || floating_vis || karaoke_vis;
+    let any_window_visible = island_vis || floating_vis || karaoke_vis;
+    // The Touch Bar takes no events; it only keeps the poll loop awake.
+    let touch_bar_vis = touch_bar::is_visible();
+    let any_visible = any_window_visible || touch_bar_vis;
 
-    let (render_opt, base_interval_ms, next_transition_playback) = {
+    let (render_opt, base_interval_ms, next_transition_playback, appearance) = {
         let mut rt = match app_state.runtime.lock() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
@@ -519,7 +552,9 @@ fn process_tick(
         let render = rt.tick();
         let current_pos = render.playback.position_ms.unwrap_or(0);
         let next_t = rt.next_transition_playback_ms(current_pos);
-        (Some(render), base, next_t)
+        // Font face and lyric colour, only while the Touch Bar shows them.
+        let appearance = touch_bar_vis.then(|| rt.settings().appearance.clone());
+        (Some(render), base, next_t, appearance)
     };
 
     let mut lyrics_ready = false;
@@ -529,6 +564,10 @@ fn process_tick(
         handle.try_state::<tray::TrayMenuRefs>(),
     ) {
         refs.sync_now_playing(render);
+    }
+
+    if let (Some(render), Some(appearance)) = (render_opt.as_ref(), appearance.as_ref()) {
+        touch_bar::sync(handle, render, appearance);
     }
 
     if let Some(render) = render_opt.as_ref() {
@@ -568,7 +607,9 @@ fn process_tick(
                 .unwrap_or_else(|e| *e.into_inner());
             now_ms.saturating_sub(last) > 10_000
         };
-        let should_emit = any_visible
+        // Only windows take the event; with just the Touch Bar on screen,
+        // skip serializing a payload nobody receives.
+        let should_emit = any_window_visible
             && if is_fast_tick {
                 changed
             } else {
@@ -996,6 +1037,10 @@ pub fn run() {
             // Build the system tray menu.
             tray::create_tray(app.handle(), &initial)?;
 
+            // Previous, play/pause, next and the current line on the Touch
+            // Bar of MacBook Pros that have one.
+            touch_bar::install(app.handle(), initial.touch_bar_control_strip);
+
             // Background update checks (release builds with a signing key).
             updater::init(app.handle());
 
@@ -1116,6 +1161,10 @@ pub fn run() {
             commands::set_island_click_through,
             commands::open_main_window,
             commands::island_pointer_inside,
+            commands::get_touch_bar_support,
+            commands::customize_touch_bar,
+            commands::show_native_menu,
+            commands::set_touch_bar_control_strip,
             commands::complete_onboarding,
             commands::copy_text,
             commands::get_automation_denied,
@@ -1174,6 +1223,20 @@ pub fn run() {
             {
                 island_size::fit_island(window.app_handle(), false);
             }
+            // Maximizing, going full screen, or restoring changes whether
+            // "Keep window on top" applies.
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::Resized(_)) {
+                let app = window.app_handle();
+                let keep_on_top = app
+                    .state::<AppState>()
+                    .runtime
+                    .lock()
+                    .map(|rt| rt.settings().window.always_on_top)
+                    .unwrap_or(false);
+                if let Some(main) = app.get_webview_window("main") {
+                    sync_main_window_on_top(&main, keep_on_top);
+                }
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let label = window.label();
                 if label == "main" || label == "island" || label == "karaoke" {
@@ -1208,6 +1271,8 @@ pub fn run() {
                 if let Some(state) = app.try_state::<AppState>() {
                     state.players.shutdown();
                 }
+                // Leave no dead Lyra button in the Control Strip.
+                touch_bar::shutdown();
             }
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen { .. } => crate::tray::open_lyra(app),
@@ -1217,7 +1282,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::RuntimeSurfaceVisibility;
+    use super::{main_window_on_top, RuntimeSurfaceVisibility};
 
     #[test]
     fn runtime_surfaces_start_hidden_until_marked_visible() {
@@ -1265,5 +1330,13 @@ mod tests {
         visibility.set_visible("island", true);
 
         assert!(!visibility.is_visible("island", false));
+    }
+
+    #[test]
+    fn keep_on_top_only_applies_to_a_normal_sized_main_window() {
+        assert!(main_window_on_top(true, false, false));
+        assert!(!main_window_on_top(true, true, false));
+        assert!(!main_window_on_top(true, false, true));
+        assert!(!main_window_on_top(false, false, false));
     }
 }

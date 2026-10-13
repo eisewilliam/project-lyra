@@ -89,6 +89,12 @@ pub struct UiState {
     #[serde(default)]
     pub preferred_monitor: Option<String>,
 
+    /// A Lyra button in the Touch Bar's Control Strip that shows the lyrics
+    /// bar over any app. Off by default: it relies on undocumented macOS
+    /// calls (see `touch_bar`).
+    #[serde(default)]
+    pub touch_bar_control_strip: bool,
+
     /// The first-run explanation has been shown. Saved states from before it
     /// existed count as done; only a fresh install sees it.
     #[serde(default = "default_true")]
@@ -178,6 +184,7 @@ impl Default for UiState {
             karaoke_bold: true,
             autostart_enabled: false,
             preferred_monitor: None,
+            touch_bar_control_strip: false,
             onboarded: false,
         }
     }

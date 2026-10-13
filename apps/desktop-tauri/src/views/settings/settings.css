@@ -1,44 +1,69 @@
+/* Settings tokens. Light first; dark follows the system. The dark values are
+   the design reference's charcoal and plum; artwork supplies the colour. */
 :root {
   color-scheme: light dark;
+  --shell-bg: #f6f5f8;
   --bg-sidebar: rgba(0, 0, 0, 0.035);
   --bg-pane: transparent;
   --bg-card: rgba(255, 255, 255, 0.035);
-  --text-primary: #1c1c1e;
-  --text-secondary: #6c6c70;
+  --text-primary: #1c1b1f;
+  --text-secondary: #5e5d66;
+  --text-quiet: #6b6a73;
   --border-color: rgba(0, 0, 0, 0.08);
-  --border-row: rgba(0, 0, 0, 0.06);
   --input-bg: rgba(0, 0, 0, 0.06);
   --input-hover: rgba(0, 0, 0, 0.1);
   --item-active: rgba(0, 0, 0, 0.06);
-  --item-active-bg: #0A84FF;
-  --item-active-text: #ffffff;
-  --knob-shadow: 0 2px 6px rgba(0, 0, 0, 0.18), 0 1px 2px rgba(0, 0, 0, 0.12);
   --accent: #0A84FF;
-  --slider-rail: rgba(0, 0, 0, 0.1);
-  --slider-stop: rgba(0, 0, 0, 0.26);
-  --nav-hover: rgba(0, 0, 0, 0.04);
-  --nav-selected: rgba(0, 0, 0, 0.09);
-  --panel-radius: 12px;
+  --focus-ring: #0a6fdf;
+  --nav-icon: #6b6a73;
+  --nav-hover: rgba(0, 0, 0, 0.045);
+  --nav-selected: rgba(0, 0, 0, 0.08);
+  --segment-track: rgba(0, 0, 0, 0.035);
+  --segment-edge: rgba(0, 0, 0, 0.09);
+  --segment-selected: #ffffff;
+  --segment-selected-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  --switch-off: rgba(120, 120, 128, 0.45);
+  --slider-rail: #d4d2d9;
+  --slider-tick: rgba(60, 58, 66, 0.4);
+  --slider-thumb: #ffffff;
+  --slider-thumb-edge: rgba(0, 0, 0, 0.18);
+  --well-edge: rgba(0, 0, 0, 0.28);
+  --preview-edge: rgba(0, 0, 0, 0.08);
+  --group-fill: rgba(255, 255, 255, 0.72);
+  --group-edge: rgba(0, 0, 0, 0.045);
+  --row-divider: rgba(0, 0, 0, 0.065);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg-sidebar: rgba(0, 0, 0, 0.28);
-    --bg-pane: transparent;
+    --shell-bg: #171519;
+    --bg-sidebar: rgba(10, 10, 13, 0.66);
     --bg-card: rgba(255, 255, 255, 0.045);
-    --text-primary: #ffffff;
-    --text-secondary: #98989d;
-    --border-color: rgba(255, 255, 255, 0.07);
-    --border-row: rgba(255, 255, 255, 0.05);
+    --text-primary: #f0f0f4;
+    --text-secondary: #adadb7;
+    --text-quiet: #9797a3;
+    --border-color: rgba(255, 255, 255, 0.085);
     --input-bg: rgba(255, 255, 255, 0.09);
     --input-hover: rgba(255, 255, 255, 0.14);
     --item-active: rgba(255, 255, 255, 0.1);
-    --item-active-bg: #0A84FF;
-    --knob-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
-    --slider-rail: rgba(255, 255, 255, 0.14);
-    --slider-stop: rgba(255, 255, 255, 0.3);
-    --nav-hover: rgba(255, 255, 255, 0.05);
-    --nav-selected: rgba(255, 255, 255, 0.13);
+    --focus-ring: #77b6ff;
+    --nav-icon: #adadb7;
+    --nav-hover: rgba(255, 255, 255, 0.06);
+    --nav-selected: rgba(255, 255, 255, 0.115);
+    --segment-track: rgba(255, 255, 255, 0.035);
+    --segment-edge: rgba(255, 255, 255, 0.095);
+    --segment-selected: #46444d;
+    --segment-selected-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+    --switch-off: #47454e;
+    --slider-rail: #49464f;
+    --slider-tick: rgba(139, 135, 149, 0.7);
+    --slider-thumb: #e8e8ed;
+    --slider-thumb-edge: rgba(255, 255, 255, 0.5);
+    --well-edge: #68656f;
+    --preview-edge: rgba(255, 255, 255, 0.055);
+    --group-fill: rgba(255, 255, 255, 0.04);
+    --group-edge: transparent;
+    --row-divider: rgba(255, 255, 255, 0.06);
   }
 }
 
@@ -46,53 +71,69 @@ body {
   background: transparent !important;
 }
 
+/* Type comes from the app's shared family (index.css), not a stack of its own. */
 .settings-shell {
-  background: transparent;
+  background: var(--shell-bg);
   color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   font-size: 13px;
   user-select: none;
   cursor: default;
 }
 
-@media (prefers-color-scheme: dark) {
-  .settings-shell {
-    background: transparent;
-  }
-}
-
+/* ── Sidebar ───────────────────────────────────────────────────────────────
+   Two groups of rows under the window controls; no logo, since the window
+   already belongs to Lyra. Soft monochrome outline icons in the text colour. The selected row is a neutral fill with a short accent bar and
+   a brighter icon, so shape marks it as well as colour; hover is fainter. The
+   selection moves instantly, like a native source list. */
 .settings-sidebar {
+  width: 180px;
+  padding: 0 10px 12px;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border-color);
 }
 
-.sidebar-traffic-spacer {
+/* Clears the window controls; also the sidebar's drag handle. */
+.sidebar-titlebar {
+  height: 52px;
   -webkit-app-region: drag;
 }
 
+.nav-group {
+  gap: 2px;
+}
+
+.nav-group + .nav-group {
+  margin-top: 20px;
+}
+
+/* Same treatment as the group headings in the pane. */
 .nav-section {
+  padding: 0 12px 6px;
   font-size: 12px;
+  line-height: 16px;
   font-weight: 600;
   color: var(--text-secondary);
 }
 
-/* Sidebar rows: monochrome outline icons in the text colour, like the rest
-   of Lyra. The selected row is a solid neutral fill with its icon at full
-   strength; hover is a fainter wash, so the two never read alike. The
-   selection moves instantly, like a native source list. */
 .nav-item {
-  background: transparent;
+  height: 34px;
+  gap: 11px;
+  padding: 0 12px;
   border: none;
+  border-radius: 7px;
+  background: transparent;
   color: var(--text-primary);
   cursor: default;
   font-family: inherit;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .nav-icon {
-  color: var(--text-secondary);
+  width: 18px;
+  height: 18px;
+  color: var(--nav-icon);
 }
 
 .nav-item:hover:not(.active) {
@@ -105,12 +146,23 @@ body {
 
 .nav-item.active {
   background: var(--nav-selected);
+  font-weight: 500;
+}
+
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 
 .nav-item.active .nav-icon {
   color: var(--text-primary);
 }
-
 
 .nav-item:focus-visible,
 select:focus-visible,
@@ -120,23 +172,62 @@ input[type="checkbox"]:focus-visible,
 .custom-select-trigger:focus-visible,
 .color-well:focus-visible,
 .settings-win-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
+/* ── Pane ──────────────────────────────────────────────────────────────────
+   One title, an optional pinned preview, the scrolling settings, and the
+   footer. Only the settings scroll. */
 .settings-pane {
   background: var(--bg-pane);
 }
 
+/* Like a native toolbar: a hairline appears once content scrolls under it. */
+.pane-top {
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+.pane-top.is-scrolled {
+  border-bottom-color: var(--border-color);
+}
+
 .pane-header {
+  height: 76px;
+  padding: 28px 28px 0;
   -webkit-app-region: drag;
 }
 
 .pane-header h1 {
   font-size: 22px;
+  line-height: 28px;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   color: var(--text-primary);
+}
+
+.pane-pinned {
+  padding: 0 28px 16px;
+}
+
+.pane-pinned:empty {
+  display: none;
+}
+
+.pane-body {
+  padding: 0 28px 14px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--slider-rail) transparent;
+}
+
+.pane-footer {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 28px 7px;
+  font-size: 11.5px;
+  color: var(--text-quiet);
 }
 
 /* A section swaps in place with a short fade; nothing slides. */
@@ -154,47 +245,95 @@ input[type="checkbox"]:focus-visible,
   }
 }
 
-/* Sentence-case section headers, as in System Settings and Windows 11
-   Settings; neither platform sets group labels in all caps. */
+/* ── Groups and rows ───────────────────────────────────────────────────────
+   Each group is one quiet surface: a fill, no border or shadow, so it reads
+   as a unit without looking raised. The heading sits outside it in the same
+   size as the rows but semibold, and the surface does the rest. Inside, a
+   faint rule between rows, inset to the text, carries the eye from a label
+   across the panel to its control and marks where one setting ends; there
+   is none after the last row, under headings or around panels. Text shares
+   one left edge; only the page title starts at the margin. */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.group {
+  margin-top: 26px;
+}
+
+.settings-section > .group:first-child,
+.pane-loading > .group:first-child {
+  margin-top: 0;
+}
+
+/* Appearance fits its window without scrolling. */
+.section-appearance .group {
+  margin-top: 14px;
+}
+
 .group-title {
+  display: block;
+  margin: 0 0 8px;
+  padding-left: 14px;
   font-size: 13px;
+  line-height: 18px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.group-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--panel-radius);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.16);
+.group-rows {
+  padding: 2px 14px;
+  border-radius: 10px;
+  background: var(--group-fill);
+  box-shadow: inset 0 0 0 1px var(--group-edge);
 }
 
-@media (prefers-color-scheme: light) {
-  .group-card {
-    background: rgba(0, 0, 0, 0.025);
-    border: 1px solid rgba(0, 0, 0, 0.05);
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.05);
-  }
+/* Rows, player sessions and remembered players alike. */
+.group-rows > * + * {
+  border-top: 1px solid var(--row-divider);
 }
 
 .row {
-  border-bottom: 1px solid var(--border-row);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  box-sizing: border-box;
+  min-height: 42px;
+  padding: 9px 0;
 }
 
-.row:last-child {
-  border-bottom: none;
+.row.has-hint {
+  min-height: 52px;
 }
 
 .row-label {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
   color: var(--text-primary);
 }
 
 /* One line of explanation under a row label. */
 .row-hint {
-  color: var(--text-secondary);
+  color: var(--text-quiet);
   font-size: 11.5px;
   font-weight: 400;
-  line-height: 1.35;
+  line-height: 15px;
+}
+
+.row-control {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* An option that depends on another one being on. */
@@ -202,18 +341,18 @@ input[type="checkbox"]:focus-visible,
   opacity: 0.45;
 }
 
-/* Lyric colour: a rounded colour well instead of the bare system input. */
+/* Lyric colour: a compact well around the system colour picker, with an edge
+   that still shows when the colour is white. */
 .color-well {
   -webkit-appearance: none;
   appearance: none;
-  width: 44px;
-  height: 22px;
-  padding: 0;
-  border: none;
+  box-sizing: border-box;
+  width: 32px;
+  height: 24px;
+  padding: 2px;
+  border: 1px solid var(--well-edge);
   border-radius: 6px;
   background: transparent;
-  /* A ring that shows on any swatch, white included, in either theme. */
-  box-shadow: 0 0 0 1px rgba(128, 128, 128, 0.35);
   cursor: default;
 }
 
@@ -223,29 +362,35 @@ input[type="checkbox"]:focus-visible,
 
 .color-well::-webkit-color-swatch {
   border: none;
-  border-radius: 6px;
+  border-radius: 3px;
 }
 
 .color-well::-moz-color-swatch {
   border: none;
-  border-radius: 6px;
+  border-radius: 3px;
 }
 
 /* `<input switch>` renders as a native switch in WebKit (macOS 14.4+).
    Engines without it (WebView2 on Windows, WebKitGTK, older macOS) would show
-   a bare checkbox; draw a matching switch there instead. The knob is a
-   background layer so it works where inputs can't have pseudo-elements. */
+   a bare checkbox; draw a matching 32 × 18 switch there instead. The knob is
+   a background layer so it works where inputs can't have pseudo-elements, and
+   transparent top and bottom borders give it a 24 px target. */
 @supports not selector(::thumb) {
   input[type="checkbox"][switch] {
     appearance: none;
     -webkit-appearance: none;
     flex-shrink: 0;
+    box-sizing: border-box;
     width: 32px;
-    height: 18px;
+    height: 24px;
     margin: 0;
-    border-radius: 999px;
-    background-color: rgba(120, 120, 128, 0.32);
-    background-image: radial-gradient(circle, #fff 0 6.5px, transparent 7px);
+    border: 3px solid transparent;
+    border-inline-width: 0;
+    /* Semicircular ends on the 18 px track inside the borders. */
+    border-radius: 9px / 12px;
+    background-clip: padding-box;
+    background-color: var(--switch-off);
+    background-image: radial-gradient(circle, #f3f3f6 0 6.75px, transparent 7.25px);
     background-size: 18px 18px;
     background-position: 0 50%;
     background-repeat: no-repeat;
@@ -264,33 +409,19 @@ input[type="checkbox"]:focus-visible,
   }
 }
 
-/* Secondary, read-only text in a row's control area. */
-.row-detail {
-  color: var(--text-secondary);
-  font-size: 12.5px;
-  text-align: right;
-}
-
-/* Now playing: song and artist on the left, status and source on the
-   right; details and overrides open below. Rows share the 16 px inset of
-   every other settings row (on macOS the card provides it). */
-.player-session {
-  border-bottom: 1px solid var(--border-row);
-}
-
-.player-session:last-child {
-  border-bottom: none;
-}
-
+/* ── Players ───────────────────────────────────────────────────────────────
+   Now playing: app and track on the left, status and a disclosure on the
+   right; details and overrides open below, aligned with the title. */
 .player-session-summary {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: 20px minmax(0, 1fr) auto 24px;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
+  min-height: 56px;
+  padding: 8px 0;
   cursor: default;
   list-style: none;
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 .player-session-summary::-webkit-details-marker {
@@ -298,15 +429,15 @@ input[type="checkbox"]:focus-visible,
 }
 
 .player-session-summary:focus-visible {
-  outline: 2px solid var(--text-secondary);
-  outline-offset: -2px;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .player-session-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
+  width: 20px;
   color: var(--text-secondary);
 }
 
@@ -315,39 +446,30 @@ input[type="checkbox"]:focus-visible,
   color: var(--text-primary);
 }
 
-.player-session-track,
-.player-session-where {
+.player-session-track {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
 }
 
-.player-session-where {
-  align-items: flex-end;
-  text-align: right;
-}
-
 .player-session-title {
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 13.5px;
+  font-size: 13px;
+  line-height: 18px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.player-session-artist,
-.player-session-source {
+.player-session-artist {
   overflow: hidden;
-  color: var(--text-secondary);
-  font-size: 12px;
+  color: var(--text-quiet);
+  font-size: 11.5px;
+  line-height: 15px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.player-session-source {
-  max-width: 220px;
 }
 
 .player-session-status {
@@ -355,7 +477,7 @@ input[type="checkbox"]:focus-visible,
   align-items: center;
   gap: 6px;
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
 }
 
@@ -386,6 +508,7 @@ input[type="checkbox"]:focus-visible,
 }
 
 .player-session-chevron {
+  justify-self: center;
   width: 14px;
   height: 14px;
   color: var(--text-secondary);
@@ -393,23 +516,24 @@ input[type="checkbox"]:focus-visible,
 }
 
 .player-session[open] .player-session-chevron {
-  transform: rotate(90deg);
+  transform: rotate(180deg);
 }
 
 .player-session-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  /* Indented to the title column: icon (28) + gap (12). */
-  padding: 0 16px 14px 56px;
+  gap: 10px;
+  /* Indented to the title column: icon (20) + gap (12). */
+  padding: 0 0 12px 32px;
 }
 
 .player-session-facts {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 4px 16px;
+  gap: 2px 16px;
   margin: 0;
-  font-size: 12.5px;
+  font-size: 11.5px;
+  line-height: 18px;
 }
 
 .player-session-facts dt {
@@ -431,15 +555,11 @@ input[type="checkbox"]:focus-visible,
 /* Remembered players: name and usage, with the app's following rule. */
 .known-player {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border-row);
-}
-
-.known-player:last-child {
-  border-bottom: none;
+  min-height: 56px;
+  padding: 8px 0;
 }
 
 .known-player-controls {
@@ -448,42 +568,33 @@ input[type="checkbox"]:focus-visible,
   gap: 8px;
 }
 
-body[data-os="macos"] .player-session-summary,
-body[data-os="macos"] .known-player {
-  padding-inline: 0;
-}
-
-body[data-os="macos"] .player-session-body {
-  padding: 0 0 14px 40px;
-}
-
-/* No side padding there, so draw the focus ring just outside the row. */
-body[data-os="macos"] .player-session-summary:focus-visible {
-  outline-offset: 2px;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .player-session-chevron {
     transition: none;
   }
 }
 
+/* ── Sliders ───────────────────────────────────────────────────────────────
+   A thin rail with a small capsule thumb, quiet stops below it, and the value
+   in a fixed column on the right. The input keeps a 24 px target. */
 .snap-slider-control {
-  /* Thumb size; the rail and stops are inset by half of it so each stop
+  /* Thumb width; the rail and stops are inset by half of it so each stop
      sits under the thumb's centre. */
-  --thumb: 20px;
+  --thumb: 16px;
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  width: clamp(220px, 34vw, 340px);
+  gap: 14px;
+  width: 300px;
   max-width: 100%;
 }
 
-.snap-slider-range-wrapper {
+.snap-slider-range {
+  position: relative;
   display: flex;
-  flex-direction: column;
   flex: 1;
+  align-items: center;
   min-width: 0;
+  height: 24px;
 }
 
 .native-snap-slider {
@@ -501,59 +612,46 @@ body[data-os="macos"] .player-session-summary:focus-visible {
 }
 
 .native-snap-slider::-webkit-slider-runnable-track {
+  height: 24px;
   background: transparent;
 }
 
 .native-snap-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
+  box-sizing: border-box;
   width: var(--thumb);
-  height: var(--thumb);
-  border-radius: 50%;
-  background: #ffffff;
+  height: 9px;
+  margin-top: 7.5px;
+  border: 1px solid var(--slider-thumb-edge);
+  border-radius: 5px;
+  background: var(--slider-thumb);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   cursor: default;
-  z-index: 3;
-  position: relative;
-  border: 0.5px solid rgba(0, 0, 0, 0.12);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 0 transparent;
-  transition:
-    transform var(--duration-fast) var(--ease-standard),
-    box-shadow var(--duration-fast) var(--ease-standard);
-}
-
-.native-snap-slider:hover::-webkit-slider-thumb {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 5px color-mix(in srgb, var(--accent) 16%, transparent);
-}
-
-.native-snap-slider:active::-webkit-slider-thumb {
-  transform: scale(1.1);
 }
 
 /* Keyboard focus rings the thumb, the part that moves, not the whole row. */
 .native-snap-slider:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 3px color-mix(in srgb, var(--accent) 60%, transparent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 2px var(--focus-ring);
+}
+
+.native-snap-slider::-moz-range-track {
+  background: transparent;
 }
 
 .native-snap-slider::-moz-range-thumb {
+  box-sizing: border-box;
   width: var(--thumb);
-  height: var(--thumb);
-  border-radius: 50%;
-  background: #ffffff;
+  height: 9px;
+  border: 1px solid var(--slider-thumb-edge);
+  border-radius: 5px;
+  background: var(--slider-thumb);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   cursor: default;
-  border: 0.5px solid rgba(0, 0, 0, 0.12);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .native-snap-slider:focus-visible::-moz-range-thumb {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 3px color-mix(in srgb, var(--accent) 60%, transparent);
-}
-
-.snap-slider-range {
-  position: relative;
-  width: 100%;
-  height: 24px;
-  display: flex;
-  align-items: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 2px var(--focus-ring);
 }
 
 .snap-slider-track-container {
@@ -570,9 +668,9 @@ body[data-os="macos"] .player-session-summary:focus-visible {
 .snap-slider-fill {
   position: absolute;
   top: 50%;
-  height: 6px;
+  height: 3px;
   transform: translateY(-50%);
-  border-radius: 999px;
+  border-radius: 3px;
 }
 
 .snap-slider-rail {
@@ -583,10 +681,10 @@ body[data-os="macos"] .player-session-summary:focus-visible {
 }
 
 .snap-slider-range:hover .snap-slider-rail {
-  background: color-mix(in srgb, var(--slider-rail), var(--text-primary) 6%);
+  background: color-mix(in srgb, var(--slider-rail), var(--text-primary) 8%);
 }
 
-/* Accent, like the toggles. Starts at the rail's rounded end and reaches
+/* Accent, like the switches. Starts at the rail's rounded end and reaches
    the thumb's centre. */
 .snap-slider-fill {
   left: calc(var(--thumb) / -2);
@@ -601,35 +699,36 @@ body[data-os="macos"] .player-session-summary:focus-visible {
   inset: 0;
 }
 
-/* Each stop is a dot on the rail: the slider only lands on these. */
+/* The stops the slider lands on, just below the rail. */
 .snap-slider-tick {
   position: absolute;
-  top: 50%;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--slider-stop);
-  transform: translate(-50%, -50%);
-  transition: background-color var(--duration-fast) var(--ease-standard);
-}
-
-.snap-slider-tick.is-filled {
-  background: rgba(255, 255, 255, 0.7);
-}
-
-.snap-slider-tick.active {
-  opacity: 0;
+  top: calc(50% + 5px);
+  width: 1px;
+  height: 3px;
+  background: var(--slider-tick);
+  transform: translateX(-50%);
 }
 
 .snap-slider-value {
+  display: flex;
   flex: none;
-  min-width: 5em;
-  font-size: 12px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
+  flex-direction: column;
+  align-items: flex-end;
+  width: 56px;
   color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
   text-align: right;
   white-space: nowrap;
+}
+
+.snap-slider-caption {
+  color: var(--text-quiet);
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 13px;
 }
 
 /* Custom Controls */
@@ -734,32 +833,12 @@ body[data-os="macos"] select {
   pointer-events: none;
 }
 
-.native-toggle {
-  width: 44px;
-  height: 24px;
-  border-radius: 24px;
-  position: relative;
-  transition: background 0.3s ease-in-out;
-  box-shadow: inset 0 0 0 1px var(--border-color);
-}
-.native-toggle::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-}
-.native-toggle:checked {
-  background: var(--accent);
-  box-shadow: none;
-}
-.native-toggle:checked::after {
-  transform: translateX(20px);
+/* Loading skeleton, shaped like the rows it stands in for. */
+.pane-loading {
+  display: flex;
+  flex-direction: column;
 }
 
-/* Loading Skeletons */
 .skeleton-line {
   display: inline-block;
   height: 14px;
@@ -768,46 +847,73 @@ body[data-os="macos"] select {
   background-size: 200% 100%;
   animation: settings-shimmer 1.5s infinite linear;
 }
+
 @keyframes settings-shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
 
-/* ----------------================ macOS / Raycast Theme ================---------------- */
+.skeleton-title {
+  width: 96px;
+  height: 12px;
+  margin-bottom: 10px;
+}
+
+.skeleton-title.short {
+  width: 64px;
+}
+
+.row-label.skeleton-line {
+  display: block;
+  height: 12px;
+}
+
+.skeleton-pill {
+  width: 32px;
+  height: 18px;
+}
+
+.skeleton-bar {
+  width: 120px;
+  height: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line {
+    animation: none;
+  }
+}
+
+/* ----------------================ macOS ================---------------- */
 
 body[data-os="macos"] {
   color-scheme: dark;
-  /* Near-opaque base over the native material: a hint of the desktop, not a
-     see-through page. */
-  --shell-bg: rgba(28, 28, 31, 0.93);
-  --bg-sidebar: rgba(0, 0, 0, 0.14);
-  --bg-pane: transparent;
-  --bg-card: rgba(255, 255, 255, 0.045);
-  --text-primary: #ededed;
-  --text-secondary: #909090;
-  --border-color: rgba(255, 255, 255, 0.06);
+  /* Near-opaque base over the native sidebar material: a hint of the
+     desktop, not a see-through page. */
+  --shell-bg: rgba(23, 21, 25, 0.94);
   --input-bg: rgba(255, 255, 255, 0.06);
   --input-hover: rgba(255, 255, 255, 0.1);
-  --item-active: rgba(255, 255, 255, 0.05);
-  --item-active-bg: rgba(255, 255, 255, 0.08);
-  --item-active-text: #ffffff;
-  --knob-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 @media (prefers-color-scheme: light) {
   body[data-os="macos"] {
     color-scheme: light;
-    --shell-bg: rgba(244, 244, 246, 0.94);
-    --bg-sidebar: rgba(0, 0, 0, 0.035);
-    --bg-pane: transparent;
-    --text-primary: #000000;
-    --text-secondary: #797979;
-    --border-color: rgba(0, 0, 0, 0.06);
+    --shell-bg: rgba(246, 245, 248, 0.94);
     --input-bg: rgba(0, 0, 0, 0.05);
     --input-hover: rgba(0, 0, 0, 0.08);
-    --item-active: rgba(0, 0, 0, 0.04);
-    --item-active-bg: rgba(0, 0, 0, 0.08);
-    --item-active-text: #1c1c1e;
+  }
+}
+
+/* With Reduce Transparency the page is opaque, like the system's own. */
+@media (prefers-reduced-transparency: reduce) {
+  body[data-os="macos"] {
+    --shell-bg: #171519;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) and (prefers-color-scheme: light) {
+  body[data-os="macos"] {
+    --shell-bg: #f6f5f8;
   }
 }
 
@@ -816,111 +922,6 @@ body[data-os="macos"] {
   body[data-os="macos"] {
     --accent: -apple-system-control-accent;
   }
-}
-
-/* MacOS Layout adjustments */
-
-body[data-os="macos"] .settings-shell {
-  background: var(--shell-bg);
-}
-
-body[data-os="macos"] .settings-sidebar {
-  border-right: 1px solid var(--border-color);
-}
-body[data-os="macos"] .nav-section {
-  display: none; /* System Settings' sidebar has no section headers */
-}
-body[data-os="macos"] .nav-item {
-  color: var(--text-primary);
-}
-
-/* Toolbar title, as in System Settings: the page name sits in the title bar
-   band instead of leaving it empty, and stays put while the page scrolls. */
-body[data-os="macos"] .pane-header {
-  display: flex;
-  align-items: center;
-  height: 52px;
-  padding: 0 40px;
-  flex-shrink: 0;
-}
-body[data-os="macos"] .pane-header h1 {
-  font-size: 15px;
-  font-weight: 700;
-}
-
-/* Like a native toolbar: a hairline appears once content scrolls under it. */
-.pane-header {
-  border-bottom: 1px solid transparent;
-  transition: border-color var(--duration-fast) var(--ease-standard);
-}
-
-.pane-header.is-scrolled {
-  border-bottom-color: var(--border-color);
-}
-
-/* Form Groups: Mac has Ventura-style rounded translucent cards */
-body[data-os="macos"] .group {
-  padding-bottom: 0;
-}
-body[data-os="macos"] .group:last-child {
-  border-bottom: none;
-}
-body[data-os="macos"] .group-title {
-  display: block;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0 0 6px 12px;
-}
-body[data-os="macos"] .group-card {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 10px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding: 0 16px;
-}
-@media (prefers-color-scheme: light) {
-  body[data-os="macos"] .group-card {
-    background: rgba(0, 0, 0, 0.025);
-    border: 1px solid rgba(0, 0, 0, 0.04);
-  }
-}
-
-/* MacOS Segmented Controls Override */
-body[data-os="macos"] .segmented {
-  background: rgba(120, 120, 128, 0.24);
-  border-radius: 8px;
-  padding: 2px;
-  gap: 0;
-}
-@media (prefers-color-scheme: light) {
-  body[data-os="macos"] .segmented {
-    background: rgba(120, 120, 128, 0.12);
-  }
-}
-body[data-os="macos"] .segmented-indicator {
-  background: rgba(255, 255, 255, 0.18);
-  border-radius: 6px;
-  box-shadow: 0 0.5px 1.5px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(255, 255, 255, 0.06);
-}
-@media (prefers-color-scheme: light) {
-  body[data-os="macos"] .segmented-indicator {
-    background: #ffffff;
-    box-shadow: 0 0.5px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
-  }
-}
-body[data-os="macos"] .segmented-option {
-  font-size: 12px;
-  font-weight: 500;
-  padding: 4px 14px;
-  letter-spacing: -0.01em;
-}
-body[data-os="macos"] .segmented-option.active {
-  background: transparent !important;
-  box-shadow: none !important;
 }
 
 /* MacOS Native Buttons Override */
@@ -949,40 +950,6 @@ body[data-os="macos"] .action-btn:active {
   body[data-os="macos"] .action-btn:active {
     background: rgba(0, 0, 0, 0.04);
   }
-}
-
-/* MacOS Native Toggles Override */
-body[data-os="macos"] .native-toggle {
-  width: 28px;
-  height: 16px;
-  background: rgba(120, 120, 128, 0.32);
-  border-radius: 999px;
-  box-shadow: none;
-  border: none;
-  transition: background 0.15s ease-out;
-}
-body[data-os="macos"] .native-toggle::after {
-  width: 14px;
-  height: 14px;
-  top: 1px;
-  left: 1px;
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
-  transition: transform 0.15s cubic-bezier(0.25, 0.1, 0.25, 1);
-}
-body[data-os="macos"] .native-toggle:checked {
-  background: #30d158;
-}
-@media (prefers-color-scheme: light) {
-  body[data-os="macos"] .native-toggle {
-    background: rgba(120, 120, 128, 0.2);
-  }
-  body[data-os="macos"] .native-toggle:checked {
-    background: #34c759;
-  }
-}
-body[data-os="macos"] .native-toggle:checked::after {
-  transform: translateX(12px);
 }
 
 /* MacOS Custom Select overrides */
@@ -1032,36 +999,6 @@ body[data-os="macos"] .custom-select-option.active:hover {
   color: #ffffff;
 }
 
-/* Row Grid Alignment */
-body[data-os="macos"] .row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  padding: 7px 0;
-  min-height: 44px;
-  border-bottom: 1px solid var(--border-row);
-  box-sizing: border-box;
-}
-body[data-os="macos"] .row:last-child {
-  border-bottom: none;
-}
-body[data-os="macos"] .row-label {
-  text-align: left;
-  color: var(--text-primary);
-  font-weight: 500;
-  flex: 1;
-  max-width: none;
-  font-size: 13px;
-}
-body[data-os="macos"] .row-control {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
 /* ----------------================ Windows / Fluent Design Theme ================---------------- */
 
 .settings-win-controls {
@@ -1099,202 +1036,53 @@ body[data-os="macos"] .row-control {
 
 body[data-os="windows"] {
   color-scheme: dark;
+  --shell-bg: #272727;
   --bg-sidebar: #202020;
   --bg-pane: #272727;
   --bg-card: #2c2c2c;
   --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.55);
+  --text-secondary: rgba(255, 255, 255, 0.62);
+  --text-quiet: rgba(255, 255, 255, 0.55);
   --border-color: rgba(255, 255, 255, 0.07);
-  --border-row: rgba(255, 255, 255, 0.05);
   --input-bg: rgba(255, 255, 255, 0.07);
   --input-hover: rgba(255, 255, 255, 0.12);
   --item-active: rgba(255, 255, 255, 0.07);
-  --item-active-bg: #0078D4;
-  --item-active-text: #ffffff;
-  --knob-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
   --accent: #0078D4;
-  --panel-radius: 8px;
+  --nav-icon: rgba(255, 255, 255, 0.62);
+  --group-fill: #2c2c2c;
+  --group-edge: rgba(255, 255, 255, 0.035);
 }
 
 @media (prefers-color-scheme: light) {
   body[data-os="windows"] {
     color-scheme: light;
+    --shell-bg: #fafafa;
     --bg-sidebar: #f3f3f3;
     --bg-pane: #fafafa;
     --bg-card: #ffffff;
     --text-primary: #1a1a1a;
-    --text-secondary: rgba(0, 0, 0, 0.5);
+    --text-secondary: rgba(0, 0, 0, 0.6);
+    --text-quiet: rgba(0, 0, 0, 0.55);
     --border-color: rgba(0, 0, 0, 0.07);
-    --border-row: rgba(0, 0, 0, 0.05);
     --input-bg: rgba(0, 0, 0, 0.05);
     --input-hover: rgba(0, 0, 0, 0.09);
     --item-active: rgba(0, 0, 0, 0.05);
-    --item-active-bg: #0067C0;
-    --item-active-text: #ffffff;
-    --knob-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    --accent: #0067C0;
+    --nav-icon: rgba(0, 0, 0, 0.6);
+    --group-fill: #ffffff;
+    --group-edge: rgba(0, 0, 0, 0.06);
   }
 }
 
 body[data-os="windows"] .settings-shell {
   font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
-  background: var(--bg-pane);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-@media (prefers-color-scheme: light) {
-  body[data-os="windows"] .settings-shell {
-    background: var(--bg-pane);
-  }
-}
 
-body[data-os="windows"] .settings-sidebar {
-  width: 240px;
-  padding: 44px 8px 12px;
-  border-right: 1px solid var(--border-color);
-  background: var(--bg-sidebar);
-}
-
-body[data-os="windows"] .sidebar-traffic-spacer {
-  display: none;
-}
-
-body[data-os="windows"] .nav-section {
-  font-size: 11px;
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
-  padding: 12px 12px 4px;
-}
-
-body[data-os="windows"] .nav-item {
-  padding: 9px 12px;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 400;
-  color: var(--text-primary);
-}
-
-/* Windows 11 Settings marks the selected row with a short bar as well. */
-body[data-os="windows"] .nav-item.active {
-  background: var(--nav-selected);
-  color: var(--text-primary);
-}
-
-body[data-os="windows"] .nav-item.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  width: 3px;
-  height: 16px;
-  border-radius: 2px;
-  background: var(--accent);
-  transform: translateY(-50%);
-}
-
-body[data-os="windows"] .pane-header {
-  padding: 0 24px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid var(--border-color);
-  flex-shrink: 0;
-}
-
-body[data-os="windows"] .pane-header h1 {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-body[data-os="windows"] .pane-body {
-  padding: 20px 28px 36px;
-  gap: 20px;
-  background: var(--bg-pane);
-}
-
-body[data-os="windows"] .group-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 0 4px;
-}
-
-body[data-os="windows"] .group-card {
-  border-radius: 8px;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  background: var(--bg-card);
-}
-
-body[data-os="windows"] .row {
-  padding: 8px 16px;
-  min-height: 52px;
-  box-sizing: border-box;
-}
-
-body[data-os="windows"] .row-label {
-  font-size: 13px;
-}
-
-/* Windows 11 Toggle Switch */
-body[data-os="windows"] .native-toggle {
-  width: 40px;
-  height: 20px;
-  border-radius: 999px;
-  background: transparent;
-  border: 2px solid var(--text-secondary);
-  box-shadow: none;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-body[data-os="windows"] .native-toggle::after {
-  width: 12px;
-  height: 12px;
-  top: 2px;
-  left: 2px;
-  background: var(--text-secondary);
-  box-shadow: none;
-  border-radius: 50%;
-  transition: transform 0.15s ease, background 0.15s;
-}
-
-body[data-os="windows"] .native-toggle:checked {
-  background: var(--accent);
-  border-color: var(--accent);
-  box-shadow: none;
-}
-
-body[data-os="windows"] .native-toggle:checked::after {
-  background: white;
-  transform: translateX(20px);
-}
-
-/* Windows 11 Slider Override */
-body[data-os="windows"] input[type="range"]:not(.native-snap-slider)::-webkit-slider-runnable-track {
-  height: 4px;
-  background: rgba(255, 255, 255, 0.24);
-  border-radius: 2px;
-}
-@media (prefers-color-scheme: light) {
-  body[data-os="windows"] input[type="range"]:not(.native-snap-slider)::-webkit-slider-runnable-track {
-    background: rgba(0, 0, 0, 0.24);
-  }
-}
-body[data-os="windows"] input[type="range"]:not(.native-snap-slider)::-webkit-slider-thumb {
-  height: 18px;
-  width: 18px;
-  border-radius: 50%;
-  background: var(--accent);
-  border: 4px solid var(--bg-card);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  margin-top: -7px;
-  -webkit-appearance: none;
-  cursor: default;
-}
-body[data-os="windows"] input[type="range"]:not(.native-snap-slider)::-webkit-slider-thumb:hover {
-  background: #ffffff;
-  border-color: var(--accent);
+/* No window controls on the left to clear. */
+body[data-os="windows"] .sidebar-titlebar {
+  height: 40px;
 }
 
 /* Windows 11 Native Buttons Override */
@@ -1329,7 +1117,6 @@ body[data-os="windows"] .segmented {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 4px;
-  padding: 2px;
 }
 @media (prefers-color-scheme: light) {
   body[data-os="windows"] .segmented {
@@ -1416,51 +1203,67 @@ body[data-os="windows"] .settings-ambient-bg {
   .custom-select-dropdown { animation: none !important; }
 }
 
-/* ── Sliding Segmented Control ───────────────────────────────────────────── */
+/* ── Segmented control ─────────────────────────────────────────────────────
+   Short named choices. The selected segment is a lighter graphite pill,
+   not a bright button; it slides to the new choice. */
 .segmented {
   position: relative;
   display: inline-flex;
-  background: var(--input-bg);
-  border-radius: 8px;
-  padding: 2px;
-  isolation: isolate;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 1px;
   gap: 0;
+  border: 1px solid var(--segment-edge);
+  border-radius: 6px;
+  background: var(--segment-track);
+  isolation: isolate;
 }
+
+/* Spans the slider column, so named levels line up with the sliders. */
+.segmented.is-wide {
+  width: 300px;
+}
+
 .segmented-indicator {
   position: absolute;
   inset: 0;
-  background: var(--bg-card);
-  border-radius: 6px;
-  box-shadow: 0 0.5px 1.5px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0,0,0,0.06);
+  background: var(--segment-selected);
+  border-radius: 4px;
+  box-shadow: var(--segment-selected-shadow);
   z-index: 0;
   pointer-events: none;
 }
+
 .segmented-option {
   position: relative;
-  flex: 1;
-  z-index: 1;
-  cursor: default;
-  padding: 4px 14px;
-  font-size: 12.5px;
-  font-weight: 500;
-  text-align: center;
-  white-space: nowrap;
-  border: none;
-  background: transparent;
-  color: var(--text-primary);
-  font-family: inherit;
-  border-radius: 6px;
-  transition: color 0.15s;
   display: flex;
+  flex: 1;
   align-items: center;
   justify-content: center;
-}
-.segmented-option:hover:not(.active) {
+  z-index: 1;
+  height: 24px;
+  min-width: 51px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 4px;
   background: transparent;
+  color: var(--text-secondary);
+  cursor: default;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 400;
+  text-align: center;
+  white-space: nowrap;
+  transition: color 0.15s;
 }
+
+.segmented-option:hover:not(.active),
 .segmented-option.active {
-  background: transparent;
-  box-shadow: none;
+  color: var(--text-primary);
+}
+
+.segmented-option.active {
+  font-weight: 500;
 }
 
 /* ── Custom Popover Dropdown Select ──────────────────────────────────────── */
@@ -1561,21 +1364,44 @@ body[data-os="windows"] .settings-ambient-bg {
 }
 
 /* ── Live previews ──────────────────────────────────────────────────────────
-   Shown at the top of Appearance, Marquee and Karaoke. Purely visual
-   (aria-hidden); every control below still names its own effect. */
+   Appearance shows one above its settings; Marquee and Karaoke pin theirs
+   above the scrolling settings. Purely visual (aria-hidden); every control
+   below still names its own effect. Each sits on a wash of the current
+   artwork, strongest here and only faint under the settings. */
+.section-appearance .settings-preview-block {
+  margin-bottom: 14px;
+}
+
+/* A caption, not a heading: quieter and smaller than group titles, on the
+   same text edge. */
+.preview-label {
+  margin: 0 0 7px;
+  padding-left: 14px;
+  color: var(--text-quiet);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
 .settings-preview {
   position: relative;
   overflow: hidden;
-  border-radius: 12px;
-  box-shadow: inset 0 0 0 1px var(--border-color);
-  background: #121216;
+  border-radius: 8px;
+  background: #1a1520;
   color: #fff;
   user-select: none;
+  isolation: isolate;
 }
 
-/* Main window: three lines over a wash of the current artwork. */
-.preview-main {
-  height: 148px;
+/* The edge sits above the artwork, which would cover an inset shadow. */
+.settings-preview::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--preview-edge);
+  pointer-events: none;
 }
 
 .preview-ambient {
@@ -1599,38 +1425,46 @@ body[data-os="windows"] .settings-ambient-bg {
     linear-gradient(to bottom, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.5));
 }
 
+/* Main window: three lines in the chosen font and size. The box grows with
+   the text size rather than clipping it. */
 .preview-main-lines {
   position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 6px;
-  height: 100%;
-  padding: 0 28px;
+  gap: 7px;
+  box-sizing: border-box;
+  min-height: 100px;
+  padding: 12px 25px;
 }
 
 .preview-line {
   /* Shrink to the text so the wipe's percentage matches the words. */
   align-self: flex-start;
   max-width: 100%;
-  font-size: 1.15em;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
+  font-size: 1em;
+  font-weight: 500;
+  line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.preview-line.is-active {
+  font-size: 1.25em;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Lyric blur softens the lines around the current one, never the line itself. */
 .preview-line.is-passed {
-  color: rgba(255, 255, 255, 0.4);
-  opacity: 0.52;
-  filter: blur(calc(1.2px * var(--lyric-blur, 1)));
+  color: rgba(240, 238, 246, 0.5);
+  filter: blur(calc(1px * var(--lyric-blur, 1)));
 }
 
 .preview-line.is-next {
-  color: rgba(255, 255, 255, 0.5);
-  opacity: 0.8;
+  color: rgba(240, 238, 246, 0.62);
   filter: blur(calc(0.5px * var(--lyric-blur, 1)));
 }
 
@@ -1651,41 +1485,41 @@ body[data-os="windows"] .settings-ambient-bg {
   -webkit-text-fill-color: transparent;
 }
 
-/* Island: the real island markup at its real size, scaled down. */
+/* Marquee: the real panel markup at its real size, scaled down and centred. */
 .preview-island {
-  background:
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.06), transparent 40%),
-    #1a1a1f;
+  height: 90px;
 }
 
 .preview-island-frame {
   position: absolute;
-  top: 0;
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%) scale(var(--preview-scale, 0.6));
-  transform-origin: top center;
+  z-index: 1;
+  transform: translate(-50%, -50%) scale(var(--preview-scale, 0.6));
+  transform-origin: center;
   pointer-events: none;
 }
 
-/* Karaoke: lines over a stand-in desktop, at the configured edge. */
+/* Karaoke: lines over the artwork, at the configured edge. */
 .preview-karaoke {
   display: flex;
   flex-direction: column;
-  height: 120px;
+  box-sizing: border-box;
+  min-height: 90px;
   padding: 10px 0;
-  background:
-    radial-gradient(circle at 20% 30%, rgba(90, 120, 200, 0.35), transparent 55%),
-    radial-gradient(circle at 80% 70%, rgba(200, 110, 160, 0.3), transparent 55%),
-    #202027;
 }
 
 .preview-karaoke-band {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 2px;
   align-self: center;
+  box-sizing: border-box;
   width: var(--preview-width, 100%);
-  padding: 6px 16px;
+  padding: 4px 14px;
+  border-radius: 5px;
   background: rgba(10, 10, 12, var(--karaoke-bg, 0));
   text-align: inherit;
 }
@@ -1696,10 +1530,10 @@ body[data-os="windows"] .settings-ambient-bg {
 }
 
 .preview-karaoke-current {
-  font-size: calc(1.6rem * var(--preview-scale, 1));
+  font-size: calc(1.0625rem * var(--preview-scale, 1));
   font-weight: 600;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1713,7 +1547,8 @@ body[data-os="windows"] .settings-ambient-bg {
 .preview-karaoke-next {
   font-size: calc(0.75rem * var(--preview-scale, 1));
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.6);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

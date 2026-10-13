@@ -18,14 +18,12 @@ export function Row({
   const labelId = useId();
   const hintId = useId();
   return (
-    <div
-      className={`row flex min-h-11 items-center justify-between gap-4 box-border px-4 py-1.5 text-[13.5px]${disabled ? ' is-disabled' : ''}`}
-    >
-      <span className="row-label flex flex-1 flex-col gap-0.5">
+    <div className={`row${hint ? ' has-hint' : ''}${disabled ? ' is-disabled' : ''}`}>
+      <span className="row-label">
         <span id={labelId}>{label}</span>
         {hint && <span id={hintId} className="row-hint">{hint}</span>}
       </span>
-      <span className="row-control flex items-center gap-3">
+      <span className="row-control">
         <RowContext.Provider value={{ labelId, hintId: hint ? hintId : undefined, disabled }}>
           {children}
         </RowContext.Provider>

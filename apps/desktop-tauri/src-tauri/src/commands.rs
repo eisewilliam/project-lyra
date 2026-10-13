@@ -76,6 +76,42 @@ pub fn set_island_click_through(enabled: bool, state: State<'_, AppState>, app: 
     let _ = app.emit("ui-settings-changed", new_state);
 }
 
+/// Whether this Mac has a Touch Bar and Lyra can add its Control Strip
+/// button. Sync so it runs on the main thread.
+#[tauri::command]
+pub fn get_touch_bar_support() -> crate::touch_bar::Support {
+    crate::touch_bar::support()
+}
+
+/// Show a menu with SF Symbols and second lines at a point in the window,
+/// or at the pointer, and return the chosen row's id. macOS only; elsewhere
+/// the web view uses Tauri's menu.
+#[tauri::command]
+pub async fn show_native_menu(
+    window: tauri::WebviewWindow,
+    items: Vec<crate::native_menu::NativeMenuItem>,
+    x: Option<f64>,
+    y: Option<f64>,
+) -> Result<Option<String>, String> {
+    crate::native_menu::show(&window, items, x.zip(y)).await
+}
+
+/// Open AppKit's palette for arranging Lyra's Touch Bar, the same as View →
+/// Customize Touch Bar…, from Settings → Touch Bar.
+#[tauri::command]
+pub fn customize_touch_bar(app: AppHandle) {
+    crate::touch_bar::customize(&app);
+}
+
+/// Add or remove Lyra's Control Strip button, which shows the lyrics bar
+/// over any app.
+#[tauri::command]
+pub fn set_touch_bar_control_strip(enabled: bool, state: State<'_, AppState>, app: AppHandle) {
+    let new_state = state.ui.mutate(|s| s.touch_bar_control_strip = enabled);
+    crate::touch_bar::set_control_strip(&app, enabled);
+    let _ = app.emit("ui-settings-changed", new_state);
+}
+
 /// Put lyric text on the system clipboard. Runs on the host because the
 /// lyric line menu's actions arrive without a user gesture, which the web
 /// clipboard API requires.

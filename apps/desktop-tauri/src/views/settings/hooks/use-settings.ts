@@ -15,6 +15,7 @@ import {
   setPreferredMonitor,
   setShowOnFullscreen,
   setTheme,
+  setTouchBarControlStrip,
   toggleSurface,
   updateIslandSettings,
   updateKaraokeSettings,
@@ -232,6 +233,12 @@ export function useSettings() {
       await optimisticUiAction(
         { island_click_through: enabled },
         () => setIslandClickThrough(enabled),
+      );
+    },
+    setTouchBarControlStrip: async (enabled: boolean) => {
+      await optimisticUiAction(
+        { touch_bar_control_strip: enabled },
+        () => setTouchBarControlStrip(enabled),
       );
     },
     setIslandSize: async (scale: number | null) => {

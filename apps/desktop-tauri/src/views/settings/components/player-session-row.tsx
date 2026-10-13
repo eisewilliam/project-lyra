@@ -66,6 +66,9 @@ function status(session: PlayerSessionInfo): Status {
 
 type TrackAction = { label: string; value: boolean | null };
 
+/** Phosphor Regular CaretDown (MIT, Copyright (c) 2023 Phosphor Icons). */
+const CARET_DOWN = 'M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z';
+
 /** The per-track override offered for this session, if any. */
 function trackAction(session: PlayerSessionInfo): TrackAction | null {
   if (!session.track_key) return null;
@@ -101,6 +104,8 @@ export function PlayerSessionRow({
   const state = status(session);
   const action = trackAction(session);
   const trackKey = session.track_key;
+  // App first, then what it is playing.
+  const track = [session.title, session.artist].filter(Boolean).join(' · ');
 
   return (
     <details className="player-session">
@@ -109,15 +114,12 @@ export function PlayerSessionRow({
           <SourceIcon brand={sourceBrand(session.platform, player)} size={20} />
         </span>
         <span className="player-session-track">
-          <span className="player-session-title">{session.title ?? source}</span>
-          {session.artist ? <span className="player-session-artist">{session.artist}</span> : null}
+          <span className="player-session-title">{source}</span>
+          {track ? <span className="player-session-artist">{track}</span> : null}
         </span>
-        <span className="player-session-where">
-          <span className="player-session-status" data-tone={state.tone}>{state.text}</span>
-          <span className="player-session-source">{source}</span>
-        </span>
-        <svg className="player-session-chevron" viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        <span className="player-session-status" data-tone={state.tone}>{state.text}</span>
+        <svg className="player-session-chevron" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true">
+          <path d={CARET_DOWN} />
         </svg>
       </summary>
 

@@ -1,10 +1,13 @@
-type SelectOption = { value: string; label: string };
-type SliderStep = { value: number; label: string };
+import type { BrowserLyrics } from '@/types/tauri-contracts';
 
+type SelectOption = { value: string; label: string };
+type SliderStep = { value: number; label: string; caption?: string };
+
+/** `auto` follows the system; the stored value keeps its name. */
 export const THEME_OPTIONS: SelectOption[] = [
-  { value: 'auto', label: 'Auto' },
-  { value: 'dark', label: 'Dark' },
+  { value: 'auto', label: 'System' },
   { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
 ];
 
 /** Per-app following rule; `Auto` follows music only. */
@@ -20,6 +23,13 @@ export const BROWSER_LYRICS_OPTIONS: SelectOption[] = [
   { value: 'Deny', label: "Don't look up" },
 ];
 
+/** What the chosen browser-lyrics option does, shown under the row. */
+export const BROWSER_LYRICS_HINTS: Record<BrowserLyrics, string> = {
+  Ask: 'Asks before using a browser title and artist to find lyrics.',
+  Allow: 'Uses the title and artist a browser reports to find lyrics.',
+  Deny: 'Media playing in a browser shows no lyrics.',
+};
+
 export const FONT_FAMILY_OPTIONS: SelectOption[] = [
   { value: 'system-ui', label: 'System Default' },
   { value: "'SF Pro Rounded', sans-serif", label: 'SF Pro Rounded' },
@@ -28,12 +38,12 @@ export const FONT_FAMILY_OPTIONS: SelectOption[] = [
 ];
 
 export const FONT_SIZE_STEPS: SliderStep[] = [
-  { value: 12, label: 'XS' },
-  { value: 14, label: 'Small' },
-  { value: 16, label: 'Medium' },
-  { value: 18, label: 'Large' },
-  { value: 20, label: 'XL' },
-  { value: 24, label: 'XXL' },
+  { value: 12, label: '12 px', caption: 'XS' },
+  { value: 14, label: '14 px', caption: 'Small' },
+  { value: 16, label: '16 px', caption: 'Medium' },
+  { value: 18, label: '18 px', caption: 'Large' },
+  { value: 20, label: '20 px', caption: 'XL' },
+  { value: 24, label: '24 px', caption: 'XXL' },
 ];
 
 /** Multiplier on the depth blur around the current lyric line. */
@@ -45,7 +55,7 @@ export const LYRIC_BLUR_STEPS: SliderStep[] = [
 ];
 
 export const BACKGROUND_OPACITY_STEPS: SliderStep[] = [
-  { value: 0, label: 'None' },
+  { value: 0, label: '0%' },
   { value: 0.25, label: '25%' },
   { value: 0.5, label: '50%' },
   { value: 0.75, label: '75%' },

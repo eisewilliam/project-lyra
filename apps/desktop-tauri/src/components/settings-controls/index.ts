@@ -5,4 +5,5 @@ export { Segmented } from './segmented';
 export { CustomSelect } from './select';
 export { SettingsSkeleton } from './settings-skeleton';
 export { SnapSlider } from './snap-slider';
+export { nearestStepIndex } from './steps';
 export { Toggle } from './toggle';

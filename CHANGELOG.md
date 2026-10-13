@@ -10,8 +10,30 @@ offered it as an update.
 
 ## [Unreleased]
 
+### Added
+
+- On a MacBook Pro with a Touch Bar, Lyra's Touch Bar shows previous,
+  play/pause and next, then the line being sung with the next line after it,
+  in your lyric font and color. Tap the lyrics to open Lyra. Choose which
+  buttons it shows with View → Customize Touch Bar… or Settings → Touch Bar.
+- To see lyrics on the Touch Bar while you use other apps, turn on Settings →
+  Touch Bar → Show Lyra in the Control Strip, then tap the Lyra
+  button. Tap × to put the other app's controls back. The Lyra button takes
+  the place of the Control Strip's Now Playing button.
+
 ### Changed
 
+- Settings has a new look: each group of settings sits on one quiet panel
+  under a clear heading, the sidebar icons are softer, and sliders are slimmer
+  with their value beside them. Marquee and Karaoke keep their live preview in
+  view while you scroll their settings.
+- Theme has moved from General to Appearance, and its Auto choice is now
+  called System. Lyric blur is now four buttons: Off, Subtle, Standard and
+  Strong.
+- The main window's track menu (···) is now a standard system menu, so it
+  looks and works like menus in other apps and is no longer cut off by the
+  edge of a small window. On macOS 26 its items and the lyric line menu's
+  have icons, as in Apple's own menus.
 - The Marquee's size now looks about the same on every display: a new Size
   setting (Small to Extra large) scales the whole panel together, and Match
   screen, the default, picks the size for whichever display it is on. It never
@@ -23,8 +45,13 @@ offered it as an update.
 
 ### Fixed
 
+- On macOS, lyrics keep moving while a menu is open. Right-clicking a lyric
+  line used to stop them until the menu closed.
 - On Windows, Lyra could start with its window hidden and, once opened, stay
   on the loading screen without ever showing the playing song or its lyrics.
+- With Keep window on top turned on, a maximized or full-screen Lyra window
+  no longer hides every other window until it is minimized. It stays on top
+  only at its normal size.
 
 ## [0.1.0-beta.1] - 2026-10-12
 

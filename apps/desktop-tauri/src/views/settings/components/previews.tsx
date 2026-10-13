@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { islandBaseHeight } from '@/constants/island-size';
 import type { AppearanceSettings, UiState } from '@/types/tauri-contracts';
 import { resolveFontFamily } from '@/utils/app-settings';
@@ -17,11 +17,44 @@ const SAMPLE = {
 const SAMPLE_PROGRESS = 0.55;
 const ISLAND_PREVIEW_SCALE = 0.6;
 
+/** Wash of the current track's artwork, strongest here and only faint
+    under the settings. Purely visual; each control names its own effect. */
+const WASH_DARKNESS = 0.45;
+
 function WipedLine({ text, className }: Readonly<{ text: string; className: string }>) {
   return (
     <span className={className} style={{ '--word-progress': SAMPLE_PROGRESS } as CSSProperties}>
       {text}
     </span>
+  );
+}
+
+function PreviewFrame({
+  className,
+  artworkSrc,
+  darkness = WASH_DARKNESS,
+  style,
+  children,
+}: Readonly<{
+  className: string;
+  artworkSrc: string;
+  /** Opacity of the dimmer over the artwork. */
+  darkness?: number;
+  style?: CSSProperties;
+  children: ReactNode;
+}>) {
+  return (
+    <div className="settings-preview-block" aria-hidden="true">
+      <div className="preview-label">Live preview</div>
+      <div
+        className={`settings-preview ${className}`}
+        style={{ ...style, '--bg-darkness': String(darkness) } as CSSProperties}
+      >
+        <img className="preview-ambient" src={artworkSrc} alt="" />
+        <div className="preview-dimmer" />
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -32,21 +65,23 @@ export function AppearancePreview({
   const style = {
     '--lyric-color': appearance.text_color || '#ffffff',
     '--lyric-blur': String(appearance.lyric_blur ?? 1),
-    '--bg-darkness': String(appearance.background_opacity),
     fontFamily: resolveFontFamily(appearance.font_family),
     fontSize: `${(appearance.font_size || 16) / 16}rem`,
   } as CSSProperties;
 
   return (
-    <div className="settings-preview preview-main" style={style} aria-hidden="true">
-      <img className="preview-ambient" src={artworkSrc} alt="" />
-      <div className="preview-dimmer" />
+    <PreviewFrame
+      className="preview-main"
+      artworkSrc={artworkSrc}
+      darkness={appearance.background_opacity}
+      style={style}
+    >
       <div className="preview-main-lines">
         <span className="preview-line is-passed">{SAMPLE.previous}</span>
         <WipedLine text={SAMPLE.current} className="preview-line is-active" />
         <span className="preview-line is-next">{SAMPLE.next}</span>
       </div>
-    </div>
+    </PreviewFrame>
   );
 }
 
@@ -62,11 +97,7 @@ export function IslandPreview({
   const compact = lines <= 1;
   const transparency = ui.island_transparency ?? 0.5;
   return (
-    <div
-      className="settings-preview preview-island"
-      style={{ height: `${Math.round(height * ISLAND_PREVIEW_SCALE) + 36}px` }}
-      aria-hidden="true"
-    >
+    <PreviewFrame className="preview-island" artworkSrc={artworkSrc}>
       {/* Real island markup at its real size, scaled down: widths and heights
           stay comparable as the sliders move. */}
       <div
@@ -111,14 +142,15 @@ export function IslandPreview({
           </div>
         </div>
       </div>
-    </div>
+    </PreviewFrame>
   );
 }
 
 export function KaraokePreview({
   ui,
   appearance,
-}: Readonly<{ ui: UiState; appearance: AppearanceSettings }>) {
+  artworkSrc,
+}: Readonly<{ ui: UiState; appearance: AppearanceSettings; artworkSrc: string }>) {
   const style = {
     '--lyric-color': appearance.text_color || '#ffffff',
     '--karaoke-bg': String(ui.karaoke_bg_opacity),
@@ -131,7 +163,7 @@ export function KaraokePreview({
   } as CSSProperties;
 
   return (
-    <div className="settings-preview preview-karaoke" style={style} aria-hidden="true">
+    <PreviewFrame className="preview-karaoke" artworkSrc={artworkSrc} style={style}>
       <div className="preview-karaoke-band">
         <WipedLine
           text={SAMPLE.current}
@@ -139,6 +171,6 @@ export function KaraokePreview({
         />
         {ui.karaoke_lines >= 2 && <span className="preview-karaoke-next">{SAMPLE.next}</span>}
       </div>
-    </div>
+    </PreviewFrame>
   );
 }

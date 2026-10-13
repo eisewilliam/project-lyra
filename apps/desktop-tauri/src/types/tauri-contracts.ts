@@ -194,6 +194,8 @@ export type UiState = {
   karaoke_bold: boolean;
   autostart_enabled: boolean;
   preferred_monitor: string | null;
+  /** A Lyra button in the Touch Bar's Control Strip shows lyrics over any app. */
+  touch_bar_control_strip: boolean;
   /** The first-run explanation has been acknowledged. */
   onboarded: boolean;
 };
@@ -300,6 +302,14 @@ export type UpdateStatus =
   | { state: 'ready'; version: string }
   | { state: 'failed'; checked_at_ms: number }
   | { state: 'unavailable' };
+
+/** Payload of `get_touch_bar_support`. */
+export type TouchBarSupport = {
+  /** This Mac has a Touch Bar. */
+  present: boolean;
+  /** Lyra can add its Control Strip button on this version of macOS. */
+  control_strip: boolean;
+};
 
 /** Payload of `get_update_status` and the `update-status` event. */
 export type UpdateInfo = {

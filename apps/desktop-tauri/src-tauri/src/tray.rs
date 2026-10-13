@@ -217,7 +217,7 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
     Ok(())
 }
 
-fn send_command(app: &AppHandle, command: PlayerCommand) {
+pub(crate) fn send_command(app: &AppHandle, command: PlayerCommand) {
     crate::commands::announce_skip(app, command);
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
