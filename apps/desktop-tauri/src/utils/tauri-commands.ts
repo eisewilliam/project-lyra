@@ -232,6 +232,10 @@ export function getTouchBarSupport(): Promise<TouchBarSupport> {
   return invoke('get_touch_bar_support');
 }
 
+export function customizeTouchBar(): Promise<void> {
+  return invoke('customize_touch_bar');
+}
+
 export function setTouchBarControlStrip(enabled: boolean): Promise<void> {
   return invoke('set_touch_bar_control_strip', { enabled });
 }

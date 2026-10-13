@@ -83,6 +83,13 @@ pub fn get_touch_bar_support() -> crate::touch_bar::Support {
     crate::touch_bar::support()
 }
 
+/// Open AppKit's palette for arranging Lyra's Touch Bar, the same as View →
+/// Customize Touch Bar…, from Settings → Touch Bar.
+#[tauri::command]
+pub fn customize_touch_bar(app: AppHandle) {
+    crate::touch_bar::customize(&app);
+}
+
 /// Add or remove Lyra's Control Strip button, which shows the lyrics bar
 /// over any app.
 #[tauri::command]

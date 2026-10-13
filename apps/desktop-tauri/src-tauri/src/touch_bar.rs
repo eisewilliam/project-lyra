@@ -670,7 +670,7 @@ mod native {
         refresh_visibility(mtm);
     }
 
-    /// Add or remove the Control Strip button (Settings → General).
+    /// Add or remove the Control Strip button (Settings → Touch Bar).
     pub fn set_control_strip(app: &AppHandle, enabled: bool) {
         let _ = app.run_on_main_thread(move || {
             let Some(mtm) = MainThreadMarker::new() else {
@@ -686,7 +686,7 @@ mod native {
     }
 
     /// Open or close AppKit's palette for arranging the app bar (View →
-    /// Customize Touch Bar…).
+    /// Customize Touch Bar…, or Customize… in Settings → Touch Bar).
     pub fn customize(app: &AppHandle) {
         let _ = app.run_on_main_thread(|| {
             if let Some(mtm) = MainThreadMarker::new() {

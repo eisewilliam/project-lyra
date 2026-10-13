@@ -7,4 +7,5 @@ export const SETTINGS_SECTION_LABELS: Record<Section, string> = {
   main: 'Main Window',
   island: 'Marquee',
   karaoke: 'Karaoke',
+  touchbar: 'Touch Bar',
 };

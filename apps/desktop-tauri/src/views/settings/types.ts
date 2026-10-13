@@ -1,12 +1,13 @@
 import type {
   AppSettings,
   MonitorInfo,
+  TouchBarSupport,
   UiState,
 } from '@/types/tauri-contracts';
 
 export type Surface = 'main' | 'island' | 'karaoke';
 export type FloatingSurface = 'main' | 'island';
-export type Section = 'general' | 'appearance' | 'players' | 'main' | 'island' | 'karaoke';
+export type Section = 'general' | 'appearance' | 'players' | 'main' | 'island' | 'karaoke' | 'touchbar';
 export type ConsolidatedState = { ui: UiState; app: AppSettings };
 
 export type Actions = {
@@ -42,4 +43,6 @@ export type SettingsBodyProps = {
   monitors: MonitorInfo[];
   /** Current track artwork (or a transparent placeholder) for previews. */
   artworkSrc: string;
+  /** What the host reports about a Touch Bar; `null` until known. */
+  touchBar: TouchBarSupport | null;
 };

@@ -1,0 +1,50 @@
+{
+  "lyra-wordmark.svg": {
+    "source": "apps/website/public/assets/lyra-logo.svg",
+    "sha256": "49a03c377825bd551c5dbcb1d69f96fec873dc2a22a1e021b096f8584d974101"
+  },
+  "cover.jpg": {
+    "source": "apps/desktop-tauri/public/blinding_lights_cover.jpg",
+    "sha256": "3f4f6f8eb7978ed56d5931b5cc8d1fa3ef7522bf1d7511d7f951af951420bcbb"
+  },
+  "sliders-horizontal.svg": {
+    "source": "Phosphor core/assets/regular/sliders-horizontal.svg",
+    "sha256": "1d937baa3bc51ec4052364edf30cf8991d550920534f5d413eb9f60535cc1916"
+  },
+  "swatches.svg": {
+    "source": "Phosphor core/assets/regular/swatches.svg",
+    "sha256": "714d73320531cbd8bb15622678ebbed3bda444d81fbbec4de50dd94b8030a0fb"
+  },
+  "headphones.svg": {
+    "source": "Phosphor core/assets/regular/headphones.svg",
+    "sha256": "992d04ff6759f1f12d40259298a92589c18556bf5b2ea6f82bc23e74d9c48185"
+  },
+  "app-window.svg": {
+    "source": "Phosphor core/assets/regular/app-window.svg",
+    "sha256": "652a65a43b5d8981c0146731c7ede101690636c90ac26c118a50b0ab73309be5"
+  },
+  "picture-in-picture.svg": {
+    "source": "Phosphor core/assets/regular/picture-in-picture.svg",
+    "sha256": "1aff42c9099aca255dd052d661c4bc3aa66ffe176679a096ef92776e82b89396"
+  },
+  "subtitles.svg": {
+    "source": "Phosphor core/assets/regular/subtitles.svg",
+    "sha256": "830b60f447804704071506de91ee161dd721813d795968faaa5a42be85e88cf1"
+  },
+  "disclosure.svg": {
+    "source": "https://github.com/phosphor-icons/core/blob/main/assets/regular/caret-down.svg",
+    "sha256": "53f0cf2d0b144ac3cb07e353e0cd0853ffb3ed432d741460ce288edfcb0924b1"
+  },
+  "spotify.svg": {
+    "source": "apps/desktop-tauri/src/utils/brand-icons.ts:BRAND_ICONS.spotify",
+    "sha256": "2e13446d406135a9f1a72ad5d0d4eb5b19241fe683280a3efa357df68a4e26b9"
+  },
+  "apple-music.svg": {
+    "source": "apps/desktop-tauri/src/utils/brand-icons.ts:BRAND_ICONS.appleMusic",
+    "sha256": "8b681887b074a6b12efe46f0fe41498b76d5e926700198ac65195220b14d700d"
+  },
+  "PHOSPHOR-LICENSE.txt": {
+    "source": "https://github.com/phosphor-icons/core/blob/main/LICENSE",
+    "sha256": "b5b1f1da112d18ea2147decfd48ddc1bf2b5aeb6c265381579340e95b15a2bb2"
+  }
+}

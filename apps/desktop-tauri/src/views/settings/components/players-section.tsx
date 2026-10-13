@@ -17,7 +17,7 @@ import {
 import { useKnownPlayers } from '../hooks/use-known-players';
 import { useMediaPolicy } from '../hooks/use-media-policy';
 import { usePlayerSessions } from '../hooks/use-player-sessions';
-import { BROWSER_LYRICS_OPTIONS } from '../settings-options';
+import { BROWSER_LYRICS_HINTS, BROWSER_LYRICS_OPTIONS } from '../settings-options';
 import { KnownPlayerRow } from './known-player-row';
 import { PlayerSessionRow } from './player-session-row';
 
@@ -87,7 +87,7 @@ export function PlayersSection({
             onChange={(on: boolean) => applyAndRefresh(setOnlyMusic(on))}
           />
         </Row>
-        <Row label="Lyrics for media playing in a browser">
+        <Row label="Lyrics for browser media" hint={BROWSER_LYRICS_HINTS[browserLyrics]}>
           <CustomSelect
             value={browserLyrics}
             options={BROWSER_LYRICS_OPTIONS}

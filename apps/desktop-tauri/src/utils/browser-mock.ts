@@ -440,6 +440,9 @@ if (!isTauri) {
       case 'get_touch_bar_support':
         return { present: true, control_strip: true };
 
+      case 'customize_touch_bar':
+        return;
+
       case 'set_touch_bar_control_strip': {
         const { enabled } = args as { enabled: boolean };
         uiState.touch_bar_control_strip = enabled;
