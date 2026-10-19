@@ -1,22 +1,24 @@
 # Releasing Lyra
 
-A tag such as `v0.2.0` builds signed installers for macOS, Windows and Linux, uploads them to a draft GitHub release, and publishes it once every build has succeeded. Installed copies of Lyra then find the update on their own.
+A tag such as `v0.2.0` builds installers for macOS, Windows and Linux, uploads them to a draft GitHub release, and publishes it once every build has succeeded. Update bundles are signed on every platform. Stable macOS releases are Developer ID signed and notarized; internal prereleases can also be built without Apple credentials. Installed copies of Lyra find published stable updates on their own.
 
 ## What a release contains
 
 | Platform | Download | Updates itself from |
 |---|---|---|
-| macOS (Apple Silicon and Intel) | `Lyra-macos-universal.dmg`, signed and notarized | `Lyra-macos-universal.app.tar.gz` |
+| macOS (Apple Silicon and Intel) | `Lyra-macos-universal.dmg`, signed and notarized; internal unsigned builds use `Lyra-macos-universal-unsigned.dmg` | matching `.app.tar.gz` |
 | Windows x64 | `Lyra-windows-x64-setup.exe` (also `.msi`), not signed yet | the setup `.exe` |
 | Linux x64 | `Lyra-linux-amd64.AppImage`, `.deb`, `Lyra-linux-x86_64.rpm` | the same file type that was installed |
 
-The file names never change between versions, so `https://github.com/eisewilliam/project-lyra/releases/latest/download/<name>` always points at the newest release. The website links to those addresses.
+Stable download file names never change between versions, so `https://github.com/eisewilliam/project-lyra/releases/latest/download/<name>` always points at the newest stable release. The website links to those addresses. Unsigned internal prereleases are downloaded from their own release page.
 
 `latest.json` lists each platform's update file and signature. The app reads it from `releases/latest/download/latest.json`. GitHub's "latest" skips drafts and pre-releases, so nobody is offered an update before it is published.
 
 ## One-time setup
 
 Everything below goes into the repository's Actions secrets: **Settings → Secrets and variables → Actions → New repository secret**. You can also use `gh secret set NAME`, which reads the value from standard input. Secrets are never printed in workflow logs.
+
+The updater key is required for every release. The six Apple secrets in steps 1 and 2 are required for stable releases; see **Internal macOS builds without Apple credentials** below to skip them for an internal prerelease.
 
 ### 1. Developer ID certificate (macOS signing)
 
@@ -62,6 +64,14 @@ pnpm tauri signer generate -w ~/.tauri/lyra-updater.key
 
 **Back up the private key and its password.** If they are lost, installed copies can no longer verify updates, and everyone would have to download the next version by hand.
 
+### Internal macOS builds without Apple credentials
+
+Use a prerelease version such as `0.2.0-beta.1`, and leave all six `APPLE_*` secrets above unset. The workflow uses Tauri's ad-hoc signing identity (`-`) so the app can run on Apple Silicon without a Developer ID certificate. It skips notarization, adds `-unsigned` to macOS asset names, and labels the release notes. The updater key and its password still sign the update bundles.
+
+After installing and trying to open Lyra, testers may need **System Settings → Privacy & Security → Open Anyway**. These builds are for internal testing and are not offered by the stable updater feed. See [Tauri's ad-hoc signing documentation](https://v2.tauri.app/distribute/sign/macos/#ad-hoc-signing).
+
+Once all six Apple secrets are configured, prereleases use Developer ID signing and notarization too. A partial Apple configuration fails rather than silently falling back, and stable releases always require the complete configuration. The policy is covered by `python3 .github/scripts/test_release_signing.py`, which CI runs on Linux.
+
 ## Cutting a release
 
 1. Set the new version in the root `Cargo.toml` under `[workspace.package]`. It is the only version number; the app and `lyra-core` inherit it. Run `cargo check` to update `Cargo.lock`.
@@ -75,8 +85,8 @@ pnpm tauri signer generate -w ~/.tauri/lyra-updater.key
 
 4. The **release** workflow then runs three jobs:
    - **prepare** refuses a tag that doesn't match the version or an updater key that is still the placeholder, then creates a draft release with generated notes.
-   - **build** builds, signs and uploads all three platforms. macOS notarization usually adds 5 to 15 minutes.
-   - **publish** checks that the download files exist, then publishes the release.
+   - **build** builds and uploads all three platforms and signs their update bundles. macOS notarization, when configured, usually adds 5 to 15 minutes.
+   - **publish** checks that the download files and updater signatures exist, labels unsigned macOS prereleases, then publishes the release.
 5. If any build fails, the release stays a draft and nothing reaches users. Fix the problem, then rerun the failed jobs from the workflow run. To start the release again from the beginning, delete the draft and push the tag again.
 
 To inspect a release before anyone can download it, run the workflow from the **Actions** tab (**release → Run workflow**) with the tag and **Publish** turned off. Publish the draft from the Releases page when it looks right.

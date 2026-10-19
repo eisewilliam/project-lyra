@@ -166,7 +166,11 @@ export type UiState = {
   island_locked: boolean;
   /** The island ignores the mouse; clicks reach the app behind it. */
   island_click_through: boolean;
+  /** Where the user left the island (physical px); null keeps its default
+      place. The host owns it: it settles and saves it after a drag. */
   island_pos: [number, number] | null;
+  /** Hide while no player has a track; a paused track still shows. */
+  island_hide_when_idle: boolean;
   /** Size as a multiple of the base design; null matches the display. */
   island_scale: number | null;
   /** Width at Medium size, in points; other sizes scale it. */
@@ -257,6 +261,7 @@ export type IslandSettingsPatch = Partial<{
   match_screen: boolean;
   base_width: number;
   lines: number;
+  hide_when_idle: boolean;
 }>;
 
 /** The Marquee's size on its current display, as fitted by the host
@@ -269,6 +274,8 @@ export type IslandFrame = {
   height: number;
   /** Extra height at the top that sits behind a MacBook notch. */
   notch_inset: number;
+  /** Docked against the top edge of the display: square top corners. */
+  docked: boolean;
   /** The widest the Marquee may be dragged on this display. */
   max_width: number;
 };

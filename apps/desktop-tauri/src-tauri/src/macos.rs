@@ -27,12 +27,17 @@ use tauri_nspanel::{ManagerExt, WebviewWindowExt};
 // NSWindowLevel constants (AppKit)
 #[cfg(target_os = "macos")]
 const NS_FLOATING_WINDOW_LEVEL: i64 = 3;
-// kCGCursorWindowLevelKey == 2147483630 (INT32_MAX - 1).
-// Setting the island one step below the cursor guarantees it sits above
-// every system surface (menubar, Dock, notifications, screen saver…)
-// while still letting the hardware cursor render on top.
+// kCGUtilityWindowLevel, one below the Dock (20): the island's level
+// anywhere below the menu bar. Above every app's windows, including other
+// floating panels, but under the Dock, menu bar and menus, so a Dock or menu
+// bar that slides out over the Marquee is never hidden behind it.
 #[cfg(target_os = "macos")]
-const ABOVE_EVERYTHING_LEVEL: i64 = 2147483629;
+const UTILITY_WINDOW_LEVEL: i64 = 19;
+// One above the status items (NSStatusWindowLevel, 25): the island's level
+// while it overlaps the menu bar, docked against the top edge or being
+// dragged there. Above the menu bar and its status items, still under menus.
+#[cfg(target_os = "macos")]
+const ABOVE_MENU_BAR_LEVEL: i64 = 26;
 
 /// The NSPanel subclass the island and karaoke windows become. The macro
 /// brings its own imports, so it lives in a module of its own.
@@ -66,9 +71,8 @@ fn overlay_collection_behavior(show_on_fullscreen: bool) -> NSWindowCollectionBe
 #[cfg(target_os = "macos")]
 fn overlay_level(label: &str) -> i64 {
     match label {
-        // Island must sit above the menubar (level 25) and every other system
-        // surface. The only thing that can ever be above it is the OS cursor.
-        "island" => ABOVE_EVERYTHING_LEVEL,
+        "island" if ISLAND_OVER_MENU_BAR.load(Ordering::Acquire) => ABOVE_MENU_BAR_LEVEL,
+        "island" => UTILITY_WINDOW_LEVEL,
         _ => NS_FLOATING_WINDOW_LEVEL,
     }
 }
@@ -249,6 +253,17 @@ pub fn set_overlay_position(app: &AppHandle, label: &str, x: i32, y: i32) -> tau
                 let docked = top_offset_points.abs() < 0.5;
                 if ISLAND_DOCKED.swap(docked, Ordering::AcqRel) != docked {
                     fit_island_glass(&ns_window, docked);
+                }
+                // Over the menu bar (or, with it hidden, docked under the
+                // notch) the island rises above it; anywhere else it sits
+                // under the Dock and menu bar again.
+                let visible = screen.visibleFrame();
+                let menu_bar = screen_top - (visible.origin.y + visible.size.height);
+                let over_menu_bar = top_offset_points < menu_bar.max(0.5);
+                if ISLAND_OVER_MENU_BAR.swap(over_menu_bar, Ordering::AcqRel) != over_menu_bar {
+                    if let Ok(panel) = window_clone.app_handle().get_webview_panel("island") {
+                        panel.set_level(overlay_level("island"));
+                    }
                 }
             }
         });
@@ -504,6 +519,10 @@ const ISLAND_GLASS_RADIUS: f64 = 20.0;
 #[cfg(target_os = "macos")]
 static ISLAND_DOCKED: AtomicBool = AtomicBool::new(false);
 
+/// Whether the island overlaps the menu bar, and so sits above it.
+#[cfg(target_os = "macos")]
+static ISLAND_OVER_MENU_BAR: AtomicBool = AtomicBool::new(false);
+
 /// The island is always styled dark, so its glass should be too. Set on this
 /// window only: Tauri's `set_theme` changes the appearance of the whole app.
 #[cfg(target_os = "macos")]
@@ -624,7 +643,7 @@ pub fn apply_overlay_visibility(
     false
 }
 
-// ── Island size ────────────────────────────────────────────────────────────────
+// ── Island geometry ────────────────────────────────────────────────────────────
 
 /// The notch of the display `window` is on, if it has one. Call on the main
 /// thread.

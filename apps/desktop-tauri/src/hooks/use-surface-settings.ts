@@ -13,7 +13,9 @@ type UseSurfaceSettingsOptions = {
   autoHiddenRef: RefObject<boolean>;
   setSurfaceVisible: (visible: boolean) => void;
   setHideWhenPaused: (enabled: boolean) => void;
-  setHideWhenIdle: (enabled: boolean) => void;
+  /** Follows the main window's "Hide when nothing is playing". Omitted by a
+      surface with its own idle setting. */
+  setHideWhenIdle?: (enabled: boolean) => void;
   getSurfaceVisible: (state: UiState) => boolean;
   onInitialUiState?: (state: UiState) => MaybePromise<void>;
   onUiStateChange?: (state: UiState) => void;
@@ -36,7 +38,7 @@ export function useSurfaceSettings(options: UseSurfaceSettingsOptions) {
     const applyAppSettings = (settings: AppSettings) => {
       const current = optionsRef.current;
       current.setHideWhenPaused(settings.behavior.hide_when_paused);
-      current.setHideWhenIdle(settings.window.hide_when_idle);
+      current.setHideWhenIdle?.(settings.window.hide_when_idle);
       applyAppearance(settings.appearance);
       applyBatterySaver(settings.behavior);
       current.onAppSettings?.(settings);

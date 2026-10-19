@@ -317,9 +317,9 @@ fn migrate_app_support_dir() {
 /// `preferred_monitor` setting changes.
 ///
 /// Positioning rules:
-/// - **Island**: top-centred on the target monitor, unless the user has an
-///   explicit saved position (`island_pos` is `Some`), in which case we leave
-///   it untouched.
+/// - **Island**: where the user left it (`island_pos`), settled into the safe
+///   area of the display it is on; otherwise centred above the bottom of the
+///   target monitor's safe area (see `island_size`).
 /// - **Main window**: centred on the target monitor.
 /// - **Karaoke**: positioned at the configured screen-edge (top or bottom) of
 ///   the target monitor, respecting `karaoke_offset_px`.
@@ -372,17 +372,7 @@ pub(crate) fn apply_preferred_monitor_positioning(app: &tauri::AppHandle, ui: &U
     let mon_w = monitor.size().width as i32;
     let mon_h = monitor.size().height as i32;
 
-    // Island: top-centred on the target monitor only when the user has no
-    // explicit saved position. The fit that follows the move keeps it centred.
-    if ui.island_pos.is_none() {
-        let island_w = app
-            .get_webview_window("island")
-            .and_then(|w| w.outer_size().ok())
-            .map_or(0, |size| size.width as i32);
-        let ix = mon_x + (mon_w - island_w) / 2;
-        let iy = mon_y + 8;
-        let _ = macos::set_overlay_position(app, "island", ix, iy);
-    }
+    island_size::place_island(app, Some(monitor.clone()));
 
     // Main window: centred on the target monitor.
     if let Some(main_win) = app.get_webview_window("main") {
@@ -1052,19 +1042,12 @@ pub fn run() {
 
             // Size the island before placing it: the saved position is the
             // top-left corner of the sized window. Moves below refit it if
-            // they take it to another display or under the notch.
+            // they take it to a display of another width.
             island_size::fit_island_now(app.handle(), true);
 
-            // Restore persisted island position immediately at startup so the window
-            // appears in the right place before the frontend finishes loading.
-            // The frontend will also run its own positioning logic and may override this
-            // for the default-center case (when no position is saved).
-            if let Some((x, y)) = initial.island_pos {
-                let _ = macos::set_overlay_position(app.handle(), "island", x, y);
-            }
-
-            // Position all surfaces on the preferred monitor (or primary as fallback).
-            // This handles the default island position when island_pos is None.
+            // Position all surfaces on the preferred monitor (or primary as
+            // fallback), the island where the user left it or in its default
+            // place, before any of them is shown.
             apply_preferred_monitor_positioning(app.handle(), &initial);
 
             // Sync the OS-level autostart state with the persisted preference.
@@ -1174,7 +1157,8 @@ pub fn run() {
             commands::update_karaoke_settings,
             commands::update_island_settings,
             commands::set_overlay_position,
-            commands::save_island_position,
+            commands::settle_island_position,
+            commands::reset_island_position,
             commands::get_island_frame,
             commands::get_render_snapshot,
             commands::get_all_lyrics,
@@ -1213,8 +1197,8 @@ pub fn run() {
             updater::install_update,
         ])
         .on_window_event(|window, event| {
-            // A move can take the island to another display, or onto or off
-            // the notch; either can change its size.
+            // A move can take the island to a display of another width,
+            // which can change its size.
             if window.label() == "island"
                 && matches!(
                     event,
@@ -1222,6 +1206,16 @@ pub fn run() {
                 )
             {
                 island_size::fit_island(window.app_handle(), false);
+            }
+            // The island keeps clear of the Karaoke lyrics, which move when
+            // Karaoke's layout settings change.
+            if window.label() == "karaoke"
+                && matches!(
+                    event,
+                    tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)
+                )
+            {
+                island_size::place_island(window.app_handle(), None);
             }
             // Maximizing, going full screen, or restoring changes whether
             // "Keep window on top" applies.

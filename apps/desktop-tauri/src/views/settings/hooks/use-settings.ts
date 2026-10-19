@@ -7,7 +7,7 @@ import {
   getRenderSnapshot,
   getSettings,
   getUiState,
-  saveIslandPosition,
+  resetIslandPosition,
   setAutostart,
   setFontScale,
   setIslandClickThrough,
@@ -248,7 +248,7 @@ export function useSettings() {
       );
     },
     resetIslandPosition: async () => {
-      await optimisticUiAction({ island_pos: null }, () => saveIslandPosition(-1, -1));
+      await optimisticUiAction({ island_pos: null }, () => resetIslandPosition());
     },
     setFont: async (surface: FloatingSurface | 'karaoke', scale: number) => {
       await optimisticUiAction(

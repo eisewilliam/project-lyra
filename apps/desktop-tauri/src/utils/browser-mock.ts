@@ -166,6 +166,7 @@ if (!isTauri) {
     island_locked: false,
     island_click_through: false,
     island_pos: null,
+    island_hide_when_idle: true,
     island_scale: null,
     island_base_width: 600,
     island_lines: 2,
@@ -231,6 +232,7 @@ if (!isTauri) {
       width: Math.round(Math.min((uiState.island_base_width ?? 600) * scale, maxWidth)),
       height: Math.round(islandBaseHeight(uiState.island_lines ?? 2) * scale),
       notch_inset: 0,
+      docked: false,
       max_width: maxWidth,
     };
   };
@@ -508,6 +510,7 @@ if (!isTauri) {
         if (patch.match_screen) uiState.island_scale = null;
         if (patch.base_width !== undefined) uiState.island_base_width = patch.base_width;
         if (patch.lines !== undefined) uiState.island_lines = patch.lines;
+        if (patch.hide_when_idle !== undefined) uiState.island_hide_when_idle = patch.hide_when_idle;
         saveUiState();
         void emit('ui-settings-changed', uiState);
         void emit('island-frame', mockIslandFrame());
@@ -536,9 +539,11 @@ if (!isTauri) {
         return;
       }
 
-      case 'save_island_position': {
-        const { x, y } = args as { x: number; y: number };
-        uiState.island_pos = x === -1 && y === -1 ? null : [x, y];
+      case 'settle_island_position':
+        return;
+
+      case 'reset_island_position': {
+        uiState.island_pos = null;
         saveUiState();
         void emit('ui-settings-changed', uiState);
         return;

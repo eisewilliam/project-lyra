@@ -20,7 +20,6 @@ import { useWordColouring } from '@/hooks/use-word-colouring';
 import { useIslandFrame } from '@/hooks/use-island-frame';
 import { makeWindowReady, applySurfaceVisible } from '@/utils/playback-sync';
 import { useIslandInteraction } from './hooks/use-interaction';
-import { useIslandMove } from './hooks/use-move';
 import { METER_REST_SCALE, useAudioVisualizer } from './hooks/use-audio-visualizer';
 import { useProgressRing } from './hooks/use-progress-ring';
 import { useIslandPlayback } from './hooks/use-playback';
@@ -93,14 +92,13 @@ function renderPanelContent({
 
 export default function Island() {
   const [locked, setLocked] = useState(true);
-  const [isDocked, setIsDocked] = useState(true);
   const [showCover, setShowCover] = useState(true);
   const [coverCircle, setCoverCircle] = useState(false);
   const [coverSpin, setCoverSpin] = useState(false);
   const [surfaceVisible, setSurfaceVisible] = useState(false);
   const [islandLines, setIslandLines] = useState(2);
   const [hideWhenPaused, setHideWhenPaused] = useState(false);
-  const [hideWhenIdle, setHideWhenIdle] = useState(false);
+  const [hideWhenIdle, setHideWhenIdle] = useState(true);
   const [batterySaver, setBatterySaver] = useState(false);
   const [transparency, setTransparency] = useState(0.5);
 
@@ -147,15 +145,8 @@ export default function Island() {
     setCoverCircle,
     setCoverSpin,
     setIslandLines,
-    setIsDocked,
     setBatterySaver,
     setTransparency,
-  });
-
-  useIslandMove({
-    ensureWindowReady: ensureIslandWindowReady,
-    setIsDocked,
-    setLocked,
   });
 
   useSurfaceAutoHide({
@@ -253,7 +244,7 @@ export default function Island() {
   return (
     <div
       ref={panelRef}
-      className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${isDocked ? 'docked' : 'floating'} ${panelState !== 'ready' && !showTrackIntro ? 'has-placeholder' : ''} ${isCompactLayout ? 'is-compact' : ''} ${hovered ? 'is-hovered' : ''} ${dragging ? 'is-dragging' : ''} ${transparency > 0.5 ? 'is-clear' : ''}`}
+      className={`floating-panel ${locked ? 'locked' : 'unlocked'} ${frame?.docked ? 'docked' : 'floating'} ${panelState !== 'ready' && !showTrackIntro ? 'has-placeholder' : ''} ${isCompactLayout ? 'is-compact' : ''} ${hovered ? 'is-hovered' : ''} ${dragging ? 'is-dragging' : ''} ${transparency > 0.5 ? 'is-clear' : ''}`}
       style={{
         '--marquee-transparency': String(transparency),
         '--marquee-scale': String(frame?.scale ?? 1),

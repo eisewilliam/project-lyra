@@ -13,6 +13,7 @@ import {
   playbackPrevious,
   playbackRaise,
   setOverlayPosition,
+  settleIslandPosition,
   updateIslandSettings,
 } from '@/utils/tauri-commands';
 
@@ -82,8 +83,9 @@ function actionFor(target: EventTarget | null): IslandAction {
  *   meter toggles playback; a double-click anywhere else opens the main
  *   window;
  * - a press that travels past a few pixels drags the island instead, unless
- *   its position is locked; pressing an edge handle resizes it around its
- *   centre, within the widths its size allows on this display;
+ *   its position is locked, and the host settles it where it is let go;
+ *   pressing an edge handle resizes it around its centre, within the widths
+ *   its size allows on this display;
  * - a horizontal two-finger swipe skips tracks.
  * With click-through on, the window receives no mouse input at all.
  */
@@ -178,14 +180,15 @@ export function useIslandInteraction({
   }, [caps.play_pause, caps.raise, onTogglePlaying]);
 
   const flushMove = useCallback(() => {
+    cancelAnimationFrame(moveRafRef.current);
     moveRafRef.current = 0;
     const next = pendingMoveRef.current;
     pendingMoveRef.current = null;
-    if (!next) return;
+    if (!next) return Promise.resolve();
     if (next.width !== undefined && next.height !== undefined) {
       getCurrentWindow().setSize(new LogicalSize(next.width, next.height)).catch(noop);
     }
-    setOverlayPosition('island', next.x, next.y).catch(noop);
+    return setOverlayPosition('island', next.x, next.y).catch(noop);
   }, []);
 
   const onPointerDown = useCallback((event: PointerEvent<HTMLElement>) => {
@@ -260,18 +263,27 @@ export function useIslandInteraction({
     if (press.dragging) {
       setDragging(false);
       const origin = press.origin;
-      if (press.resizeEdge !== null && origin) {
+      // Apply the last frame of the drag before acting on where it ended.
+      const moved = flushMove();
+      if (press.resizeEdge === null) {
+        // The host settles the island into its display's safe area, lines it
+        // up with an edge or the centre when close to one, and saves it.
+        void moved.then(() => settleIslandPosition()).catch(noop);
+      } else if (origin) {
         // Persist the final width once, not on every frame of the drag, as
         // the width at Medium size so it follows later size changes.
-        void getCurrentWindow().innerSize().then((size) => updateIslandSettings({
-          base_width: Math.round(size.width / origin.pixelRatio / sizeScale),
-        })).catch(noop);
+        void moved
+          .then(() => getCurrentWindow().innerSize())
+          .then((size) => updateIslandSettings({
+            base_width: Math.round(size.width / origin.pixelRatio / sizeScale),
+          }))
+          .catch(noop);
       }
       return;
     }
     if (press.resizeEdge !== null) return;
     if (!cancelled) runAction(press.action, event.screenX, event.screenY);
-  }, [runAction, sizeScale]);
+  }, [flushMove, runAction, sizeScale]);
 
   const onPointerUp = useCallback((event: PointerEvent<HTMLElement>) => endPress(event, false), [endPress]);
   const onPointerCancel = useCallback((event: PointerEvent<HTMLElement>) => endPress(event, true), [endPress]);

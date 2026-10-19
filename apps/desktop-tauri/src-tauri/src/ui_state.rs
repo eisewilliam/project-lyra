@@ -12,14 +12,26 @@ pub struct UiState {
     #[serde(default)]
     pub karaoke_visible: bool,
     /// Position lock: the island can't be dragged. It still takes hover and
-    /// clicks unless `island_click_through` is on.
-    #[serde(default = "default_true")]
+    /// clicks unless `island_click_through` is on. Off by default, so the
+    /// island can be moved straight away.
+    #[serde(default)]
     pub island_locked: bool,
     /// The island ignores the mouse entirely; clicks reach the app behind it.
     #[serde(default)]
     pub island_click_through: bool,
+    /// Top-left corner, in physical pixels, where the user left the island.
+    /// `None` keeps it in its default place (see `island_size`).
     #[serde(default)]
     pub island_pos: Option<(i32, i32)>,
+    /// `island_pos` has been checked for the top-centre starting place that
+    /// earlier versions saved as though the user had chosen it. States saved
+    /// before the check existed get it once; a fresh install needs none.
+    #[serde(default)]
+    pub island_pos_checked: bool,
+    /// The island hides while no player has a track, rather than showing an
+    /// empty panel over other apps. A paused track still shows.
+    #[serde(default = "default_true")]
+    pub island_hide_when_idle: bool,
     /// Size, as a multiple of the base design (see `island_size`). `None`
     /// matches it to the display the island is on.
     #[serde(default)]
@@ -156,9 +168,11 @@ impl Default for UiState {
             island_visible: true,
             floating_visible: true,
             karaoke_visible: false,
-            island_locked: true,
+            island_locked: false,
             island_click_through: false,
             island_pos: None,
+            island_pos_checked: true,
+            island_hide_when_idle: true,
             island_scale: None,
             island_base_width: island_size::DEFAULT_BASE_WIDTH,
             island_lines: island_size::DEFAULT_LINES,
@@ -257,6 +271,25 @@ mod tests {
     fn states_saved_before_island_transparency_load_the_standard_look() {
         let state: UiState = serde_json::from_str(r#"{"island_visible":true}"#).unwrap();
         assert_eq!(state.island_transparency, 0.5);
+    }
+
+    #[test]
+    fn a_fresh_island_can_be_moved_and_hides_with_nothing_playing() {
+        let state = UiState::default();
+        assert!(!state.island_locked);
+        assert!(state.island_hide_when_idle);
+        assert_eq!(state.island_pos, None);
+    }
+
+    #[test]
+    fn states_saved_before_island_idle_hiding_hide_the_island_when_idle() {
+        let state: UiState =
+            serde_json::from_str(r#"{"island_visible":true,"island_locked":true}"#).unwrap();
+        assert!(state.island_hide_when_idle);
+        assert!(state.island_locked);
+        // Their saved place is checked once for the old starting place.
+        assert!(!state.island_pos_checked);
+        assert!(UiState::default().island_pos_checked);
     }
 
     #[test]

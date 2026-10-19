@@ -7,8 +7,9 @@ const noop = (...args: unknown[]) => { if (args) return; };
 
 /**
  * The Marquee's size on its current display. The host fits the window when
- * the size settings change or the Marquee moves to another display or under
- * the notch, then sends the result as `island-frame`.
+ * the size settings change, the Marquee moves to a display of another width,
+ * or it docks against the top edge or leaves it, then sends the result as
+ * `island-frame`.
  */
 export function useIslandFrame(ensureWindowReady?: () => Promise<void>): IslandFrame | null {
   const [frame, setFrame] = useState<IslandFrame | null>(null);

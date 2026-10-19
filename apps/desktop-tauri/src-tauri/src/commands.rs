@@ -219,6 +219,7 @@ pub struct IslandPatch {
     pub match_screen: Option<bool>,
     pub base_width: Option<u32>,
     pub lines: Option<u8>,
+    pub hide_when_idle: Option<bool>,
 }
 
 impl IslandPatch {
@@ -256,6 +257,9 @@ pub fn update_island_settings(patch: IslandPatch, state: State<'_, AppState>, ap
         }
         if let Some(v) = patch.lines {
             s.island_lines = v.clamp(1, 2);
+        }
+        if let Some(v) = patch.hide_when_idle {
+            s.island_hide_when_idle = v;
         }
     });
     let _ = app.emit("ui-settings-changed", new_state);
@@ -297,17 +301,20 @@ pub fn set_overlay_position(label: String, x: i32, y: i32, app: AppHandle) {
     let _ = crate::macos::set_overlay_position(&app, &label, x, y);
 }
 
-/// Called by the island frontend after each drag — persists position to disk.
-/// Pass x = -1 to clear the saved position (reset to default top-center).
+/// Called by the island frontend when a drag ends: settles the island into
+/// the safe area of its display, on an edge or the centre line when it is
+/// close to one, and saves where it ends up.
 #[tauri::command]
-pub fn save_island_position(x: i32, y: i32, state: State<'_, AppState>, app: tauri::AppHandle) {
-    let new_state = state.ui.mutate(|s| {
-        s.island_pos = if x == -1 { None } else { Some((x, y)) };
-    });
+pub fn settle_island_position(app: AppHandle) {
+    island_size::settle_island(&app);
+}
+
+/// Forget where the user put the island and return it to its default place.
+#[tauri::command]
+pub fn reset_island_position(state: State<'_, AppState>, app: AppHandle) {
+    let new_state = state.ui.mutate(|s| s.island_pos = None);
     let _ = app.emit("ui-settings-changed", &new_state);
-    if x == -1 {
-        crate::apply_preferred_monitor_positioning(&app, &new_state);
-    }
+    crate::apply_preferred_monitor_positioning(&app, &new_state);
 }
 
 /// The island's size on its current display, once it has been fitted. Changes
@@ -688,7 +695,8 @@ pub fn get_available_monitors(app: AppHandle) -> Vec<MonitorInfo> {
 pub fn set_preferred_monitor(name: Option<String>, state: State<'_, AppState>, app: AppHandle) {
     let new_state = state.ui.mutate(|s| {
         // If the monitor is actually changing, clear the saved island position
-        // so apply_preferred_monitor_positioning will centre it on the new display.
+        // so apply_preferred_monitor_positioning puts it in its default place
+        // on the new display.
         if s.preferred_monitor != name {
             s.island_pos = None;
         }

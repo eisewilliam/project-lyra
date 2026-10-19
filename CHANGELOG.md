@@ -10,16 +10,30 @@ offered it as an update.
 
 ## [Unreleased]
 
+## [0.2.0-beta.1] - 2026-10-20
+
+An internal pre-release for testing desktop changes ahead of 0.2.0.
+
 ### Added
 
+- Release builds now check for signed updates.
+- Internal macOS beta downloads are available before Apple signing is
+  configured. They are marked unsigned and may need approval in Privacy &
+  Security before opening.
 - On a MacBook Pro with a Touch Bar, Lyra's Touch Bar shows previous,
   play/pause and next, then the line being sung with the next line after it,
   in your lyric font and color. Tap the lyrics to open Lyra. Choose which
   buttons it shows with View → Customize Touch Bar… or Settings → Touch Bar.
+- Drag along the lyrics on the Touch Bar to move through the song. The lyrics
+  stretch from the start of the song to the end and show the line wherever
+  your finger is; lift your finger to jump there.
 - To see lyrics on the Touch Bar while you use other apps, turn on Settings →
   Touch Bar → Show Lyra in the Control Strip, then tap the Lyra
   button. Tap × to put the other app's controls back. The Lyra button takes
   the place of the Control Strip's Now Playing button.
+- The Marquee hides while nothing is playing and comes back when music
+  starts. A paused song still shows. To keep it on screen, turn off
+  Settings → Marquee → Hide when nothing is playing.
 
 ### Changed
 
@@ -40,11 +54,27 @@ offered it as an update.
   takes up more than 45% of a screen's width. Your current size carries over.
 - The Marquee's Height setting is replaced by Lines: the current line only, or
   the current and next line. Width is now relative to the chosen size.
+- The Marquee now starts at the bottom center of the screen, just above the
+  Dock or taskbar, instead of at the top. When you let go of it, it stays
+  clear of the menu bar, the notch, the Dock and the taskbar, and lines up
+  with an edge or the middle of the screen when it's close to one. To keep it
+  at the top of the screen, push it against the top edge and it docks there.
+  If it is still in the top-center spot earlier versions started it in, it
+  moves to the new place once.
+- While Karaoke is on, the Marquee moves out of the way of its lyrics, and
+  goes back when you turn Karaoke off.
+- On macOS, the Dock, the menu bar and menus now appear in front of the
+  Marquee instead of behind it. Docked at the top, the Marquee still covers
+  the menu bar, but menus open in front of it.
 - Placed under the notch on a MacBook, the Marquee keeps its lyrics below the
   notch instead of behind it.
+- On a new install the Marquee's position isn't locked, so you can drag it
+  straight away. Settings → Marquee → Lock position keeps it in place.
 
 ### Fixed
 
+- With Hide when paused turned on, Lyra comes back when you press play again,
+  even if all of its windows were hidden.
 - On macOS, lyrics keep moving while a menu is open. Right-clicking a lyric
   line used to stop them until the menu closed.
 - On Windows, Lyra could start with its window hidden and, once opened, stay
@@ -108,5 +138,6 @@ The first pre-release, for internal testing ahead of 0.1.0.
 - As a pre-release, this build is not offered as an update; install each beta
   from its release page.
 
-[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.1.0-beta.1...HEAD
+[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.2.0-beta.1...HEAD
+[0.2.0-beta.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.0-beta.1
 [0.1.0-beta.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.1.0-beta.1
