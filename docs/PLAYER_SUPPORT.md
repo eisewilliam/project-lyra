@@ -106,6 +106,11 @@ Notes:
   source; browsers' position reporting (❓) needs that test.
 - Music.app triggers its own Automation permission prompt the first time Lyra
   reads it.
+- On a MacBook Pro with a Touch Bar, dragging along Lyra's lyrics seeks when
+  the followed player supports seeking and reports a track duration. The drag
+  previews the lyric at that position and sends the seek when released. This
+  path has unit coverage; native Touch Bar interaction for 0.2.0-beta.1 remains
+  unverified.
 
 ## Windows
 
@@ -161,3 +166,4 @@ Notes:
 | 2026-10-10 | macOS 26.7.1 (Intel) | YouTube Music Chrome app identified as YouTube Music, classified as music and followed through MediaRemote | Live probe through `PlayerHub` |
 | 2026-10-10 | Any | LRCLIB verdicts separate a song ("Divinize", ROSALÍA: lyrics found) from a non-music video ("Why Do Cats Purr?", SciShow: confirmed miss) | Live `LyricsRefresh::probe` |
 | 2026-10-10 | macOS 26.7.1 (Intel) | Running app follows Spotify (AppleScript) and the YouTube Music app (MediaRemote); Settings → Players lists both | `tauri dev`, user screenshots |
+| 2026-10-19 | macOS | Desktop release source checks: 118 core and 45 host unit tests, formatting, Clippy, frontend lint/build; native interaction and signed installers remain unverified | `cargo test --workspace`, `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `pnpm lint`, `pnpm build` |

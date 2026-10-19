@@ -17,7 +17,7 @@ export function TouchBarSection({
   return (
     <>
       <Group title="In Lyra">
-        <Row label="Touch Bar buttons" hint="Lyra's bar shows while Lyra is the active app.">
+        <Row label="Touch Bar buttons" hint="Lyra's bar shows while Lyra is the active app. Drag along its lyrics to move through the song.">
           <button type="button" className="action-btn" onClick={() => runSettingsAction(customizeTouchBar())}>
             Customize…
           </button>

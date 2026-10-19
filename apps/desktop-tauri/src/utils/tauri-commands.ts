@@ -81,8 +81,14 @@ export function setOverlayPosition(label: OverlayLabel, x: number, y: number): P
   return invoke('set_overlay_position', { label, x, y });
 }
 
-export function saveIslandPosition(x: number, y: number): Promise<void> {
-  return invoke('save_island_position', { x, y });
+/** After a drag: the host settles the island into its display's safe area
+    and saves where it ends up. */
+export function settleIslandPosition(): Promise<void> {
+  return invoke('settle_island_position');
+}
+
+export function resetIslandPosition(): Promise<void> {
+  return invoke('reset_island_position');
 }
 
 export function getIslandFrame(): Promise<IslandFrame | null> {

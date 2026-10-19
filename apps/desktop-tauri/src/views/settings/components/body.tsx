@@ -375,16 +375,22 @@ export function Body({
         <Row label="Show over full-screen apps">
           <Toggle value={ui.island_show_on_fullscreen} onChange={(v: boolean) => actions.setFullscreen('island', v)} />
         </Row>
+        <Row label="Hide when nothing is playing" hint="A paused song still shows.">
+          <Toggle
+            value={ui.island_hide_when_idle ?? true}
+            onChange={(v: boolean) => actions.island('island_hide_when_idle', v)}
+          />
+        </Row>
       </Group>
 
       <Group title="Window">
-        <Row label="Lock position" hint="Unlock to drag the Marquee anywhere.">
+        <Row label="Lock position" hint="Stops the Marquee from being dragged.">
           <Toggle value={ui.island_locked} onChange={(v: boolean) => actions.setLock(v)} />
         </Row>
         <Row label="Click-through" hint="Clicks pass to the app behind the Marquee, and its controls turn off.">
           <Toggle value={ui.island_click_through} onChange={(v: boolean) => actions.setIslandClickThrough(v)} />
         </Row>
-        <Row label="Position">
+        <Row label="Position" hint="Back to the bottom center of the screen.">
           <button
             type="button"
             className="action-btn"

@@ -68,11 +68,25 @@ export function syncSurfaceVisible(
   autoHidden?: boolean,
 ): boolean {
   if (desired !== undefined) desiredRef.current = desired;
-  if (autoHidden !== undefined) autoHiddenRef.current = autoHidden;
+  if (autoHidden !== undefined) {
+    autoHiddenRef.current = autoHidden;
+    setSurfaceAutoHidden(autoHidden);
+  }
   const visible = desiredRef.current && !autoHiddenRef.current;
   setVisible(visible);
   applySurfaceVisible(visible);
   return visible;
+}
+
+// A surface hidden by auto-hide (paused, or nothing playing) is waiting for
+// playback to bring it back, so it still needs ticks and the host must keep
+// polling the player. It never counts as occluded.
+let surfaceAutoHidden = false;
+let reportOcclusion: (() => void) | null = null;
+
+function setSurfaceAutoHidden(hidden: boolean) {
+  surfaceAutoHidden = hidden;
+  reportOcclusion?.();
 }
 
 // Report page visibility (minimized, fully covered, other Space, locked
@@ -81,13 +95,14 @@ export function syncSurfaceVisible(
 function reportSurfaceOcclusion(label: SurfaceLabel) {
   let last: boolean | null = null;
   const report = () => {
-    const occluded = document.hidden;
+    const occluded = document.hidden && !surfaceAutoHidden;
     if (occluded === last) return;
     last = occluded;
     setSurfaceOccluded(label, occluded).catch(() => {
       last = null;
     });
   };
+  reportOcclusion = report;
   document.addEventListener('visibilitychange', report);
   if (document.hidden) report();
 }

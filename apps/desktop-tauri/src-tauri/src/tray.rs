@@ -248,6 +248,10 @@ pub fn toggle_surface(app: &AppHandle, label: &str) {
         _ => {}
     });
     apply_window_visibility(app, label, &new_state);
+    if label == "karaoke" {
+        // Out of the Karaoke lyrics' way, or back where it was.
+        crate::island_size::place_island(app, None);
+    }
     if let Some(refs) = app.try_state::<TrayMenuRefs>() {
         refs.sync(&new_state);
     }

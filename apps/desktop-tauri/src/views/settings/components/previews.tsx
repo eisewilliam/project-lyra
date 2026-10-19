@@ -113,7 +113,7 @@ export function IslandPreview({
           '--marquee-transparency': String(transparency),
         } as CSSProperties}
       >
-        <div className={`floating-panel docked ${compact ? 'is-compact' : ''} ${transparency > 0.5 ? 'is-clear' : ''}`}>
+        <div className={`floating-panel ${compact ? 'is-compact' : ''} ${transparency > 0.5 ? 'is-clear' : ''}`}>
           <div className="island-background">
             <img src={artworkSrc} alt="" className="island-bg-img" />
             <div className="island-bg-dimmer" />

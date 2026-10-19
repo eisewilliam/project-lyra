@@ -17,6 +17,12 @@
 //! a bar is on screen it counts as a visible surface, so lyrics stay in time
 //! even with every window hidden; the loop wakes as soon as a bar appears and
 //! backs off when it goes.
+//!
+//! Dragging along the lyrics seeks. The lyrics span the track from start to
+//! end; while the finger is down they sit in a key like the bar's buttons,
+//! tinted up to the finger, and show the line sung at that point, rendered
+//! by core from a copy taken when the drag starts. Lifting the finger seeks
+//! there. A tap still opens Lyra.
 
 use lyra_core::domain::{
     AppearanceSettings, LyricsStatus, NotFoundReason, PlaybackState, RenderSnapshot,
@@ -33,6 +39,19 @@ const MIN_CONTRAST: f64 = 4.5;
 /// as faint as `MIN_CONTRAST` allows.
 const AFTER_ALPHA: std::ops::RangeInclusive<f64> = 0.5..=0.75;
 
+/// While a drag chooses where to seek, the lyrics sit in a key like the
+/// bar's buttons: their grey (sRGB 54/255, measured from the system's own
+/// buttons) and corner radius, in points.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const KEY_GREY: f64 = 54.0 / 255.0;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const KEY_RADIUS: f64 = 6.0;
+
+/// How strongly the part of that key already reached takes the lyric
+/// colour, strongest first; the strongest that keeps the text legible wins.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const SCRUB_TINT: [f64; 5] = [0.35, 0.3, 0.25, 0.2, 0.15];
+
 /// Everything the bar shows. Rebuilt on every tick; applied when it differs
 /// from what is on the bar.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -46,6 +65,9 @@ struct Content {
     can_play_pause: bool,
     can_previous: bool,
     can_next: bool,
+    /// Dragging along the lyrics seeks: the player can seek and reports how
+    /// long the track is.
+    can_seek: bool,
     /// Appearance → Font face, as the CSS font-family the windows use.
     font_family: String,
     /// Appearance → Lyric color, `#rrggbb`.
@@ -65,10 +87,26 @@ impl Content {
             can_play_pause: has_track && playback.caps.play_pause,
             can_previous: has_track && playback.caps.previous,
             can_next: has_track && playback.caps.next,
+            can_seek: playback.caps.seek
+                && playback.state != PlaybackState::Stopped
+                && playback.track.as_ref().is_some_and(|t| t.duration_ms > 0),
             font_family: appearance.font_family.clone(),
             text_color: appearance.text_color.clone(),
         }
     }
+}
+
+/// Where a drag at `x` along lyrics `width` wide lands in a track
+/// `duration_ms` long, the lyrics spanning it from start to end: how far
+/// along that is, from 0 to 1, and the position there.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn scrub_target(x: f64, width: f64, duration_ms: u64) -> (f64, u64) {
+    let fraction = if width > 0.0 && x.is_finite() {
+        (x / width).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    (fraction, (fraction * duration_ms as f64) as u64)
 }
 
 /// The two pieces of text: what is being sung and what comes next, or the
@@ -148,9 +186,9 @@ fn parse_hex_color(hex: &str) -> Option<[f64; 3]> {
     Some([channel(0)?, channel(2)?, channel(4)?])
 }
 
-/// WCAG contrast ratio of an sRGB colour against black.
+/// WCAG relative luminance of an sRGB colour.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-fn contrast_on_black(rgb: [f64; 3]) -> f64 {
+fn luminance(rgb: [f64; 3]) -> f64 {
     let linear = |c: f64| {
         if c <= 0.04045 {
             c / 12.92
@@ -159,7 +197,31 @@ fn contrast_on_black(rgb: [f64; 3]) -> f64 {
         }
     };
     let [r, g, b] = rgb.map(linear);
-    (0.2126 * r + 0.7152 * g + 0.0722 * b + 0.05) / 0.05
+    0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+/// WCAG contrast ratio between two sRGB colours.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn contrast(a: [f64; 3], b: [f64; 3]) -> f64 {
+    let (a, b) = (luminance(a), luminance(b));
+    (a.max(b) + 0.05) / (a.min(b) + 0.05)
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn contrast_on_black(rgb: [f64; 3]) -> f64 {
+    contrast(rgb, [0.0; 3])
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const WHITE: [f64; 3] = [1.0; 3];
+
+/// `base` mixed with ever more white, from none to white itself.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn lightened(base: [f64; 3]) -> impl Iterator<Item = [f64; 3]> {
+    (0..=20).map(move |step| {
+        let t = f64::from(step) / 20.0;
+        base.map(|c| c + (1.0 - c) * t)
+    })
 }
 
 /// How the bar draws Appearance → Lyric color on its black background.
@@ -178,13 +240,8 @@ struct Palette {
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 impl Palette {
     fn new(lyric_color: &str) -> Self {
-        const WHITE: [f64; 3] = [1.0; 3];
         let base = parse_hex_color(lyric_color).unwrap_or(WHITE);
-        let line = (0..=20)
-            .map(|step| {
-                let t = f64::from(step) / 20.0;
-                base.map(|c| c + (1.0 - c) * t)
-            })
+        let line = lightened(base)
             .find(|&rgb| contrast_on_black(rgb) >= MIN_CONTRAST)
             .unwrap_or(WHITE);
         let after = (0..)
@@ -194,6 +251,49 @@ impl Palette {
             .map(|alpha| (line, alpha))
             .unwrap_or((WHITE, *AFTER_ALPHA.start()));
         Self { line, after }
+    }
+}
+
+/// How the key around the lyrics is drawn while a drag chooses where to
+/// seek. All opaque: the tint is mixed into the grey here.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+struct ScrubPalette {
+    /// The part of the track still ahead of the finger: a button's grey.
+    key: [f64; 3],
+    /// The part up to the finger: the grey tinted with the line colour.
+    reached: [f64; 3],
+    /// The line at the finger: the line colour, mixed with just enough white
+    /// to read over both.
+    text: [f64; 3],
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+impl ScrubPalette {
+    fn new(palette: &Palette) -> Self {
+        let key = [KEY_GREY; 3];
+        let tint = |alpha: f64| {
+            let mut mixed = key;
+            for (channel, line) in mixed.iter_mut().zip(palette.line) {
+                *channel += (line - *channel) * alpha;
+            }
+            mixed
+        };
+        let legible = |text: [f64; 3], reached: [f64; 3]| {
+            contrast(text, key) >= MIN_CONTRAST && contrast(text, reached) >= MIN_CONTRAST
+        };
+        SCRUB_TINT
+            .iter()
+            .find_map(|&alpha| {
+                let reached = tint(alpha);
+                let text = lightened(palette.line).find(|&text| legible(text, reached))?;
+                Some(Self { key, reached, text })
+            })
+            .unwrap_or(Self {
+                key,
+                reached: tint(SCRUB_TINT[SCRUB_TINT.len() - 1]),
+                text: WHITE,
+            })
     }
 }
 
@@ -218,34 +318,40 @@ pub struct Support {
 
 #[cfg(target_os = "macos")]
 mod native {
-    use super::{bar_seen, first_family, Content, Palette, Support};
+    use super::{
+        bar_seen, first_family, lines, scrub_target, Content, Palette, ScrubPalette, Support,
+        KEY_RADIUS,
+    };
     use lyra_core::domain::{AppearanceSettings, RenderSnapshot};
     use lyra_core::player::PlayerCommand;
+    use lyra_core::runtime::SeekPreview;
     use objc2::rc::Retained;
-    use objc2::runtime::{AnyObject, Bool, NSObject, Sel};
+    use objc2::runtime::{AnyObject, Bool, NSObject, ProtocolObject, Sel};
     use objc2::{
         define_class, msg_send, sel, AllocAnyThread, ClassType, MainThreadMarker, MainThreadOnly,
     };
     use objc2_app_kit::{
         NSAccessibility, NSAccessibilityButtonRole, NSApplication,
         NSApplicationDidBecomeActiveNotification, NSApplicationDidResignActiveNotification,
-        NSButton, NSButtonTouchBarItem, NSClickGestureRecognizer, NSColor, NSCustomTouchBarItem,
-        NSFont, NSFontDescriptorSystemDesignRounded, NSFontWeightRegular, NSGestureRecognizer,
-        NSImage, NSImageNameTouchBarPauseTemplate, NSImageNameTouchBarPlayTemplate,
-        NSImageNameTouchBarSkipAheadTemplate, NSImageNameTouchBarSkipBackTemplate,
-        NSLayoutConstraintOrientation, NSLineBreakMode, NSResponder, NSRunningApplication,
-        NSStackView, NSTextField, NSTouchBar, NSTouchBarItem,
-        NSTouchBarItemIdentifierFixedSpaceLarge, NSTouchBarItemIdentifierFixedSpaceSmall,
-        NSTouchBarItemIdentifierFlexibleSpace, NSTouchBarItemIdentifierOtherItemsProxy,
-        NSTouchTypeMask, NSView, NSWorkspace, NSWorkspaceDidActivateApplicationNotification,
-        NSWorkspaceDidWakeNotification, NSWorkspaceScreensDidSleepNotification,
-        NSWorkspaceScreensDidWakeNotification, NSWorkspaceSessionDidBecomeActiveNotification,
+        NSBezierPath, NSButton, NSButtonTouchBarItem, NSClickGestureRecognizer, NSColor,
+        NSCustomTouchBarItem, NSFont, NSFontDescriptorSystemDesignRounded, NSFontWeightRegular,
+        NSGestureRecognizer, NSGestureRecognizerDelegate, NSGestureRecognizerState,
+        NSGraphicsContext, NSImage, NSImageNameTouchBarPauseTemplate,
+        NSImageNameTouchBarPlayTemplate, NSImageNameTouchBarSkipAheadTemplate,
+        NSImageNameTouchBarSkipBackTemplate, NSLayoutConstraintOrientation, NSLineBreakMode,
+        NSPanGestureRecognizer, NSResponder, NSRunningApplication, NSStackView, NSTextField,
+        NSTouchBar, NSTouchBarItem, NSTouchBarItemIdentifierFixedSpaceLarge,
+        NSTouchBarItemIdentifierFixedSpaceSmall, NSTouchBarItemIdentifierFlexibleSpace,
+        NSTouchBarItemIdentifierOtherItemsProxy, NSTouchTypeMask, NSView, NSWorkspace,
+        NSWorkspaceDidActivateApplicationNotification, NSWorkspaceDidWakeNotification,
+        NSWorkspaceScreensDidSleepNotification, NSWorkspaceScreensDidWakeNotification,
+        NSWorkspaceSessionDidBecomeActiveNotification,
         NSWorkspaceSessionDidResignActiveNotification,
     };
     use objc2_foundation::{
-        ns_string, NSArray, NSCopying, NSData, NSDistributedNotificationCenter,
+        ns_string, NSArray, NSCopying, NSData, NSDistributedNotificationCenter, NSEdgeInsets,
         NSKeyValueObservingOptions, NSNotification, NSNotificationCenter,
-        NSObjectNSKeyValueObserverRegistration, NSObjectProtocol, NSSet, NSSize, NSString,
+        NSObjectNSKeyValueObserverRegistration, NSObjectProtocol, NSRect, NSSet, NSSize, NSString,
     };
     use std::cell::{Cell, RefCell};
     use std::ffi::c_void;
@@ -260,6 +366,12 @@ mod native {
     const CONTROL_STRIP: &str = "app.lyralyrics.touchbar.control-strip";
     /// Where AppKit saves the user's arrangement of the app bar.
     const CUSTOMIZATION: &str = "app.lyralyrics.touchbar";
+
+    /// The Touch Bar's height in points (it captures 60 px tall at 2x).
+    const BAR_HEIGHT: f64 = 30.0;
+    /// Space between the lyrics and the ends of the key drawn around them
+    /// while dragging; kept at rest too, so the text doesn't shift.
+    const KEY_PADDING: f64 = 10.0;
 
     /// The Control Strip process. It runs only on Macs with a Touch Bar, and
     /// forgets third-party buttons when it restarts.
@@ -295,6 +407,36 @@ mod native {
         /// What the bars show, so a bar built later starts up to date.
         content: Option<Content>,
         display: Display,
+        /// A drag along the lyrics, choosing where to seek.
+        scrub: Option<Scrub>,
+    }
+
+    impl State {
+        fn bars(&self) -> impl Iterator<Item = &Bar> {
+            std::iter::once(&self.app_bar).chain(self.strip.as_ref().map(|strip| &strip.bar))
+        }
+
+        /// The bar whose lyrics are `view`.
+        fn bar_with_lyrics(&self, view: &NSView) -> Option<&Bar> {
+            self.bars().find(|bar| is_view(&bar.lyrics, view))
+        }
+    }
+
+    struct Scrub {
+        /// The lyrics being dragged along, on the app bar or the Control
+        /// Strip's.
+        lyrics: Retained<LyricsView>,
+        /// The track's lyrics and timing as the drag started.
+        preview: SeekPreview,
+        duration_ms: u64,
+        /// How far into the track the finger is, from 0 to 1.
+        fraction: f64,
+        target_ms: u64,
+    }
+
+    fn is_view(lyrics: &LyricsView, view: &NSView) -> bool {
+        let lyrics: &NSView = lyrics;
+        std::ptr::eq(lyrics, view)
     }
 
     const SCREEN_LOCKED: &str = "com.apple.screenIsLocked";
@@ -346,6 +488,8 @@ mod native {
         lyrics: Retained<LyricsView>,
         line: Retained<NSTextField>,
         after: Retained<NSTextField>,
+        /// Dragging along the lyrics; enabled while the player can seek.
+        scrub: Retained<NSPanGestureRecognizer>,
     }
 
     struct Strip {
@@ -514,6 +658,11 @@ mod native {
                 open_lyra();
             }
 
+            #[unsafe(method(scrub:))]
+            fn scrub_moved(&self, recognizer: &NSPanGestureRecognizer) {
+                scrub(recognizer);
+            }
+
             #[unsafe(method(toggleLyrics:))]
             fn toggle_lyrics(&self, _sender: Option<&AnyObject>) {
                 with_state(|state| {
@@ -559,12 +708,30 @@ mod native {
                 });
             }
         }
+
+        unsafe impl NSGestureRecognizerDelegate for Target {
+            /// A tap on the lyrics opens Lyra only once the touch has turned
+            /// out not to be a drag along them.
+            #[unsafe(method(gestureRecognizer:shouldRequireFailureOfGestureRecognizer:))]
+            fn tap_waits_for_drag(
+                &self,
+                recognizer: &NSGestureRecognizer,
+                other: &NSGestureRecognizer,
+            ) -> bool {
+                other.isKindOfClass(NSPanGestureRecognizer::class())
+                    && recognizer
+                        .view()
+                        .zip(other.view())
+                        .is_some_and(|(a, b)| std::ptr::eq(&*a, &*b))
+            }
+        }
     );
 
     define_class!(
         /// The lyrics: the two labels side by side, opening Lyra when
-        /// tapped. VoiceOver reads it as one button and presses it here,
-        /// since it can't trigger the tap gesture.
+        /// tapped and seeking when dragged along. VoiceOver reads it as one
+        /// button and presses it here, since it can't trigger the tap
+        /// gesture.
         #[unsafe(super(NSStackView, NSView, NSResponder, NSObject))]
         #[thread_kind = MainThreadOnly]
         #[name = "LyraTouchBarLyricsView"]
@@ -577,6 +744,20 @@ mod native {
             fn accessibility_perform_press(&self) -> bool {
                 open_lyra();
                 true
+            }
+
+            /// While a drag chooses where to seek, the lyrics sit in a key
+            /// filled up to the finger.
+            #[unsafe(method(drawRect:))]
+            fn draw_rect(&self, _dirty: NSRect) {
+                let Some((fraction, palette)) = with_state(|state| {
+                    let scrub = state.scrub.as_ref().filter(|s| is_view(&s.lyrics, self))?;
+                    Some((scrub.fraction, scrub_palette(state)))
+                })
+                .flatten() else {
+                    return;
+                };
+                draw_key(self, fraction, &palette);
             }
         }
     );
@@ -629,6 +810,157 @@ mod native {
         }
     }
 
+    // ── Seeking ─────────────────────────────────────────────────────────────
+
+    /// Follow a drag along the lyrics: show the lines wherever the finger
+    /// is, and seek there when it lifts.
+    fn scrub(recognizer: &NSPanGestureRecognizer) {
+        let Some(view) = recognizer.view() else {
+            return;
+        };
+        // SAFETY: `state` is NSGestureRecognizer's documented read-only
+        // property, an NSGestureRecognizerState.
+        let phase: NSGestureRecognizerState = unsafe { msg_send![recognizer, state] };
+        match phase {
+            NSGestureRecognizerState::Began | NSGestureRecognizerState::Changed => {
+                if phase == NSGestureRecognizerState::Began {
+                    begin_scrub(&view);
+                }
+                scrub_to(&view, recognizer.locationInView(Some(&view)).x);
+            }
+            NSGestureRecognizerState::Ended => end_scrub(true),
+            NSGestureRecognizerState::Cancelled | NSGestureRecognizerState::Failed => {
+                end_scrub(false)
+            }
+            _ => {}
+        }
+    }
+
+    fn runtime() -> Option<std::sync::MutexGuard<'static, lyra_core::runtime::LyraRuntime>> {
+        let state = APP.get()?.try_state::<crate::AppState>()?;
+        Some(
+            state
+                .inner()
+                .runtime
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()),
+        )
+    }
+
+    /// Copy the track's lyrics and timing, so following the finger needs no
+    /// lock.
+    fn begin_scrub(view: &NSView) {
+        let Some(preview) = runtime().map(|mut rt| rt.seek_preview()) else {
+            return;
+        };
+        let Some(duration_ms) = preview.duration_ms() else {
+            return;
+        };
+        STATE.with_borrow_mut(|state| {
+            let Some(state) = state else {
+                return;
+            };
+            let Some(lyrics) = state.bar_with_lyrics(view).map(|bar| bar.lyrics.clone()) else {
+                return;
+            };
+            state.scrub = Some(Scrub {
+                lyrics,
+                preview,
+                duration_ms,
+                fraction: 0.0,
+                target_ms: 0,
+            });
+        });
+    }
+
+    fn scrub_to(view: &NSView, x: f64) {
+        let width = view.bounds().size.width;
+        let text = STATE.with_borrow_mut(|state| {
+            let scrub = state.as_mut()?.scrub.as_mut()?;
+            if !is_view(&scrub.lyrics, view) {
+                return None;
+            }
+            let (fraction, target_ms) = scrub_target(x, width, scrub.duration_ms);
+            scrub.fraction = fraction;
+            scrub.target_ms = target_ms;
+            Some(lines(&scrub.preview.render_at(target_ms)))
+        });
+        // Just the line at the finger: what's after it is beside the point.
+        let Some((line, _)) = text else {
+            return;
+        };
+        with_state(|state| {
+            if let Some(bar) = state.bar_with_lyrics(view) {
+                bar.line
+                    .setTextColor(Some(&color(scrub_palette(state).text, 1.0)));
+                show_text(bar, &line, "");
+            }
+        });
+        view.setNeedsDisplay(true);
+    }
+
+    /// Seek where the finger lifted, unless the track changed under it, or
+    /// put back the lyrics being sung when the drag was cancelled.
+    fn end_scrub(seek: bool) {
+        let Some(scrub) = STATE.with_borrow_mut(|state| state.as_mut()?.scrub.take()) else {
+            return;
+        };
+        scrub.lyrics.setNeedsDisplay(true);
+        let same_track = || {
+            let playing = runtime().and_then(|rt| rt.current_track());
+            playing.map(|t| t.uri) == scrub.preview.track().map(|t| t.uri.clone())
+        };
+        let seek = seek && same_track();
+        with_state(|state| {
+            if let (Some(bar), Some(content)) =
+                (state.bar_with_lyrics(&scrub.lyrics), &state.content)
+            {
+                style_text(bar, content);
+                // After a seek, the line chosen stays until the poll that
+                // follows brings the bar up to date.
+                if !seek {
+                    show_text(bar, &content.line, &content.after);
+                }
+            }
+        });
+        if seek {
+            if let Ok(mut shown) = SHOWN.lock() {
+                *shown = None;
+            }
+            send(PlayerCommand::SeekMs(scrub.target_ms));
+        }
+    }
+
+    fn scrub_palette(state: &State) -> ScrubPalette {
+        let lyric_color = state.content.as_ref().map_or("", |c| c.text_color.as_str());
+        ScrubPalette::new(&Palette::new(lyric_color))
+    }
+
+    /// A key like the bar's buttons around the lyrics, tinted up to how far
+    /// into the track the finger is.
+    fn draw_key(view: &NSView, fraction: f64, palette: &ScrubPalette) {
+        let bounds = view.bounds();
+        let key =
+            NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(bounds, KEY_RADIUS, KEY_RADIUS);
+        color(palette.key, 1.0).setFill();
+        key.fill();
+        let reached = NSRect::new(
+            bounds.origin,
+            NSSize::new(bounds.size.width * fraction, bounds.size.height),
+        );
+        // The reached part keeps the key's rounded left end and stops square
+        // under the finger.
+        NSGraphicsContext::saveGraphicsState_class();
+        key.addClip();
+        color(palette.reached, 1.0).setFill();
+        NSBezierPath::bezierPathWithRect(reached).fill();
+        NSGraphicsContext::restoreGraphicsState_class();
+    }
+
+    fn color([red, green, blue]: [f64; 3], alpha: f64) -> Retained<NSColor> {
+        NSColor::colorWithSRGBRed_green_blue_alpha(red, green, blue, alpha)
+    }
+
     // ── Public interface ────────────────────────────────────────────────────
 
     /// Whether a Lyra bar is on the Touch Bar, so the poll loop treats it as
@@ -663,6 +995,7 @@ mod native {
             strip: None,
             content: None,
             display: Display::default(),
+            scrub: None,
         }));
         if control_strip {
             enable_control_strip(mtm);
@@ -721,9 +1054,10 @@ mod native {
         }
         let _ = app.run_on_main_thread(move || {
             with_state(|state| {
-                apply(&state.app_bar, &content);
-                if let Some(strip) = &state.strip {
-                    apply(&strip.bar, &content);
+                let dragged = state.scrub.as_ref().map(|scrub| &scrub.lyrics);
+                for bar in state.bars() {
+                    let lyrics = dragged.is_none_or(|lyrics| !is_view(lyrics, &bar.lyrics));
+                    apply(bar, &content, lyrics);
                 }
             });
             STATE.with_borrow_mut(|state| {
@@ -751,7 +1085,7 @@ mod native {
         };
         let bar = build_bar(mtm, &target);
         if let Some(content) = &content {
-            apply(&bar, content);
+            apply(&bar, content, true);
         }
         observe_visibility(&bar.bar, &target);
         let strip = Strip {
@@ -970,6 +1304,18 @@ mod native {
         let stack: Retained<LyricsView> =
             unsafe { msg_send![LyricsView::class(), stackViewWithViews: &*views] };
         stack.setSpacing(20.0);
+        stack.setEdgeInsets(NSEdgeInsets {
+            top: 0.0,
+            left: KEY_PADDING,
+            bottom: 0.0,
+            right: KEY_PADDING,
+        });
+        // As tall as the bar, so the key drawn while dragging matches the
+        // buttons.
+        stack
+            .heightAnchor()
+            .constraintEqualToConstant(BAR_HEIGHT)
+            .setActive(true);
         stack.setAccessibilityElement(true);
         // SAFETY: an AppKit constant, valid for the life of the process.
         stack.setAccessibilityRole(Some(unsafe { NSAccessibilityButtonRole }));
@@ -986,8 +1332,20 @@ mod native {
             )
         };
         tap.setAllowedTouchTypes(NSTouchTypeMask::Direct);
+        tap.setDelegate(Some(ProtocolObject::from_ref(target)));
         let tap: &NSGestureRecognizer = &tap;
         stack.addGestureRecognizer(tap);
+        // SAFETY: the target implements `scrub:`, taking the recognizer.
+        let scrub = unsafe {
+            NSPanGestureRecognizer::initWithTarget_action(
+                NSPanGestureRecognizer::alloc(mtm),
+                Some(target_object),
+                Some(sel!(scrub:)),
+            )
+        };
+        scrub.setAllowedTouchTypes(NSTouchTypeMask::Direct);
+        scrub.setEnabled(false);
+        stack.addGestureRecognizer(&scrub);
         let lyrics = NSCustomTouchBarItem::initWithIdentifier(
             NSCustomTouchBarItem::alloc(mtm),
             &NSString::from_str(LYRICS),
@@ -1026,33 +1384,17 @@ mod native {
             lyrics: stack,
             line,
             after,
+            scrub,
         }
     }
 
-    fn apply(bar: &Bar, content: &Content) {
-        let font = font(&content.font_family);
-        let palette = Palette::new(&content.text_color);
-        let [red, green, blue] = palette.line;
-        let color = NSColor::colorWithSRGBRed_green_blue_alpha(red, green, blue, 1.0);
-        let ([red, green, blue], alpha) = palette.after;
-        let dim = NSColor::colorWithSRGBRed_green_blue_alpha(red, green, blue, alpha);
-
-        bar.line.setStringValue(&NSString::from_str(&content.line));
-        bar.line.setHidden(content.line.is_empty());
-        bar.line.setFont(Some(&font));
-        bar.line.setTextColor(Some(&color));
-        bar.after
-            .setStringValue(&NSString::from_str(&content.after));
-        bar.after.setHidden(content.after.is_empty());
-        bar.after.setFont(Some(&font));
-        bar.after.setTextColor(Some(&dim));
-        let spoken = [content.line.as_str(), content.after.as_str()]
-            .into_iter()
-            .filter(|text| !text.is_empty())
-            .collect::<Vec<_>>()
-            .join(", ");
-        bar.lyrics
-            .setAccessibilityLabel(Some(&NSString::from_str(&spoken)));
+    /// Bring `bar` up to date, leaving its lyrics alone when `lyrics` is
+    /// false because a drag is choosing where to seek.
+    fn apply(bar: &Bar, content: &Content, lyrics: bool) {
+        if lyrics {
+            style_text(bar, content);
+            show_text(bar, &content.line, &content.after);
+        }
 
         // SAFETY: AppKit image-name constants, valid for the life of the process.
         let image = unsafe {
@@ -1067,6 +1409,34 @@ mod native {
         bar.play_pause.setEnabled(content.can_play_pause);
         bar.previous.setEnabled(content.can_previous);
         bar.next.setEnabled(content.can_next);
+        // Disabling it mid-drag cancels the drag.
+        bar.scrub.setEnabled(content.can_seek);
+    }
+
+    /// Appearance → Font face and Lyric color on both pieces of text.
+    fn style_text(bar: &Bar, content: &Content) {
+        let font = font(&content.font_family);
+        let palette = Palette::new(&content.text_color);
+        let (dim, alpha) = palette.after;
+        bar.line.setFont(Some(&font));
+        bar.line.setTextColor(Some(&color(palette.line, 1.0)));
+        bar.after.setFont(Some(&font));
+        bar.after.setTextColor(Some(&color(dim, alpha)));
+    }
+
+    /// Show `line` with `after` dimmed beside it, hiding whichever is empty.
+    fn show_text(bar: &Bar, line: &str, after: &str) {
+        bar.line.setStringValue(&NSString::from_str(line));
+        bar.line.setHidden(line.is_empty());
+        bar.after.setStringValue(&NSString::from_str(after));
+        bar.after.setHidden(after.is_empty());
+        let spoken = [line, after]
+            .into_iter()
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>()
+            .join(", ");
+        bar.lyrics
+            .setAccessibilityLabel(Some(&NSString::from_str(&spoken)));
     }
 
     /// Appearance → Font face at the size AppKit gives Touch Bar labels.
@@ -1285,6 +1655,33 @@ mod tests {
     }
 
     #[test]
+    fn seeks_only_a_track_of_known_length_on_a_player_that_can() {
+        let seekable =
+            |r: &RenderSnapshot| Content::new(r, &AppearanceSettings::default()).can_seek;
+        let mut r = render(PlaybackState::Paused, LyricsStatus::Ready, &[]);
+        assert!(seekable(&r));
+        r.playback.caps.seek = false;
+        assert!(!seekable(&r));
+        r.playback.caps.seek = true;
+        r.playback.track.as_mut().unwrap().duration_ms = 0;
+        assert!(!seekable(&r));
+        let r = render(PlaybackState::Stopped, LyricsStatus::Ready, &[]);
+        assert!(!seekable(&r));
+    }
+
+    #[test]
+    fn the_lyrics_span_the_track_when_dragged() {
+        assert_eq!(scrub_target(0.0, 400.0, 200_000), (0.0, 0));
+        assert_eq!(scrub_target(100.0, 400.0, 200_000), (0.25, 50_000));
+        assert_eq!(scrub_target(400.0, 400.0, 200_000), (1.0, 200_000));
+        // Past either end of the lyrics, the drag holds at that end.
+        assert_eq!(scrub_target(-30.0, 400.0, 200_000), (0.0, 0));
+        assert_eq!(scrub_target(450.0, 400.0, 200_000), (1.0, 200_000));
+        assert_eq!(scrub_target(10.0, 0.0, 200_000), (0.0, 0));
+        assert_eq!(scrub_target(f64::NAN, 400.0, 200_000), (0.0, 0));
+    }
+
+    #[test]
     fn keeps_a_lyric_colour_that_reads_on_black() {
         let white = Palette::new("#ffffff");
         assert_eq!(white.line, [1.0, 1.0, 1.0]);
@@ -1328,6 +1725,40 @@ mod tests {
                 "{color} after"
             );
         }
+    }
+
+    #[test]
+    fn the_line_stays_legible_on_the_key_while_dragging() {
+        for color in [
+            "#ffffff",
+            "#000000",
+            "#777777",
+            "#ff0000",
+            "#00ff00",
+            "#1a237e",
+            "#ffd700",
+            "#8b4513",
+            "not a colour",
+        ] {
+            let scrub = ScrubPalette::new(&Palette::new(color));
+            assert!(
+                contrast(scrub.text, scrub.key) >= MIN_CONTRAST,
+                "{color} key"
+            );
+            assert!(
+                contrast(scrub.text, scrub.reached) >= MIN_CONTRAST,
+                "{color} reached"
+            );
+            // The part reached stands out from the part ahead.
+            assert!(luminance(scrub.reached) > luminance(scrub.key), "{color}");
+        }
+    }
+
+    #[test]
+    fn keeps_white_lyrics_white_while_dragging() {
+        let scrub = ScrubPalette::new(&Palette::new("#ffffff"));
+        assert_eq!(scrub.text, WHITE);
+        assert_eq!(scrub.key, [KEY_GREY; 3]);
     }
 
     #[test]

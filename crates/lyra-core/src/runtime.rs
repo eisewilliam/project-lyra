@@ -22,6 +22,46 @@ pub struct LyricLineSlim {
     pub text: String,
 }
 
+/// Everything needed to render the current track at any position without
+/// the runtime lock: taken once when someone starts dragging to seek, then
+/// rendered at each point the drag passes.
+#[derive(Clone, Debug)]
+pub struct SeekPreview {
+    playback: PlaybackSnapshot,
+    doc: Option<LyricDocument>,
+    status: LyricsStatus,
+    context_above: usize,
+    context_below: usize,
+    offset_ms: i64,
+}
+
+impl SeekPreview {
+    pub fn track(&self) -> Option<&TrackRef> {
+        self.playback.track.as_ref()
+    }
+
+    /// The track's length, when the player reports one.
+    pub fn duration_ms(&self) -> Option<u64> {
+        let track = self.playback.track.as_ref()?;
+        (track.duration_ms > 0).then_some(track.duration_ms)
+    }
+
+    /// The render the surfaces would show with playback at `position_ms`,
+    /// honouring the track's lyric offset.
+    pub fn render_at(&self, position_ms: u64) -> RenderSnapshot {
+        let mut playback = self.playback.clone();
+        playback.position_ms = Some(position_ms);
+        compute_render(
+            playback,
+            self.doc.as_ref(),
+            self.status.clone(),
+            self.context_above,
+            self.context_below,
+            self.offset_ms,
+        )
+    }
+}
+
 /// Mutable, lock-protected runtime state. Does NOT hold the HTTP client
 /// so commands can release this lock before awaiting network calls.
 pub struct LyraRuntime {
@@ -196,6 +236,19 @@ impl LyraRuntime {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// A copy of the current track's lyrics and timing for previewing a seek.
+    pub fn seek_preview(&mut self) -> SeekPreview {
+        let render = self.tick();
+        SeekPreview {
+            playback: render.playback,
+            doc: self.current_doc.clone(),
+            status: render.lyrics_status,
+            context_above: self.settings.appearance.context_lines_above as usize,
+            context_below: self.settings.appearance.context_lines_below as usize,
+            offset_ms: self.current_offset(),
+        }
     }
 
     /// Compute a fresh render snapshot from the last adapter observation.
@@ -459,6 +512,47 @@ mod tests {
         let wall = render.playback.observed_at_ms - observed_at_ms;
         assert_eq!(render.playback.position_ms, Some(10_000 + wall * 2));
         let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn seek_preview_renders_any_position_with_the_lyric_offset() {
+        let dir = std::env::temp_dir().join(format!("lyra-seek-preview-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut rt = LyraRuntime::new_in(dir.clone());
+        rt.set_playback_snapshot(PlaybackSnapshot {
+            track: Some(test_track("test_key", 20_000)),
+            state: PlaybackState::Paused,
+            position_ms: Some(2_000),
+            ..PlaybackSnapshot::stopped(0)
+        });
+        rt.tick();
+        rt.store_lyrics(make_test_doc(&[1_000, 5_000, 10_000]));
+        rt.set_current_offset(500);
+
+        let preview = rt.seek_preview();
+        assert_eq!(preview.duration_ms(), Some(20_000));
+        // Line 1 starts 5 s into the lyrics: 5.5 s into playback.
+        assert_eq!(preview.render_at(5_400).active_line_index, Some(0));
+        assert_eq!(preview.render_at(5_500).active_line_index, Some(1));
+        assert_eq!(preview.render_at(0).active_line_index, None);
+        // Previewing leaves playback where it is.
+        assert_eq!(rt.tick().playback.position_ms, Some(2_000));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn seek_preview_has_no_duration_for_unknown_lengths() {
+        let dir = std::env::temp_dir().join(format!("lyra-seek-length-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut rt = LyraRuntime::new_in(dir.clone());
+        assert_eq!(rt.seek_preview().duration_ms(), None);
+        rt.set_playback_snapshot(PlaybackSnapshot {
+            track: Some(test_track("live", 0)),
+            state: PlaybackState::Playing,
+            ..PlaybackSnapshot::stopped(0)
+        });
+        assert_eq!(rt.seek_preview().duration_ms(), None);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

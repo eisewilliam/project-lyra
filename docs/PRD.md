@@ -99,8 +99,9 @@ Priority: **P0** = MVP, must ship • **P1** = first follow-up • **P2** = nice
 
 ### 6.5 Marquee: Dynamic Panel (macOS) — P1
 
-- Floating panel the user places wherever they like: against any edge, floating over their work, or beside other windows. Never assume a top-docked or notch placement.
-- Sized in points as one design at a chosen scale, matched to each display by default; when placed under a MacBook notch, its content clears the notch.
+- Floating panel the user places wherever they like: against any edge, floating over their work, beside other windows, or docked against the top edge under a MacBook notch. Never assume a top-docked or notch placement: it is a choice, never the default.
+- Sized in points as one design at a chosen scale, matched to each display by default.
+- Starts at the bottom center, above the Dock or taskbar, on every OS. Released elsewhere it keeps to the display's safe area (clear of the menu bar, notch, Dock, taskbar and Karaoke lyrics), unless pushed against the top edge, where it docks; under a MacBook notch its content clears the notch.
 - Two states: **compact** (scrolling artist + track) and **expanded** (current line).
 - Spring-animated transitions on hover.
 - Click-through everywhere except the active region.
@@ -129,7 +130,7 @@ Priority: **P0** = MVP, must ship • **P1** = first follow-up • **P2** = nice
 
 - Adapter using **SMTC** (System Media Transport Controls) — works with Spotify, Apple Music for Windows, browser playback, and any SMTC-aware player.
 - Tauri shell builds for Windows out of the box.
-- No notch-integrated Marquee or WidgetKit equivalents — desktop floating window only.
+- No notch layout (Windows displays have no notch) or WidgetKit equivalents — desktop floating window only. The Marquee can still dock against the top edge.
 
 ### 6.10 Linux Support — P3 (Future)
 
@@ -265,7 +266,7 @@ enum PlayerEvent {
 - macOS widget (if motivation holds).
 - Apple Music adapter (free win once architecture is in place).
 
-**Exit criteria:** Notch widget feels production-quality.
+**Exit criteria:** Marquee feels production-quality.
 
 ### Phase 4 — Cross-Platform Desktop — Weekends 7–8
 

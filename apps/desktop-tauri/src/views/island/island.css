@@ -65,6 +65,8 @@ html, body {
 :root[data-reduced-transparency="true"] .floating-panel { background: rgb(18, 18, 22); }
 :root[data-reduced-transparency="true"] .island-bg-img { opacity: 0.2; }
 
+/* Docked against the top edge of the screen (the user's choice, never the
+   default): flush with the edge, so only the bottom corners are rounded. */
 .floating-panel.docked {
   border-radius: 0 0 20px 20px;
   border-top: none;
@@ -150,8 +152,9 @@ html, body {
   height: 100%;
   display: flex;
   align-items: center;
-  /* Under a MacBook notch the window is taller by the notch's height and the
-     content sits below it (`--marquee-notch-inset`, set by the host fit). */
+  /* Docked under a MacBook notch the window is taller by the notch's height
+     and the content sits below it (`--marquee-notch-inset`, set by the host
+     fit). */
   padding: var(--marquee-notch-inset, 0px) calc(20 * var(--u)) 0;
   box-sizing: border-box;
   gap: calc(16 * var(--u));
