@@ -1,6 +1,6 @@
 name: release
 
-# Builds signed installers for every platform into a draft release, then
+# Builds installers and signed update bundles into a draft release, then
 # publishes it once every build has succeeded. A tag must match the app
 # version in Cargo.toml (v0.2.0 for version 0.2.0). See docs/RELEASING.md.
 
@@ -158,9 +158,10 @@ jobs:
               working-directory: ${{ env.APP_DIR }}
               run: pnpm install --frozen-lockfile
 
-            # Signing and notarization need every Apple secret; a release
-            # without them would ship builds macOS refuses to open.
+            # Internal prereleases can use ad-hoc signing without Apple secrets.
+            # Stable releases and partially configured accounts still fail closed.
             - name: Prepare macOS signing and notarization
+              id: macos-signing
               if: runner.os == 'macOS'
               env:
                   APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -169,19 +170,7 @@ jobs:
                   APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
                   APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
                   APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
-              run: |
-                  missing=""
-                  for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY \
-                      APPLE_API_ISSUER APPLE_API_KEY APPLE_API_PRIVATE_KEY; do
-                      if [ -z "${!name}" ]; then missing="$missing $name"; fi
-                  done
-                  if [ -n "$missing" ]; then
-                      echo "::error::Missing repository secrets:$missing. See docs/RELEASING.md."
-                      exit 1
-                  fi
-                  key_path="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY.p8"
-                  printf '%s\n' "$APPLE_API_PRIVATE_KEY" > "$key_path"
-                  echo "APPLE_API_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+              run: bash .github/scripts/prepare-macos-signing.sh
 
             - name: Build, sign and upload
               uses: tauri-apps/tauri-action@v1
@@ -193,7 +182,7 @@ jobs:
                   TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
                   APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
                   APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-                  APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+                  APPLE_SIGNING_IDENTITY: ${{ steps.macos-signing.outputs.unsigned == 'true' && '-' || secrets.APPLE_SIGNING_IDENTITY }}
                   APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
                   APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
               with:
@@ -202,9 +191,8 @@ jobs:
                   tagName: ${{ env.TAG }}
                   releaseDraft: true
                   args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
-                  # Fixed names, so releases/latest/download/<name> is a
-                  # permanent download link for the website.
-                  releaseAssetNamePattern: Lyra-[platform]-[arch][setup][ext]
+                  # The action calls macOS "darwin"; keep our stable macos names.
+                  releaseAssetNamePattern: ${{ runner.os == 'macOS' && (steps.macos-signing.outputs.unsigned == 'true' && 'Lyra-macos-[arch]-unsigned[setup][ext]' || 'Lyra-macos-[arch][setup][ext]') || 'Lyra-[platform]-[arch][setup][ext]' }}
                   uploadUpdaterJson: true
                   updaterJsonPreferNsis: true
 
@@ -216,18 +204,45 @@ jobs:
         steps:
             # The website links to these names under releases/latest/download.
             - name: Check the expected files were uploaded
+              id: assets
               env:
                   GH_TOKEN: ${{ github.token }}
               run: |
                   assets=$(gh api "repos/$GITHUB_REPOSITORY/releases/${{ needs.prepare.outputs.release-id }}" --jq '.assets[].name')
                   missing=""
-                  for name in latest.json Lyra-macos-universal.dmg Lyra-windows-x64-setup.exe \
+                  macos_asset=Lyra-macos-universal.dmg
+                  macos_unsigned=false
+                  if grep -qxF Lyra-macos-universal-unsigned.dmg <<< "$assets"; then
+                      if [[ "$TAG" != *-* ]]; then
+                          echo "::error::A stable release cannot contain an unsigned macOS build."
+                          exit 1
+                      fi
+                      macos_asset=Lyra-macos-universal-unsigned.dmg
+                      macos_unsigned=true
+                  fi
+                  macos_update="${macos_asset%.dmg}.app.tar.gz"
+                  for name in latest.json "$macos_asset" "$macos_update" "$macos_update.sig" \
+                      Lyra-windows-x64-setup.exe Lyra-windows-x64-setup.exe.sig \
+                      Lyra-linux-amd64.AppImage.sig \
                       Lyra-linux-amd64.AppImage Lyra-linux-amd64.deb; do
                       grep -qxF "$name" <<< "$assets" || missing="$missing $name"
                   done
                   if [ -n "$missing" ]; then
                       echo "::error::Missing release files:$missing. Found: $(tr '\n' ' ' <<< "$assets")"
                       exit 1
+                  fi
+                  echo "macos_unsigned=$macos_unsigned" >> "$GITHUB_OUTPUT"
+
+            - name: Label the unsigned macOS prerelease
+              if: steps.assets.outputs.macos_unsigned == 'true'
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  endpoint="repos/$GITHUB_REPOSITORY/releases/${{ needs.prepare.outputs.release-id }}"
+                  body=$(gh api "$endpoint" --jq '.body // ""')
+                  notice='**Unsigned macOS beta:** Download Lyra-macos-universal-unsigned.dmg. This build is ad-hoc signed, without Apple Developer ID signing or notarization. If macOS blocks it after moving Lyra to Applications and trying to open it, use System Settings → Privacy & Security → Open Anyway. Update bundles still carry the Lyra updater signature.'
+                  if ! grep -qF '**Unsigned macOS beta:**' <<< "$body"; then
+                      gh api -X PATCH "$endpoint" -f body="$notice"$'\n\n'"$body" --silent
                   fi
 
             - name: Publish

@@ -17,6 +17,9 @@ An internal pre-release for testing desktop changes ahead of 0.2.0.
 ### Added
 
 - Release builds now check for signed updates.
+- Internal macOS beta downloads are available before Apple signing is
+  configured. They are marked unsigned and may need approval in Privacy &
+  Security before opening.
 - On a MacBook Pro with a Touch Bar, Lyra's Touch Bar shows previous,
   play/pause and next, then the line being sung with the next line after it,
   in your lyric font and color. Tap the lyrics to open Lyra. Choose which

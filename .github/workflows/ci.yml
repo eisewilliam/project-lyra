@@ -34,6 +34,10 @@ jobs:
             - name: Check out repository
               uses: actions/checkout@v4
 
+            - name: Test release signing policy
+              if: runner.os == 'Linux'
+              run: python3 .github/scripts/test_release_signing.py
+
             - name: Install Linux system dependencies
               if: runner.os == 'Linux'
               run: |
