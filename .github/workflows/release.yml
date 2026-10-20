@@ -273,7 +273,8 @@ jobs:
                   body=$(gh api "$endpoint" --jq '.body // ""')
                   notice='**Unsigned macOS beta:** Download Lyra-macos-universal-unsigned.dmg. This build is ad-hoc signed, without Apple Developer ID signing or notarization. If macOS blocks it after moving Lyra to Applications and trying to open it, use System Settings → Privacy & Security → Open Anyway. Update bundles still carry the Lyra updater signature.'
                   if ! grep -qF '**Unsigned macOS beta:**' <<< "$body"; then
-                      gh api -X PATCH "$endpoint" -f body="$notice"$'\n\n'"$body" --silent
+                      gh api -X PATCH "$endpoint" -f tag_name="$TAG" \
+                          -f body="$notice"$'\n\n'"$body" --silent
                   fi
 
             - name: Publish
@@ -281,4 +282,4 @@ jobs:
                   GH_TOKEN: ${{ github.token }}
               run: |
                   gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/${{ needs.prepare.outputs.release-id }}" \
-                      -F draft=false --jq '.html_url'
+                      -f tag_name="$TAG" -F draft=false --jq '.html_url'

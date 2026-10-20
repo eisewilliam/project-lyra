@@ -10,6 +10,10 @@ offered it as an update.
 
 ## [Unreleased]
 
+### Fixed
+
+- Release download links keep their version number after publication.
+
 ## [0.2.0-beta.2] - 2026-10-20
 
 An internal pre-release with the replacement updater signing key. Includes the
