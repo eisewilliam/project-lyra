@@ -10,6 +10,15 @@ offered it as an update.
 
 ## [Unreleased]
 
+## [0.2.0-beta.2] - 2026-10-20
+
+An internal pre-release with the replacement updater signing key. Includes the
+desktop changes listed under 0.2.0-beta.1; that build was not published.
+
+### Fixed
+
+- Update downloads use the corrected release signing key.
+
 ## [0.2.0-beta.1] - 2026-10-20
 
 An internal pre-release for testing desktop changes ahead of 0.2.0.
@@ -138,6 +147,7 @@ The first pre-release, for internal testing ahead of 0.1.0.
 - As a pre-release, this build is not offered as an update; install each beta
   from its release page.
 
-[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.2.0-beta.1...HEAD
+[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.2.0-beta.2...HEAD
+[0.2.0-beta.2]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.0-beta.2
 [0.2.0-beta.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.0-beta.1
 [0.1.0-beta.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.1.0-beta.1
