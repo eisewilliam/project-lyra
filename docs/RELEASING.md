@@ -115,6 +115,7 @@ The code is in `apps/desktop-tauri/src-tauri/src/updater.rs`. Its config is in `
 
 - **"Tag does not match version"**: the tag must be `v` followed by the `Cargo.toml` version. Delete the tag (`git push --delete origin v0.2.0`), then fix the version or the tag.
 - **"Missing repository secrets"**: one of the secrets above is not set.
+- **Unsigned macOS fails at `security import`**: `APPLE_CERTIFICATE` and its password must be absent from the unsigned build's environment, not set to empty strings. Tauri attempts to import a certificate whenever those variables exist.
 - **Notarization fails**: the build log includes Apple's submission ID. Run `xcrun notarytool log <id> --key AuthKey_<KEYID>.p8 --key-id <KEYID> --issuer <ISSUER>` to see why. Unsigned nested code and missing hardened-runtime entitlements are the usual causes.
 - **"Missing release files"**: the asset names changed, for example after a `tauri-action` upgrade. Update the names in the publish job and in `apps/website/src/site-config.ts` together.
 - **Lyra can't read Spotify or Music in a signed build**: the build must carry the Apple Events entitlement (`src-tauri/Entitlements.plist`) and its usage description (`src-tauri/Info.plist`).

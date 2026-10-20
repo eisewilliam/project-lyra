@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
@@ -19,6 +20,21 @@ APPLE_SECRETS = {
 
 
 class ReleaseSigningTests(unittest.TestCase):
+    def test_unsigned_build_omits_apple_certificate_environment(self):
+        # Tauri imports APPLE_CERTIFICATE even when it is present but empty.
+        workflow = SCRIPT.parent.parent / "workflows" / "release.yml"
+        step = next(
+            block for block in workflow.read_text().split("            - name: ")
+            if block.startswith("Build unsigned macOS and upload\n")
+        )
+        env = step.split("              env:\n", 1)[1].split("              with:\n", 1)[0]
+        names = set(re.findall(r"^\s+([A-Z_]+):", env, re.MULTILINE))
+        self.assertEqual(names, {
+            "GITHUB_TOKEN", "TAURI_SIGNING_PRIVATE_KEY",
+            "TAURI_SIGNING_PRIVATE_KEY_PASSWORD", "APPLE_SIGNING_IDENTITY",
+        })
+        self.assertIn('APPLE_SIGNING_IDENTITY: "-"', env)
+
     def prepare(self, tag, secrets):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)

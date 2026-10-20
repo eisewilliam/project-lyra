@@ -173,6 +173,7 @@ jobs:
               run: bash .github/scripts/prepare-macos-signing.sh
 
             - name: Build, sign and upload
+              if: runner.os != 'macOS' || steps.macos-signing.outputs.unsigned != 'true'
               uses: tauri-apps/tauri-action@v1
               env:
                   GITHUB_TOKEN: ${{ github.token }}
@@ -182,7 +183,7 @@ jobs:
                   TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
                   APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
                   APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-                  APPLE_SIGNING_IDENTITY: ${{ steps.macos-signing.outputs.unsigned == 'true' && '-' || secrets.APPLE_SIGNING_IDENTITY }}
+                  APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
                   APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
                   APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
               with:
@@ -192,9 +193,28 @@ jobs:
                   releaseDraft: true
                   args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
                   # The action calls macOS "darwin"; keep our stable macos names.
-                  releaseAssetNamePattern: ${{ runner.os == 'macOS' && (steps.macos-signing.outputs.unsigned == 'true' && 'Lyra-macos-[arch]-unsigned[setup][ext]' || 'Lyra-macos-[arch][setup][ext]') || 'Lyra-[platform]-[arch][setup][ext]' }}
+                  releaseAssetNamePattern: ${{ runner.os == 'macOS' && 'Lyra-macos-[arch][setup][ext]' || 'Lyra-[platform]-[arch][setup][ext]' }}
                   uploadUpdaterJson: true
                   updaterJsonPreferNsis: true
+
+            # Empty APPLE_CERTIFICATE variables still trigger Tauri's certificate
+            # import, so the unsigned action must omit them entirely.
+            - name: Build unsigned macOS and upload
+              if: runner.os == 'macOS' && steps.macos-signing.outputs.unsigned == 'true'
+              uses: tauri-apps/tauri-action@v1
+              env:
+                  GITHUB_TOKEN: ${{ github.token }}
+                  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+                  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+                  APPLE_SIGNING_IDENTITY: "-"
+              with:
+                  projectPath: ${{ env.APP_DIR }}
+                  releaseId: ${{ needs.prepare.outputs.release-id }}
+                  tagName: ${{ env.TAG }}
+                  releaseDraft: true
+                  args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
+                  releaseAssetNamePattern: Lyra-macos-[arch]-unsigned[setup][ext]
+                  uploadUpdaterJson: true
 
     publish:
         name: Publish release
