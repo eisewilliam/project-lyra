@@ -1,10 +1,12 @@
-"""Exercise the release signing policy without Apple credentials or network calls."""
+"""Exercise release signing and metadata updates without credentials or network calls."""
 
+import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import tempfile
+import textwrap
 import unittest
 
 
@@ -20,6 +22,49 @@ APPLE_SECRETS = {
 
 
 class ReleaseSigningTests(unittest.TestCase):
+    def test_release_updates_keep_the_version_tag(self):
+        workflow = (SCRIPT.parent.parent / "workflows" / "release.yml").read_text()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            calls = root / "calls.jsonl"
+            gh = root / "gh"
+            gh.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, sys\n"
+                "if '-X' in sys.argv and sys.argv[sys.argv.index('-X') + 1] == 'PATCH':\n"
+                "    with open(os.environ['RELEASE_TEST_CALLS'], 'a') as target:\n"
+                "        target.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                "else:\n"
+                "    print('Existing release notes')\n"
+            )
+            gh.chmod(0o755)
+            env = {
+                "PATH": f"{root}{os.pathsep}{os.environ['PATH']}",
+                "TAG": "v0.2.0-beta.2",
+                "GITHUB_REPOSITORY": "test/lyra",
+                "RELEASE_TEST_CALLS": str(calls),
+            }
+            for name in ("Label the unsigned macOS prerelease", "Publish"):
+                with self.subTest(step=name):
+                    step = workflow.split(f"            - name: {name}\n", 1)[1]
+                    step = step.split("\n            - name: ", 1)[0]
+                    script = textwrap.dedent(step.split("              run: |\n", 1)[1])
+                    script = script.replace("${{ needs.prepare.outputs.release-id }}", "123")
+                    result = subprocess.run(
+                        ["bash", "-eu", "-c", script], env=env,
+                        capture_output=True, text=True,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+            updates = [json.loads(line) for line in calls.read_text().splitlines()]
+            self.assertEqual(len(updates), 2)
+            for args in updates:
+                fields = {
+                    args[i + 1].split("=", 1)[0]: args[i + 1].split("=", 1)[1]
+                    for i, arg in enumerate(args) if arg in ("-f", "-F")
+                }
+                self.assertEqual(fields.get("tag_name"), env["TAG"])
+            self.assertIn("draft=false", updates[-1])
+
     def test_unsigned_build_omits_apple_certificate_environment(self):
         # Tauri imports APPLE_CERTIFICATE even when it is present but empty.
         workflow = SCRIPT.parent.parent / "workflows" / "release.yml"
