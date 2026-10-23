@@ -77,10 +77,10 @@ function Hero({ platform }: { platform: Platform | null }) {
       startTime={startFrame ?? (reducedMotion() ? STILL_TIME : undefined)} onUnsupported={() => setLightSupported(false)} />
     <motion.div className="hero-copy" ref={copyRef} initial="hidden" animate="shown" variants={heroStagger}>
       <h1 id="hero-title" tabIndex={-1}>
-        <motion.span className="hero-line" variants={heroRise}>Keep the song</motion.span>
-        <motion.span className="hero-line" variants={heroRise}>in sight.</motion.span>
+        <motion.span className="hero-line" variants={heroRise}>See your</motion.span>
+        <motion.span className="hero-line" variants={heroRise}>Music.</motion.span>
       </h1>
-      <motion.p className="hero-lead" variants={heroRise}>Live lyrics for the song you’re playing, right on your desktop.</motion.p>
+      <motion.p className="hero-lead" variants={heroRise}>Lyra brings live, synced lyrics to your screen, so you can follow along without switching apps.</motion.p>
       <motion.div className="hero-actions" variants={heroRise}>
         <DownloadButton platform={platform} />
         <Link className="text-link" to="/download">Other downloads</Link>
@@ -104,8 +104,8 @@ interface Surface {
 
 const surfaces: Surface[] = [
   { id: 'window', name: 'Lyra window', text: 'The whole song: artwork, playback controls and the full lyric sheet, with the current line in focus. Click any line to jump there.', detail: 'The window takes its color from the artwork of whatever is playing.' },
-  { id: 'island', name: 'Marquee', text: 'A dynamic panel above every app, wherever you put it. The line being sung, and the one coming next.', detail: 'Hide it when the music pauses, and let it size itself to each screen.' },
-  { id: 'overlay', name: 'Karaoke overlay', text: 'One or two large lines across your screen, filling word by word as they are sung.', detail: 'Give it a background so it reads over anything, even a bright page.' },
+  { id: 'island', name: 'Marquee', text: 'A dynamic panel you can place anywhere on your screen. It displays the current and the next line in your song’s lyrics.', detail: 'It gets out of your way when you pause, and you can resize it to fit your preference.' },
+  { id: 'overlay', name: 'Karaoke overlay', text: 'Follow the lyrics as they fill in, word by word.', detail: 'Add a background so the words stay readable over whatever’s on your screen.' },
 ];
 const sceneLabels: Record<SurfaceId, string> = {
   window: 'The Lyra window showing the demo song’s lyric sheet',
@@ -305,8 +305,8 @@ function Surfaces() {
   return <section className="section surfaces" id="surfaces" aria-labelledby="surfaces-title" ref={sectionRef} style={paletteStyle(song)}>
     <div className="surfaces-wash" aria-hidden="true" />
     <div className="section-head">
-      <h2 id="surfaces-title">Three ways to keep<br />the words close.</h2>
-      <p className="lead">Lyra follows what’s playing and finds the synced lyrics. Choose where they appear, and use one surface or all three.</p>
+      <h2 id="surfaces-title">Choose from 3 options.</h2>
+      <p className="lead">Lyra finds synced lyrics for the music you’re playing, you decide how it is displayed.</p>
     </div>
     {pinned
       ? <PinnedStory song={song} demo={demo} onSongChange={setSongId} />
@@ -356,8 +356,8 @@ function Players() {
   return <section className="section players" id="players" aria-labelledby="players-title"
     style={paletteStyle(source.ignored ? neutralPalette : song)}>
     <div className="section-head">
-      <h2 id="players-title">Whatever you<br />play it on.</h2>
-      <p className="lead">Lyra follows {playersAndOthers}. When something isn’t music, Lyra leaves it alone.</p>
+      <h2 id="players-title">Wherever you listen.</h2>
+      <p className="lead">Lyra works with Spotify, Apple Music, YouTube Music, and most players that appear in your computer’s media controls. When you’re playing something that isn’t music, Lyra stays out of the way.</p>
     </div>
     <div className="players-body">
       <figure className={'players-stage scene' + (demo.playing ? ' is-playing' : '')} ref={stageRef}>
@@ -404,12 +404,12 @@ const choices: { name: OverlaySetting; label: string; options: [value: string, l
   { name: 'background', label: 'Background', options: [['0', 'None'], ['0.25', '25%'], ['0.5', '50%'], ['0.75', '75%']] },
 ];
 const moreSettings = [
-  'Hide surfaces when the music pauses or nothing is playing',
-  'Start Lyra with your computer',
-  'Light, dark or automatic theme',
-  'Pick the screen the surfaces appear on',
-  'Lyric font, size and color',
-  'Nudge lyric timing earlier or later, remembered for each song',
+  'Hide lyric displays when playback pauses or stops.',
+  'Launch Lyra when your computer starts.',
+  'Choose a light, dark, or automatic theme.',
+  'Choose which screen displays your lyrics.',
+  'Customize lyric font, size, and color.',
+  'Fine-tune lyric timing, with adjustments saved for individual songs.',
 ];
 
 function Customize() {
@@ -419,8 +419,8 @@ function Customize() {
   const [settings, setSettings] = useState<OverlaySettings>({ position: 'bottom', align: 'center', lines: '2', scale: '1', background: '0.25' });
   return <section className="section customize" aria-labelledby="customize-title" style={paletteStyle(song)}>
     <div className="customize-copy">
-      <h2 id="customize-title">Make it fit<br />your desktop.</h2>
-      <p className="lead">Every surface has its own settings. Try a few of the karaoke overlay’s here.</p>
+      <h2 id="customize-title">Make it your own.</h2>
+      <p className="lead">Tune Lyra to your setup. Adjust the lyric font, size, color, timing, and screen placement.</p>
       <form className="choice-groups" onSubmit={event => event.preventDefault()}>
         {choices.map(({ name, label: groupLabel, options }) => <fieldset className="choice-group" key={name}>
           <legend>{groupLabel}</legend>
@@ -444,7 +444,7 @@ function Customize() {
       </div>
       <div className="preview-caption"><DemoToggle demo={demo} /></div>
       <div className="more-settings">
-        <h3>Also in settings</h3>
+        <h3>More in settings</h3>
         <ul>{moreSettings.map(item => <li key={item}>{item}</li>)}</ul>
       </div>
     </div>
@@ -452,9 +452,9 @@ function Customize() {
 }
 
 const steps: [title: string, text: string][] = [
-  ['Install Lyra', 'Download it for your computer and open it. Lyra sits in your menu bar or system tray.'],
-  ['Press play', `Play something in ${playersOrOthers}. Lyra notices and looks up its synced lyrics.`],
-  ['Follow along', 'Turn the window, the Marquee or the overlay on or off at any time from the tray.'],
+  ['Install Lyra', 'Download and open Lyra. It runs from your menu bar or system tray.'],
+  ['Press play', 'Play music on Spotify, Apple Music, YouTube Music, or another supported player. Lyra looks up synced lyrics for you.'],
+  ['Follow along', 'Choose your preferred lyric view from the tray, then keep the words close while you code, design, work, or do your thing.'],
 ];
 
 function Steps() {
