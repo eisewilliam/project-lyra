@@ -78,7 +78,9 @@ make dev
 
 ## Before you open a pull request
 
-Run the same checks CI runs:
+Run the same checks CI runs. CI runs only the checks for the parts you
+change, and checks macOS and Windows once a pull request is ready for review
+(see [docs/RELEASING.md](docs/RELEASING.md#checks-on-pull-requests)):
 
 ```bash
 # Rust core tests (from repo root)

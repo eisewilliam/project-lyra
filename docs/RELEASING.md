@@ -106,6 +106,19 @@ Keep `releasesPublished = false` in `apps/website/src/site-config.ts` while the 
 
 After the repository becomes public, verify the installer URLs and `latest.json` work without signing in. Set `releasesPublished = true`, remove the unsigned macOS first-launch advice, and deploy the website. Until then its buttons open the downloads page instead of unavailable files.
 
+## Checks on pull requests
+
+`ci.yml` checks only the parts a pull request changes:
+
+| Changed | Runs |
+|---|---|
+| Rust, `native/`, Cargo files, `src-tauri/`, workflows or release scripts | Rust format, Clippy and tests on Linux; on macOS and Windows too once the pull request is ready for review |
+| Desktop frontend | Frontend lint and build |
+| `apps/website/` | Website lint, tests and build |
+| Docs only | Nothing |
+
+macOS and Windows compile their own player adapters, so a ready pull request that touches Rust is checked on all three systems. A release pull request always is, because the version bump changes `Cargo.toml`. A merge to `main` is not checked again, unless it changes `Cargo.lock`. That run rebuilds the dependency cache that pull requests restore from. **Actions → ci → Run workflow** runs every check.
+
 ## How the app updates
 
 - Release builds check 20 seconds after launch and every 6 hours after that. Development builds, and builds whose updater key is still the placeholder, never check.

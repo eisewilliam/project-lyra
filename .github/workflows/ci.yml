@@ -1,10 +1,20 @@
 name: ci
 
+# Pull requests check only the parts they change. A merge to main is not
+# checked again: its pull request already ran on the same code. Installers
+# are built only for version tags, by release.yml.
 on:
-    push:
-        branches: [main]
     pull_request:
         branches: [main]
+        # ready_for_review runs the macOS and Windows checks a draft skipped.
+        types: [opened, synchronize, reopened, ready_for_review]
+    # Pull requests restore Rust dependencies only from main's cache, so a
+    # merge that changes them rebuilds it. Release version bumps do too.
+    push:
+        branches: [main]
+        paths: [Cargo.lock]
+    # Run everything on demand.
+    workflow_dispatch:
 
 concurrency:
     group: ci-${{ github.ref }}
@@ -15,21 +25,66 @@ env:
     CARGO_TERM_COLOR: always
 
 jobs:
+    changes:
+        name: Detect changes
+        runs-on: ubuntu-latest
+        permissions:
+            pull-requests: read
+        outputs:
+            rust: ${{ github.event_name != 'pull_request' || steps.filter.outputs.rust == 'true' }}
+            frontend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.frontend == 'true' }}
+            website: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.website == 'true' }}
+            rust-platforms: ${{ steps.platforms.outputs.matrix }}
+        steps:
+            - name: Match changed files
+              id: filter
+              if: github.event_name == 'pull_request'
+              uses: dorny/paths-filter@v4
+              with:
+                  predicate-quantifier: some-with-excludes
+                  # Workflow and release-script changes run the Rust checks,
+                  # which include the release signing policy test.
+                  filters: |
+                      rust:
+                          - 'Cargo.toml'
+                          - 'Cargo.lock'
+                          - 'crates/**'
+                          - 'native/**'
+                          - 'apps/desktop-tauri/src-tauri/**'
+                          - '.github/workflows/**'
+                          - '.github/scripts/**'
+                      frontend:
+                          - 'apps/desktop-tauri/**'
+                          - '!apps/desktop-tauri/src-tauri/**'
+                          - '.github/workflows/ci.yml'
+                      website:
+                          - 'apps/website/**'
+                          - '.github/workflows/ci.yml'
+
+            # Draft pull requests check Rust on Linux only. macOS and Windows
+            # compile their own player adapters, so they run once the pull
+            # request is ready for review, and before every release.
+            - name: Choose Rust platforms
+              id: platforms
+              env:
+                  DRAFT: ${{ github.event.pull_request.draft }}
+              run: |
+                  linux='{"name":"Linux","platform":"ubuntu-22.04"}'
+                  if [ "$DRAFT" = "true" ]; then
+                      echo "matrix=[$linux]" >> "$GITHUB_OUTPUT"
+                  else
+                      echo "matrix=[{\"name\":\"macOS\",\"platform\":\"macos-latest\"},{\"name\":\"Windows\",\"platform\":\"windows-latest\"},$linux]" >> "$GITHUB_OUTPUT"
+                  fi
+
     rust:
-        # Each OS compiles its own player adapters (AppleScript and Now
-        # Playing, SMTC, MPRIS), so all three are checked.
         name: Rust (${{ matrix.name }})
+        needs: changes
+        if: needs.changes.outputs.rust == 'true'
         runs-on: ${{ matrix.platform }}
         strategy:
             fail-fast: false
             matrix:
-                include:
-                    - name: macOS
-                      platform: macos-latest
-                    - name: Windows
-                      platform: windows-latest
-                    - name: Linux
-                      platform: ubuntu-22.04
+                include: ${{ fromJSON(needs.changes.outputs.rust-platforms) }}
         steps:
             - name: Check out repository
               uses: actions/checkout@v4
@@ -80,8 +135,9 @@ jobs:
                   pnpm install --frozen-lockfile
                   pnpm run build
 
+            # rustfmt ignores cfg, so Linux checks every platform's files.
             - name: Check formatting
-              if: runner.os == 'macOS'
+              if: runner.os == 'Linux'
               run: cargo fmt --all -- --check
 
             - name: Clippy
@@ -92,6 +148,8 @@ jobs:
 
     frontend:
         name: Frontend (lint, build)
+        needs: changes
+        if: needs.changes.outputs.frontend == 'true'
         runs-on: ubuntu-latest
         steps:
             - name: Check out repository
@@ -123,6 +181,8 @@ jobs:
 
     website:
         name: Website (lint, test, build)
+        needs: changes
+        if: needs.changes.outputs.website == 'true'
         runs-on: ubuntu-latest
         defaults:
             run:
