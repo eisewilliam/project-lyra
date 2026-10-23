@@ -10,6 +10,11 @@ offered it as an update.
 
 ## [Unreleased]
 
+### Changed
+
+- Changes to `main` require a reviewed pull request and passing checks for the
+  parts of the project they affect. Unchanged parts can skip their builds.
+
 ## [0.2.1] - 2026-10-23
 
 Lyrics load more reliably, and songs wrongly remembered as having no lyrics
