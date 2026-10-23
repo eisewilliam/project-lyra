@@ -107,10 +107,12 @@ make lint
 6. Use [Conventional Commits](https://www.conventionalcommits.org/) style for
    commit messages where practical (e.g. `feat:`, `fix:`, `refactor:`, `docs:`).
 
-`main` requires a pull request with one approving review, resolved discussions,
-and a passing `CI` check against the latest `main`. New commits dismiss stale
-approvals, and the latest push must be approved by someone else. Force pushes
-and deletion of `main` are blocked, including for administrators.
+`main` requires a pull request, resolved discussions, and a passing `CI` check
+against the latest `main`. One approving review is required, with new commits
+dismissing stale approvals and the latest push approved by someone else. The
+project owner (`eisewilliam`) can bypass the review requirement when merging a
+pull request. CI and discussion resolution remain required for everyone. Force
+pushes and deletion of `main` are blocked, including for administrators.
 
 ## Reporting bugs and requesting features
 

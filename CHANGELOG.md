@@ -12,8 +12,9 @@ offered it as an update.
 
 ### Changed
 
-- Changes to `main` require a reviewed pull request and passing checks for the
-  parts of the project they affect. Unchanged parts can skip their builds.
+- Changes to `main` require a pull request and passing checks for the parts of
+  the project they affect. The project owner can merge without another review;
+  other contributors need approval. Unchanged parts can skip their builds.
 
 ## [0.2.1] - 2026-10-23
 
