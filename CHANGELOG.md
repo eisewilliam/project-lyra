@@ -32,6 +32,8 @@ find them.
 
 ### Changed
 
+- The website now offers public downloads for macOS, Windows and Linux, with
+  direct download buttons in place of the coming-soon notice.
 - The player support matrix confirms YouTube Music and YouTube in Chrome on
   macOS and Windows, including seeking and YouTube skipping within playlists.
 
