@@ -35,6 +35,11 @@ export function isRetryableNotFound(status: LyricsStatus): boolean {
   return reason === 'NetworkError' || reason === 'RateLimit';
 }
 
+/** A failed lookup, or a remembered miss that may be stale, can be tried again. */
+export function canSearchLyricsAgain(status: LyricsStatus): boolean {
+  return isRetryableNotFound(status) || getNotFoundReason(status) === 'Miss';
+}
+
 export function resolveLyricsSurfaceState({
   booted,
   hasTrack,

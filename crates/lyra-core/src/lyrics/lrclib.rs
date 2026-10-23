@@ -1,8 +1,9 @@
 use crate::domain::{LyricDocument, LyricSourceKind, TrackRef};
 use crate::lyrics::{parser, LyricSource};
 use anyhow::Result;
-use reqwest::StatusCode;
+use reqwest::{header, StatusCode};
 use serde::Deserialize;
+use std::time::Duration;
 
 const BASE_URL: &str = "https://lrclib.net/api";
 const USER_AGENT: &str = concat!(
@@ -20,14 +21,28 @@ const SEARCH_DURATION_TOLERANCE_SEC: i64 = 5;
 /// pure title+artist match without duration agreement is rejected.
 const MIN_SEARCH_SCORE: i32 = 50;
 
+/// Tries per request. LRCLIB sheds load with short bursts of 503s, so a
+/// quick retry absorbs most of them before anyone sees an error.
+const REQUEST_ATTEMPTS: u32 = 3;
+/// First retry delay; each further retry waits three times as long.
+const RETRY_BACKOFF: Duration = Duration::from_millis(500);
+/// Longest `Retry-After` honoured inside one lookup. A longer wait is left to
+/// the refresh coordinator's slower retries.
+const MAX_RETRY_WAIT: Duration = Duration::from_secs(5);
+
 #[derive(Debug)]
 pub struct LrclibHttpError {
     pub status: u16,
 }
 impl LrclibHttpError {
-    pub fn is_rate_limit(&self) -> bool {
-        self.status == 429
+    /// LRCLIB is up but rate limiting or shedding load; worth retrying later.
+    pub fn is_busy(&self) -> bool {
+        is_busy_status(self.status)
     }
+}
+
+fn is_busy_status(status: u16) -> bool {
+    matches!(status, 429 | 500 | 502 | 503 | 504)
 }
 impl std::fmt::Display for LrclibHttpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -39,6 +54,7 @@ impl std::error::Error for LrclibHttpError {}
 pub struct LrclibClient {
     http: reqwest::Client,
     base_url: String,
+    retry_backoff: Duration,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -69,14 +85,53 @@ impl LrclibClient {
             .pool_max_idle_per_host(2)
             .pool_idle_timeout(std::time::Duration::from_secs(90))
             .gzip(true)
-            .timeout(std::time::Duration::from_secs(30))
-            .connect_timeout(std::time::Duration::from_secs(10))
+            // Short enough that a stalled request is retried while the song
+            // is still near its start.
+            .timeout(Duration::from_secs(12))
+            .connect_timeout(Duration::from_secs(6))
             .user_agent(USER_AGENT)
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {
             http,
             base_url: BASE_URL.to_owned(),
+            retry_backoff: RETRY_BACKOFF,
+        }
+    }
+
+    /// GET `url`, retrying while LRCLIB is busy or the connection fails.
+    /// Returns the final status and body; a busy status that outlasts the
+    /// retries is an error.
+    async fn request(&self, url: &str) -> Result<(StatusCode, Vec<u8>)> {
+        let mut attempt = 1;
+        loop {
+            let backoff = self.retry_backoff * 3u32.pow(attempt - 1);
+            let mut wait = backoff + jitter(backoff);
+            let failure: anyhow::Error = match self.http.get(url).send().await {
+                Ok(resp) if is_busy_status(resp.status().as_u16()) => {
+                    if let Some(after) = retry_after(&resp) {
+                        wait = after;
+                    }
+                    LrclibHttpError {
+                        status: resp.status().as_u16(),
+                    }
+                    .into()
+                }
+                Ok(resp) => {
+                    let status = resp.status();
+                    match resp.bytes().await {
+                        Ok(body) => return Ok((status, body.to_vec())),
+                        Err(error) => error.into(),
+                    }
+                }
+                Err(error) if error.is_builder() || error.is_redirect() => return Err(error.into()),
+                Err(error) => error.into(),
+            };
+            if attempt >= REQUEST_ATTEMPTS || wait > MAX_RETRY_WAIT {
+                return Err(failure);
+            }
+            tokio::time::sleep(wait).await;
+            attempt += 1;
         }
     }
 
@@ -104,13 +159,10 @@ impl LrclibClient {
             url.push_str(&format!("&duration={}", dur));
         }
 
-        let resp = self.http.get(&url).send().await?;
-        match resp.status() {
+        let (status, body) = self.request(&url).await?;
+        match status {
             StatusCode::NOT_FOUND => Ok(None),
-            s if s.is_success() => {
-                let record: LrclibRecord = resp.json().await?;
-                Ok(Some(record))
-            }
+            s if s.is_success() => Ok(Some(serde_json::from_slice(&body)?)),
             s => Err(LrclibHttpError { status: s.as_u16() }.into()),
         }
     }
@@ -128,16 +180,38 @@ impl LrclibClient {
             urlencoding::encode(artist_name),
         );
 
-        let resp = self.http.get(&url).send().await?;
-        if !resp.status().is_success() {
+        let (status, body) = self.request(&url).await?;
+        if !status.is_success() {
             return Err(LrclibHttpError {
-                status: resp.status().as_u16(),
+                status: status.as_u16(),
             }
             .into());
         }
-        let records: Vec<LrclibRecord> = resp.json().await?;
-        Ok(records)
+        Ok(serde_json::from_slice(&body)?)
     }
+}
+
+/// Wait requested by a `Retry-After` header given in seconds.
+fn retry_after(resp: &reqwest::Response) -> Option<Duration> {
+    let seconds = resp
+        .headers()
+        .get(header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()?;
+    Some(Duration::from_secs(seconds))
+}
+
+/// Up to half of `backoff` again, so clients retrying together drift apart.
+fn jitter(backoff: Duration) -> Duration {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_nanos();
+    let spread = backoff.as_millis() as u64 / 2 + 1;
+    Duration::from_millis(u64::from(nanos) % spread)
 }
 
 impl Default for LrclibClient {
@@ -237,6 +311,22 @@ impl LyricSource for LrclibClient {
                     return Ok(Some(doc));
                 }
                 plain_fallback.get_or_insert(doc);
+            }
+        }
+
+        // Tier 5: lead artist only. Players often report every credited
+        // artist ("Ayra Starr, Danny Ocean") where lrclib files the track
+        // under the lead artist, so the full string finds nothing. Scoring
+        // still requires the candidate's artist to fit the full credit.
+        if plain_fallback.is_none() {
+            if let Some(lead) = lead_artist(&track.artist) {
+                let records = self.search_records(&search_title, lead).await?;
+                if let Some(best) = pick_best_record(records, track, &track_variants, duration_sec)
+                {
+                    if let Some(doc) = into_document(&track.uri, best)? {
+                        return Ok(Some(doc));
+                    }
+                }
             }
         }
 
@@ -442,8 +532,7 @@ fn score_candidate(
 fn normalize_for_compare(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut prev_space = true;
-    for ch in s.chars() {
-        let c = ch.to_ascii_lowercase();
+    for c in s.chars().flat_map(char::to_lowercase) {
         if c.is_alphanumeric() {
             out.push(c);
             prev_space = false;
@@ -545,6 +634,28 @@ fn is_feature_annotation(group: &str) -> bool {
     ["feat.", "feat ", "ft.", "ft ", "featuring", "with "]
         .iter()
         .any(|marker| group.starts_with(marker))
+}
+
+/// The first credited artist when `artist` lists several, e.g. "Ayra Starr"
+/// from "Ayra Starr, Danny Ocean". None for a single artist.
+fn lead_artist(artist: &str) -> Option<&str> {
+    let lower = artist.to_ascii_lowercase();
+    let cut = [
+        ", ",
+        " & ",
+        "; ",
+        " / ",
+        " x ",
+        " feat. ",
+        " feat ",
+        " ft. ",
+        " featuring ",
+    ]
+    .iter()
+    .filter_map(|separator| lower.find(separator))
+    .min()?;
+    let lead = artist[..cut].trim();
+    (!lead.is_empty()).then_some(lead)
 }
 
 // ─── Variant detection ──────────────────────────────────────────────────────
@@ -710,6 +821,7 @@ mod tests {
         LrclibClient {
             http: reqwest::Client::new(),
             base_url,
+            retry_backoff: Duration::from_millis(1),
         }
     }
 
@@ -721,16 +833,59 @@ mod tests {
 
     #[tokio::test]
     async fn search_failures_are_retryable_errors_not_misses() {
-        for (status, body) in [(429, "{}"), (503, "{}"), (200, "broken json")] {
-            let client = server(vec![(404, "{}"), (status, body)]);
+        for (status, body) in [(429, "{}"), (503, "{}")] {
+            let client = server(vec![
+                (404, "{}"),
+                (status, body),
+                (status, body),
+                (status, body),
+            ]);
             let error = client.fetch(&track()).await.unwrap_err();
-            if status == 429 {
-                assert!(error
-                    .downcast_ref::<LrclibHttpError>()
-                    .unwrap()
-                    .is_rate_limit());
-            }
+            assert!(error.downcast_ref::<LrclibHttpError>().unwrap().is_busy());
         }
+        let client = server(vec![(404, "{}"), (200, "broken json")]);
+        assert!(client.fetch(&track()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn brief_overload_is_retried_within_the_lookup() {
+        let client = server(vec![
+            (503, r#"{"name":"ServerOverloaded"}"#),
+            (503, r#"{"name":"ServerOverloaded"}"#),
+            (200, r#"{"syncedLyrics":"[00:01.00]Timed"}"#),
+        ]);
+        let doc = client.fetch(&track()).await.unwrap().unwrap();
+        assert_eq!(doc.lines[0].text, "Timed");
+    }
+
+    #[tokio::test]
+    async fn multi_artist_credit_falls_back_to_the_lead_artist() {
+        let client = server(vec![
+            (404, "{}"),
+            (200, "[]"),
+            (
+                200,
+                r#"[{"trackName":"Song","artistName":"Artist","duration":180,"syncedLyrics":"[00:01.00]Timed"}]"#,
+            ),
+        ]);
+        let track = TrackRef {
+            artist: "Artist, Guest".into(),
+            ..track()
+        };
+        let doc = client.fetch(&track).await.unwrap().unwrap();
+        assert_eq!(doc.lines[0].text, "Timed");
+    }
+
+    #[test]
+    fn lead_artist_splits_only_multi_artist_credits() {
+        assert_eq!(lead_artist("Ayra Starr, Danny Ocean"), Some("Ayra Starr"));
+        assert_eq!(
+            lead_artist("Fontaines D.C. & ROSALÍA"),
+            Some("Fontaines D.C.")
+        );
+        assert_eq!(lead_artist("Drake feat. Rihanna"), Some("Drake"));
+        assert_eq!(lead_artist("Lana Del Rey"), None);
+        assert_eq!(lead_artist("Lil Nas X"), None);
     }
 
     #[tokio::test]
@@ -860,6 +1015,10 @@ mod tests {
         assert_eq!(
             normalize_for_compare("Paris, Texas!"),
             "paris texas".to_string()
+        );
+        assert_eq!(
+            normalize_for_compare("ROSALÍA"),
+            normalize_for_compare("Rosalía")
         );
     }
 }

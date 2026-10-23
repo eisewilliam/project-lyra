@@ -42,7 +42,7 @@ AppleScript adapters (Spotify, Music.app) cache metadata per track. `player::met
 
 LRCLIB prefers synchronized lyrics and can return plain text when timing is unavailable. Plain documents use `Unsynced`, have no active/visible timed lines, and are requested by the main pane through `get_plain_lyrics`; overlays retain their timed-lyrics requirement. Plain text is cached separately from LRC.
 
-A fetched document is stored in the cache and becomes active only if it belongs to the current track. A confirmed provider miss persists a `.nomatch` sentinel. Transient provider failures stay in memory and render a structured failure reason; they do not become persistent misses. Manual retry bypasses negative-cache eligibility, preventing a queued sentinel deletion from suppressing the request. Existing lyric documents retain cache precedence.
+A fetched document is stored in the cache and becomes active only if it belongs to the current track. A confirmed provider miss persists a `.nomatch` sentinel, trusted for longer each time the track misses again (1, 3, 7, then 14 days). Transient provider failures stay in memory and render a structured failure reason; they do not become persistent misses. Busy responses and dropped connections are retried within a lookup, and a failed lookup of the playing track is retried in the background with backoff. Manual retry bypasses negative-cache eligibility, preventing a queued sentinel deletion from suppressing the request. Existing lyric documents retain cache precedence.
 
 The frontend automatically requests lyrics once per URI and exposes explicit retry. Status and line-selection policy are computed in core; views render the supplied result.
 

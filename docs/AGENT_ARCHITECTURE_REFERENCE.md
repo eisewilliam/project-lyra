@@ -84,7 +84,9 @@ Tauri's `refresh_lyrics` and `force_refresh_lyrics` delegate to `lyrics::refresh
 3. Fetch from the provider without holding the runtime lock.
 4. Store the result under the runtime lock, then release the claim (also released on cancellation).
 
-Confirmed misses (`Ok(None)`) persist a `.nomatch` sentinel. Provider errors are recorded only in memory as `NotFound { reason: NetworkError }`; they do not poison the negative cache. Manual retry bypasses the negative-cache eligibility check and clears transient failure state. Existing cached documents still win.
+Each LRCLIB request is retried up to three times while the server answers 429/5xx or the connection fails, honouring a short `Retry-After`. A lookup that tries every title form with the full artist credit and misses also searches with the lead artist (`Ayra Starr` from `Ayra Starr, Danny Ocean`).
+
+Confirmed misses (`Ok(None)`) persist a `.nomatch` sentinel recording how many lookups in a row missed; it is trusted for 1, 3, 7 and then 14 days, and an expired sentinel stays on disk so a repeat miss waits longer. Bumping `NEGATIVE_CACHE_VERSION` makes every earlier miss look up again. Provider errors are recorded only in memory as `NotFound { reason }`: `RateLimit` when LRCLIB answered busy (429/5xx), otherwise `NetworkError`; they do not poison the negative cache. A failed lookup of the playing track is retried automatically after 5 s, 15 s, 45 s and 2 min while it stays current and the failure stands; the claim is released between tries, and a newer lookup (such as a manual retry) supersedes the waiting one. Manual retry bypasses the negative-cache eligibility check and clears transient failure state; the main pane offers it for failures and for remembered misses. Existing cached documents still win.
 
 Render states are `Loading`, `Ready`, `Unsynced`, structured `NotFound` with a reason, or `Error`. No track and confirmed misses use `Miss`; pending uncached tracks use `Loading`. Timed documents use `Ready`; plain text uses `Unsynced` and is exposed only to the main pane through `get_plain_lyrics`. The frontend guards automatic refresh by track URI; manual retry is explicit.
 

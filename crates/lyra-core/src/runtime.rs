@@ -187,6 +187,10 @@ impl LyraRuntime {
         self.transient_errors.remove(track_key);
     }
 
+    pub fn has_transient_error(&self, track_key: &str) -> bool {
+        self.transient_errors.contains_key(track_key)
+    }
+
     /// Clear the negative sentinel, transient failure, and active document.
     /// Cached lyric files remain intact. Used by the manual-retry coordinator.
     pub fn forget_track(&mut self, track_key: &str) {
