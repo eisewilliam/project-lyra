@@ -1,2 +1,7 @@
 # TanStack Router generator scratch files
 .tanstack/
+
+# Local Cloudflare runtime state and development secrets
+.wrangler/
+.dev.vars
+.dev.vars.*

@@ -4,12 +4,16 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
   },
   "scripts": {
     "dev": "vite",
     "build": "vite build && tsc -b",
     "preview": "vite preview",
+    "preview:worker": "npm run build && wrangler dev --local",
+    "deploy:check": "npm run build && wrangler deploy --dry-run",
+    "deploy": "npm run build && wrangler deploy",
+    "verify:deployment": "node scripts/verify-deployment.mjs",
     "typecheck": "tsc -b",
     "lint": "oxlint --deny-warnings",
     "test": "vitest run",
@@ -33,6 +37,7 @@
     "oxlint-tsgolint": "^7.0.2004",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "wrangler": "4.129.0"
   }
 }
