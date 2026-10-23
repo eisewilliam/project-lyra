@@ -1,7 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "lyra-website",
-  "account_id": "0a0358f164a50f4668afff0a1949559d",
   "main": "worker/index.js",
   // Matches the runtime shipped with the pinned Wrangler version.
   "compatibility_date": "2026-09-03",
