@@ -10,6 +10,16 @@ offered it as an update.
 
 ## [Unreleased]
 
+### Changed
+
+- Changes to `main` require a pull request and passing checks for the parts of
+  the project they affect. The project owner can merge without another review;
+  other contributors need approval. Unchanged parts can skip their builds.
+
+### Fixed
+
+- Website changes can be previewed on their own branch before release.
+
 ## [0.2.1] - 2026-10-23
 
 Lyrics load more reliably, and songs wrongly remembered as having no lyrics
