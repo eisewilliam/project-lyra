@@ -107,6 +107,11 @@ make lint
 6. Use [Conventional Commits](https://www.conventionalcommits.org/) style for
    commit messages where practical (e.g. `feat:`, `fix:`, `refactor:`, `docs:`).
 
+`main` requires a pull request with one approving review, resolved discussions,
+and a passing `CI` check against the latest `main`. New commits dismiss stale
+approvals, and the latest push must be approved by someone else. Force pushes
+and deletion of `main` are blocked, including for administrators.
+
 ## Reporting bugs and requesting features
 
 Use the issue templates. For bugs, include OS + version, Spotify version, and
