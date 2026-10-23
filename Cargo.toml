@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/lyra-core", "apps/desktop-tauri/src-tauri"]
 
 [workspace.package]
-version = "0.2.0-beta.2"
+version = "0.2.0"
 edition = "2021"
 authors = ["Olusegun William Eise"]
 license = "MIT"

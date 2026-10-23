@@ -10,12 +10,28 @@ offered it as an update.
 
 ## [Unreleased]
 
+### Changed
+
+- The player support matrix confirms YouTube Music and YouTube in Chrome on
+  macOS and Windows, including seeking and YouTube skipping within playlists.
+
+## [0.2.0] - 2026-10-23
+
+The first public release of Lyra for macOS, Windows and Linux. Includes the
+desktop features introduced in the internal betas below.
+
+### Added
+
+- Signed and notarized macOS downloads for Apple silicon and Intel Macs.
+
 ### Fixed
 
 - Release download links keep their version number after publication.
 
 ### Changed
 
+- The player support matrix now records tested compatibility with Spotify,
+  YouTube Music and YouTube on macOS and Windows, plus Apple Music on macOS.
 - The website is available at lyra.eiselabs.com, with working direct page
   links and social previews, while the glass animation runs in your browser.
 - The website's opening animation sets musical symbols in glass on a staff
@@ -171,7 +187,8 @@ The first pre-release, for internal testing ahead of 0.1.0.
 - As a pre-release, this build is not offered as an update; install each beta
   from its release page.
 
-[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.2.0-beta.2...HEAD
+[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.0
 [0.2.0-beta.2]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.0-beta.2
 [0.2.0-beta.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.0-beta.1
 [0.1.0-beta.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.1.0-beta.1

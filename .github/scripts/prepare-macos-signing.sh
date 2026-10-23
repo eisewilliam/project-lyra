@@ -26,6 +26,6 @@ elif [ "$present" -eq 0 ] && [[ "$TAG" == *-* ]]; then
     echo "::notice::Building an unsigned macOS prerelease without Apple signing or notarization."
     echo "macOS: unsigned internal build (ad-hoc signature, no notarization)." >> "$GITHUB_STEP_SUMMARY"
 else
-    echo "::error::Missing repository secrets:$missing. Unsigned macOS builds require a prerelease tag and no Apple secrets. See docs/RELEASING.md."
+    echo "::error::Missing Apple signing secrets:$missing. Unsigned macOS builds require a prerelease tag and no Apple secrets. See docs/RELEASING.md."
     exit 1
 fi
