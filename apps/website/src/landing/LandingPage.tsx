@@ -53,10 +53,12 @@ function useDemoPlayback(ref: RefObject<Element | null>, song: Song, threshold =
 
 const ease = [0.2, 0.8, 0.2, 1] as const;
 // The page's one orchestrated entrance: the hero copy rises out of the light.
+// Opacity and a whole `transform` run on the compositor, so the copy stays
+// crisp and keeps moving while the hero light sets up on the main thread.
 const heroStagger: Variants = { shown: { transition: { staggerChildren: 0.1, delayChildren: 0.2 } } };
 const heroRise: Variants = {
-  hidden: { opacity: 0, y: 28, filter: 'blur(8px)' },
-  shown: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.95, ease } },
+  hidden: { opacity: 0, transform: 'translateY(28px)' },
+  shown: { opacity: 1, transform: 'translateY(0px)', transition: { duration: 0.95, ease } },
 };
 
 function Hero({ platform }: { platform: Platform | null }) {
@@ -476,14 +478,14 @@ function Steps() {
   </section>;
 }
 
-const credits: [role: string, value: string][] = [
+const credits: [role: string, value: ReactNode][] = [
   ['Lyrics', 'LRCLIB, a community-maintained lyrics database'],
   ['Playback', `Read from the players on your computer: ${playersAndOthers}. Lyra doesn’t use any streaming service’s web API.`],
   ['Storage', 'Lyrics are cached on your computer. Your own .lrc file can replace any song’s lyrics.'],
   ['Account', 'None'],
   ['Telemetry', 'None, and no analytics'],
   ['License', 'MIT, free to use, read and change'],
-  ['Made by', 'Olusegun William Eise, as an independent project'],
+  ['Made by', <><ExternalLink className="text-link" href={siteConfig.maker.profile}>@{siteConfig.maker.handle}</ExternalLink> on GitHub, as an independent project</>],
 ];
 
 function LinerNotes() {

@@ -14,6 +14,26 @@ offered it as an update.
 
 - Release download links keep their version number after publication.
 
+### Changed
+
+- The website is available at lyra.eiselabs.com, with working direct page
+  links and social previews, while the glass animation runs in your browser.
+- The website's opening animation sets musical symbols in glass on a staff
+  that runs across the whole page. The symbols work as lenses onto lines from
+  public-domain songs drifting behind them, with a soft glow of their own.
+  The glass has crisp edges and clear faces, notes spring out of the staff,
+  rainbow edges appear briefly as a glimmer runs along the glass, and each
+  figure melts back into the staff before the next one is written.
+  On a first visit the staff's lines sweep in one after another, rippling
+  like ribbons, then pull taut before the first symbol is written, while the
+  headline rises in sharp. On a phone, tap the staff to pluck it.
+- The website credits its maker by GitHub profile.
+- The staff lines on the download page and at the end of the home page draw
+  in as they come into view, then sway gently with a glint running along them.
+- Links to the website show a preview image, title and description when
+  shared on social networks and in chat apps, and links to the downloads page
+  have their own.
+
 ## [0.2.0-beta.2] - 2026-10-20
 
 An internal pre-release with the replacement updater signing key. Includes the

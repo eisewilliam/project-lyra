@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "lyra-website",
+  "account_id": "0a0358f164a50f4668afff0a1949559d",
+  "main": "worker/index.js",
+  // Matches the runtime shipped with the pinned Wrangler version.
+  "compatibility_date": "2026-09-03",
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "lyra.eiselabs.com", "custom_domain": true }
+  ],
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    // The Worker rewrites page metadata; static files can go straight to assets.
+    "run_worker_first": [
+      "/*",
+      "!/assets/*",
+      "!/favicon.svg",
+      "!/favicon-32.png",
+      "!/apple-touch-icon.png",
+      "!/og-image.png"
+    ],
+    // The existing Worker owns page fallback. /index.html must be fetchable
+    // without redirecting /download and other page requests back to /.
+    "html_handling": "none",
+    "not_found_handling": "none"
+  },
+  "observability": {
+    "enabled": true,
+    "traces": { "enabled": true }
+  }
+}

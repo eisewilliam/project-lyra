@@ -3,7 +3,9 @@ export type Platform = (typeof platforms)[number];
 
 export const isPlatform = (value: unknown): value is Platform => platforms.some(platform => platform === value);
 
-const repository = 'https://github.com/eisewilliam/project-lyra';
+// The site credits its maker by GitHub handle rather than full name.
+const maker = 'eisewilliam';
+const repository = `https://github.com/${maker}/project-lyra`;
 
 // Turn on once the first release is published; until then the download
 // buttons lead to the downloads page instead of files that don't exist yet.
@@ -14,6 +16,7 @@ const releasesPublished = false;
 const latest = (file: string) => `${repository}/releases/latest/download/${file}`;
 
 interface SiteConfig {
+  maker: { handle: string; profile: string };
   repository: string;
   releases: string;
   downloads: Record<Platform, string | null>;
@@ -22,6 +25,7 @@ interface SiteConfig {
 }
 
 export const siteConfig: SiteConfig = {
+  maker: { handle: maker, profile: `https://github.com/${maker}` },
   repository,
   releases: repository + '/releases',
   downloads: releasesPublished
