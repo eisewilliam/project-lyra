@@ -103,8 +103,8 @@ interface Surface {
 }
 
 const surfaces: Surface[] = [
-  { id: 'window', name: 'Lyra window', text: 'The whole song: artwork, playback controls and the full lyric sheet, with the current line in focus. Click any line to jump there.', detail: 'The window gets it’s theme from the artwork of your music.' },
-  { id: 'island', name: 'Marquee', text: 'A dynamic panel you can place anywhere on your screen. It displays the current and the next line in your song’s lyrics.', detail: 'You can resize to your preference, and set it get out of the way when you hit pause.' },
+  { id: 'window', name: 'Lyra window', text: 'The whole song: artwork, playback controls and the full lyric sheet, with the current line in focus. Click any line to jump there.', detail: 'The window gets its theme from the artwork of your music.' },
+  { id: 'island', name: 'Marquee', text: 'A dynamic panel you can place anywhere on your screen. It displays the current and the next line in your song’s lyrics.', detail: 'You can resize to your preference, and set it to get out of the way when you hit pause.' },
   { id: 'overlay', name: 'Karaoke overlay', text: 'Follow the lyrics as they fill in, word by word.', detail: 'Add a background so the words stay readable over whatever’s on your screen.' },
 ];
 const sceneLabels: Record<SurfaceId, string> = {
