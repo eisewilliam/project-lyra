@@ -115,9 +115,14 @@ After the repository becomes public, verify the installer URLs and `latest.json`
 | Rust, `native/`, Cargo files, `src-tauri/`, workflows or release scripts | Rust format, Clippy and tests on Linux; on macOS and Windows too once the pull request is ready for review |
 | Desktop frontend | Frontend lint and build |
 | `apps/website/` | Website lint, tests and build |
-| Docs only | Nothing |
+| Docs only | CI gate only; no builds |
 
 macOS and Windows compile their own player adapters, so a ready pull request that touches Rust is checked on all three systems. A release pull request always is, because the version bump changes `Cargo.toml`. A merge to `main` is not checked again, unless it changes `Cargo.lock`. That run rebuilds the dependency cache that pull requests restore from. **Actions → ci → Run workflow** runs every check.
+
+The final `CI` job always runs and is the required status check for `main`.
+It passes only when change detection succeeds and every selected check passes;
+jobs skipped because their files did not change are allowed. Failed or cancelled
+checks block merging. Keep its `needs` list current when adding CI jobs.
 
 ## How the app updates
 
