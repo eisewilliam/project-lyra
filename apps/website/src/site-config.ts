@@ -7,9 +7,8 @@ export const isPlatform = (value: unknown): value is Platform => platforms.some(
 const maker = 'eisewilliam';
 const repository = `https://github.com/${maker}/project-lyra`;
 
-// Turn on once the first release is published; until then the download
-// buttons lead to the downloads page instead of files that don't exist yet.
-const releasesPublished = false;
+// The stable release and installers are publicly available without signing in.
+const releasesPublished = true;
 
 // Fixed file names from the release workflow (.github/workflows/release.yml),
 // always pointing at the newest published release.
@@ -65,12 +64,12 @@ export const platformDetails: Record<Platform, PlatformDetails> = {
   macos: {
     needs: [listWith('another player that shows up in Now Playing', 'disjunction')],
     playback: 'Lyra reads Spotify and Apple Music through AppleScript, and other apps and browsers through Now Playing. macOS asks once for permission before Lyra can see Spotify or Music.',
-    firstLaunch: 'Early builds are not signed. If macOS stops the first launch, Control-click Lyra in Applications and choose Open.',
+    firstLaunch: null,
   },
   windows: {
     needs: [listWith('another player that shows up in the media controls', 'disjunction'), 'WebView2, included with Windows 10 version 1803 and later'],
     playback: 'Lyra reads what is playing through the system media controls, so it follows Spotify, Apple Music, browsers and most other players.',
-    firstLaunch: 'Early builds are not signed. If SmartScreen appears, choose More info, then Run anyway.',
+    firstLaunch: 'Windows installers are not code-signed yet. If SmartScreen appears, choose More info, then Run anyway.',
   },
   linux: {
     needs: ['Spotify, a browser, or another player that supports MPRIS', 'A desktop session with D-Bus'],

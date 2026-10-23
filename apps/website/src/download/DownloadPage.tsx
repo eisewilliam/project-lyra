@@ -74,15 +74,12 @@ export function DownloadPage() {
   const { platform: requested } = route.useSearch();
   const highlight = requested ?? detected;
   const order = highlight ? [highlight, ...platforms.filter(id => id !== highlight)] : platforms;
-  const published = platforms.some(id => siteConfig.downloads[id]);
   return <main id="main-content" className="download-page">
     <section className="download-intro" aria-labelledby="download-title">
       <StaffLines id="download-staff" className="download-staff"
         lyrics={[[1, 'carry a little light with you', '14%'], [3, 'and still the melody stays', '52%']]} />
       <h1 id="download-title" tabIndex={-1}>Download Lyra</h1>
       <p className="lead">Free for macOS, Windows and Linux. Lyra works with {playersAndOthers}.</p>
-      {!published && <p className="release-status" role="status"><span className="status-light" aria-hidden="true" />
-        The first public release is being prepared. Downloads will appear here as soon as they are published.</p>}
       {!detected && <p className="device-note">Lyra is a desktop app. Open this page on your Mac, Windows or Linux computer to download it.</p>}
     </section>
 
