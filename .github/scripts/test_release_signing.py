@@ -22,6 +22,20 @@ APPLE_SECRETS = {
 
 
 class ReleaseSigningTests(unittest.TestCase):
+    def test_only_macos_uses_the_apple_signing_environment(self):
+        workflow = (SCRIPT.parent.parent / "workflows" / "release.yml").read_text()
+        build = workflow.split("    build:\n", 1)[1].split("    publish:\n", 1)[0]
+        self.assertTrue("environment: ${{ matrix.environment }}" in build,
+                        "Build jobs must select their matrix environment")
+        entries = re.findall(
+            r"platform: (\S+)\n\s+environment: (\S+)", build
+        )
+        self.assertEqual(len(entries), 3)
+        apple_runners = [runner for runner, environment in entries
+                         if environment == "favour-s-apple"]
+        self.assertEqual(apple_runners, ["macos-latest"])
+        self.assertTrue(all(environment for _, environment in entries))
+
     def test_release_updates_keep_the_version_tag(self):
         workflow = (SCRIPT.parent.parent / "workflows" / "release.yml").read_text()
         with tempfile.TemporaryDirectory() as directory:

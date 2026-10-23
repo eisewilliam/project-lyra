@@ -16,7 +16,9 @@ Stable download file names never change between versions, so `https://github.com
 
 ## One-time setup
 
-Everything below goes into the repository's Actions secrets: **Settings → Secrets and variables → Actions → New repository secret**. You can also use `gh secret set NAME`, which reads the value from standard input. Secrets are never printed in workflow logs.
+Apple signing and notarization credentials go in the **favour-s-apple** environment: **Settings → Environments → favour-s-apple → Environment secrets**. Only the macOS build selects this environment. Windows and Linux use the `desktop-release` environment, which needs no environment secrets.
+
+The updater key and password go in repository Actions secrets: **Settings → Secrets and variables → Actions → New repository secret**. `gh secret set NAME` reads from standard input; add `--env favour-s-apple` for an Apple credential. Secrets are never printed in workflow logs.
 
 The updater key is required for every release. The six Apple secrets in steps 1 and 2 are required for stable releases; see **Internal macOS builds without Apple credentials** below to skip them for an internal prerelease.
 
@@ -28,7 +30,7 @@ The updater key is required for every release. The six Apple secrets in steps 1 
 
 | Secret | Value |
 |---|---|
-| `APPLE_CERTIFICATE` | The `.p12` file, base64-encoded: `base64 -i DeveloperID.p12 \| gh secret set APPLE_CERTIFICATE` |
+| `APPLE_CERTIFICATE` | The `.p12` file, base64-encoded: `base64 -i DeveloperID.p12 \| gh secret set APPLE_CERTIFICATE --env favour-s-apple` |
 | `APPLE_CERTIFICATE_PASSWORD` | The export password |
 | `APPLE_SIGNING_IDENTITY` | The quoted name printed by `security find-identity -v -p codesigning`, for example `Developer ID Application: Jane Doe (AB12CD34EF)` |
 
@@ -42,7 +44,7 @@ The updater key is required for every release. The six Apple secrets in steps 1 
 |---|---|
 | `APPLE_API_KEY` | The key ID |
 | `APPLE_API_ISSUER` | The issuer ID shown above the key list |
-| `APPLE_API_PRIVATE_KEY` | The whole `.p8` file: `gh secret set APPLE_API_PRIVATE_KEY < AuthKey_<KEYID>.p8` |
+| `APPLE_API_PRIVATE_KEY` | The whole `.p8` file: `gh secret set APPLE_API_PRIVATE_KEY --env favour-s-apple < AuthKey_<KEYID>.p8` |
 
 ### 3. Updater signing key
 
@@ -87,7 +89,7 @@ Once all six Apple secrets are configured, prereleases use Developer ID signing 
    - **prepare** refuses a tag that doesn't match the version or an updater key that is still the placeholder, then creates a draft release with generated notes.
    - **build** builds and uploads all three platforms and signs their update bundles. macOS notarization, when configured, usually adds 5 to 15 minutes.
    - **publish** checks that the download files and updater signatures exist, labels unsigned macOS prereleases, then publishes the release.
-5. If any build fails, the release stays a draft and nothing reaches users. Fix the problem, then rerun the failed jobs from the workflow run. To start the release again from the beginning, delete the draft and push the tag again.
+5. If any build fails, the release stays a draft and nothing reaches users. Fix the problem, then rerun the failed jobs from the workflow run. To rebuild an existing tag with a corrected workflow, run `release` from the updated `main` branch with that tag as input. Keep published version tags unchanged.
 
 To inspect a release before anyone can download it, run the workflow from the **Actions** tab (**release → Run workflow**) with the tag and **Publish** turned off. Publish the draft from the Releases page when it looks right.
 
@@ -100,7 +102,9 @@ Two installer formats are stricter than semver about pre-release versions:
 
 ### First release only
 
-Turn on the website's download buttons by setting `releasesPublished = true` in `apps/website/src/site-config.ts`, then deploy the site. Until then the buttons open the downloads page instead of links that don't exist yet.
+Keep `releasesPublished = false` in `apps/website/src/site-config.ts` while the repository is private, even after publishing a stable release. Repository releases are then available only to collaborators.
+
+After the repository becomes public, verify the installer URLs and `latest.json` work without signing in. Set `releasesPublished = true`, remove the unsigned macOS first-launch advice, and deploy the website. Until then its buttons open the downloads page instead of unavailable files.
 
 ## How the app updates
 
@@ -113,8 +117,8 @@ The code is in `apps/desktop-tauri/src-tauri/src/updater.rs`. Its config is in `
 
 ## Troubleshooting
 
-- **"Tag does not match version"**: the tag must be `v` followed by the `Cargo.toml` version. Delete the tag (`git push --delete origin v0.2.0`), then fix the version or the tag.
-- **"Missing repository secrets"**: one of the secrets above is not set.
+- **"Tag does not match version"**: the tag must be `v` followed by the `Cargo.toml` version. Correct the version in a new commit and use a matching new tag; do not move published tags.
+- **"Missing Apple signing secrets"**: check the six secrets in `favour-s-apple` and that the macOS job selects that environment.
 - **Unsigned macOS fails at `security import`**: `APPLE_CERTIFICATE` and its password must be absent from the unsigned build's environment, not set to empty strings. Tauri attempts to import a certificate whenever those variables exist.
 - **Notarization fails**: the build log includes Apple's submission ID. Run `xcrun notarytool log <id> --key AuthKey_<KEYID>.p8 --key-id <KEYID> --issuer <ISSUER>` to see why. Unsigned nested code and missing hardened-runtime entitlements are the usual causes.
 - **"Missing release files"**: the asset names changed, for example after a `tauri-action` upgrade. Update the names in the publish job and in `apps/website/src/site-config.ts` together.

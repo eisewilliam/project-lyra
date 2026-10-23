@@ -91,20 +91,24 @@ jobs:
         name: ${{ matrix.name }}
         needs: prepare
         runs-on: ${{ matrix.platform }}
+        environment: ${{ matrix.environment }}
         strategy:
             fail-fast: false
             matrix:
                 include:
                     - name: macOS (universal)
                       platform: macos-latest
+                      environment: favour-s-apple
                       rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
                       args: --target universal-apple-darwin
                     - name: Windows x64
                       platform: windows-latest
+                      environment: desktop-release
                       rust-targets: ""
                       args: ""
                     - name: Linux x64
                       platform: ubuntu-22.04
+                      environment: desktop-release
                       rust-targets: ""
                       args: ""
 

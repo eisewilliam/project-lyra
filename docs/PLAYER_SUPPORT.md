@@ -11,15 +11,18 @@ there only once it has been verified.
 
 | Mark | Meaning |
 |---|---|
-| ✅ | Shipped and verified on that OS |
-| 🧪 | Implemented; not yet verified with that player on that OS (see notes) |
+| ✅ | Player confirmed working on that OS |
+| 🧪 | Player implemented; live verification not yet recorded on that OS |
+| ✓ | Feature supported through this transport |
 | 🚧 | Planned; phase in brackets |
-| ❓ | Depends on what the player reports; must be tested |
+| ❓ | Depends on the capabilities or data the player reports |
 | ⚠️ | Works with a limitation (see notes) |
 | ❌ | Not available through this path |
 
 Feature columns:
 
+- **Status** records player verification. Feature columns describe available
+  capabilities; they are not separate test results for every control.
 - **Track**: title, artist, album and duration are detected.
 - **Synced**: the player reports a position, so lyrics follow the song.
   Without it Lyra cannot sync lyrics yet; approximate sync is planned (🚧).
@@ -31,6 +34,13 @@ Feature columns:
 
 Browser media (YouTube Music, Apple Music web, Spotify web, …) needs the
 user's one-time consent before Lyra sends its title and artist to LRCLIB.
+
+User testing reported on 2026-10-23 confirms Spotify, YouTube Music, YouTube
+and Apple Music on macOS, and Spotify, YouTube Music and YouTube on Windows.
+These players are marked ✅ in the tables below. YouTube Music and YouTube
+were tested in Chrome on both OSes, including seeking. YouTube skipping works
+within playlists. OS and app versions were not specified; browser results
+apply to Chrome with these players.
 
 ## Media detection (all OSes)
 
@@ -86,24 +96,29 @@ site detection would need reading browser tabs, which was declined for now.
 
 ## macOS
 
-| Player | Transport | Track | Synced | Play/pause | Skip | Seek | Artwork | File path |
-|---|---|---|---|---|---|---|---|---|
-| Spotify | AppleScript | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | n/a |
-| Apple Music (Music.app: streaming and local library) | AppleScript | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 local files |
-| YouTube Music, Apple Music, Spotify web in Safari, Chrome, Arc, Edge, Firefox | MediaRemote | 🧪 | ❓ | ⚠️ | ⚠️ | ⚠️ | 🧪 | ❌ |
-| IINA, VLC, Doppler and other Now Playing apps | MediaRemote | 🧪 | ❓ | ⚠️ | ⚠️ | ⚠️ | 🧪 | ❌ |
-| Cider, th-ch YouTube Music (local APIs) | Local API | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | ❌ |
+| Player | Status | Transport | Track | Synced | Play/pause | Skip | Seek | Artwork | File path |
+|---|---|---|---|---|---|---|---|---|---|
+| Spotify | ✅ | AppleScript | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | n/a |
+| Apple Music (Music.app: streaming and local library) | ✅ | AppleScript | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ local files |
+| YouTube Music in Chrome | ✅ | MediaRemote | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ❌ |
+| YouTube in Chrome | ✅ | MediaRemote | ✓ | ✓ | ✓ | ⚠️ playlists | ✓ | ✓ | ❌ |
+| Other web players (Apple Music, Spotify web) in Safari, Chrome, Arc, Edge, Firefox | 🧪 | MediaRemote | ✓ | ❓ | ⚠️ | ⚠️ | ⚠️ | ✓ | ❌ |
+| IINA, VLC, Doppler and other Now Playing apps | 🧪 | MediaRemote | ✓ | ❓ | ⚠️ | ⚠️ | ⚠️ | ✓ | ❌ |
+| Cider, th-ch YouTube Music (local APIs) | 🚧 P4 | Local API | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | ❌ |
 
 Notes:
 
 - MediaRemote reports only the app macOS considers "now playing", and
   commands always go to that app (⚠️). When Spotify or Music.app is also
   visible through AppleScript, Lyra uses the AppleScript session.
+- Seeking works in YouTube Music and YouTube in Chrome. YouTube skipping
+  works within playlists (⚠️).
 - The MediaRemote adapter (`native/macos-sidecar/mediaremote-adapter`, run
   inside `/usr/bin/perl`) works **unsigned** on macOS 26.7.1 on Intel: verified
   2026-10-09 with Spotify as the Now Playing app (track, position, artwork,
-  controls available). Not yet tested on Apple Silicon or with a browser as the
-  source; browsers' position reporting (❓) needs that test.
+  controls available). Apple Silicon verification has not been recorded.
+  YouTube Music and YouTube were later confirmed working in user testing.
+  Other browser/player combinations depend on position reporting (❓).
 - Music.app triggers its own Automation permission prompt the first time Lyra
   reads it.
 - On a MacBook Pro with a Touch Bar, dragging along Lyra's lyrics seeks when
@@ -114,33 +129,38 @@ Notes:
 
 ## Windows
 
-| Player | Transport | Track | Synced | Play/pause | Skip | Seek | Artwork | File path |
-|---|---|---|---|---|---|---|---|---|
-| Spotify | SMTC | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | n/a |
-| Apple Music for Windows | SMTC | 🧪 | ❓ | 🧪 | 🧪 | ❓ | 🧪 | ❌ |
-| Firefox 125+ (YouTube Music and other web players) | SMTC | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | ❌ |
-| Chrome, Edge, Chromium browsers (web players) | SMTC | 🧪 | ❓ | 🧪 | 🧪 | ❓ | 🧪 | ❌ |
-| foobar2000, VLC, AIMP | SMTC | 🧪 | ❌ | 🧪 | 🧪 | ❌ | ⚠️ | ❌ |
-| foobar2000 (beefweb), VLC (web interface), mpv (IPC) | Local API | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 |
+| Player | Status | Transport | Track | Synced | Play/pause | Skip | Seek | Artwork | File path |
+|---|---|---|---|---|---|---|---|---|---|
+| Spotify | ✅ | SMTC | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | n/a |
+| YouTube Music in Chrome | ✅ | SMTC | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ❌ |
+| YouTube in Chrome | ✅ | SMTC | ✓ | ✓ | ✓ | ⚠️ playlists | ✓ | ✓ | ❌ |
+| Apple Music for Windows | 🧪 | SMTC | ✓ | ❓ | ✓ | ✓ | ❓ | ✓ | ❌ |
+| Other web players in Firefox 125+ | 🧪 | SMTC | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ❌ |
+| Other web players in Chrome, Edge, Chromium browsers | 🧪 | SMTC | ✓ | ❓ | ✓ | ✓ | ❓ | ✓ | ❌ |
+| foobar2000, VLC, AIMP | 🧪 | SMTC | ✓ | ❌ | ✓ | ✓ | ❌ | ⚠️ | ❌ |
+| foobar2000 (beefweb), VLC (web interface), mpv (IPC) | 🚧 P4 | Local API | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 |
 
 Notes:
 
 - Every SMTC session is observed; controls follow each session's SMTC control
   flags. Sessions without a timeline (EndTime 0) report no position, and seek
   is disabled for them.
-- Community data suggests Chromium browsers may not publish an SMTC timeline;
-  a run on Windows decides whether they sync (❓).
-- Compile-checked with `cargo clippy --target x86_64-pc-windows-msvc`; not yet
-  run on Windows.
+- Chrome testing confirmed seeking in YouTube Music and YouTube. Other
+  browser/player combinations still depend on the timeline they publish (❓).
+- YouTube skipping works within playlists (⚠️).
+- Spotify, YouTube Music and YouTube were confirmed working on Windows in
+  user testing reported on 2026-10-23; browser playback was tested in Chrome.
+- Adapter previously compile-checked with
+  `cargo clippy --target x86_64-pc-windows-msvc`.
 
 ## Linux
 
-| Player | Transport | Track | Synced | Play/pause | Skip | Seek | Artwork | File path |
-|---|---|---|---|---|---|---|---|---|
-| Spotify | MPRIS | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | n/a |
-| Firefox, Chromium browsers (YouTube Music and other web players) | MPRIS | 🧪 | ❓ | 🧪 | 🧪 | ❓ | 🧪 | ❌ |
-| VLC, Strawberry, Rhythmbox, Elisa and other MPRIS players | MPRIS | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 |
-| MPD, mpv (IPC) | Local API | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 |
+| Player | Status | Transport | Track | Synced | Play/pause | Skip | Seek | Artwork | File path |
+|---|---|---|---|---|---|---|---|---|---|
+| Spotify | 🧪 | MPRIS | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | n/a |
+| Firefox, Chromium browsers (YouTube Music and other web players) | 🧪 | MPRIS | ✓ | ❓ | ✓ | ✓ | ❓ | ✓ | ❌ |
+| VLC, Strawberry, Rhythmbox, Elisa and other MPRIS players | 🧪 | MPRIS | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| MPD, mpv (IPC) | 🚧 P4 | Local API | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 | 🚧 P4 |
 
 Notes:
 
@@ -167,3 +187,5 @@ Notes:
 | 2026-10-10 | Any | LRCLIB verdicts separate a song ("Divinize", ROSALÍA: lyrics found) from a non-music video ("Why Do Cats Purr?", SciShow: confirmed miss) | Live `LyricsRefresh::probe` |
 | 2026-10-10 | macOS 26.7.1 (Intel) | Running app follows Spotify (AppleScript) and the YouTube Music app (MediaRemote); Settings → Players lists both | `tauri dev`, user screenshots |
 | 2026-10-19 | macOS | Desktop release source checks: 118 core and 45 host unit tests, formatting, Clippy, frontend lint/build; native interaction and signed installers remain unverified | `cargo test --workspace`, `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `pnpm lint`, `pnpm build` |
+| 2026-10-23 | macOS | Spotify, YouTube Music, YouTube and Apple Music confirmed working; browser playback tested in Chrome, including seeking; YouTube skipping works within playlists | User-reported manual testing |
+| 2026-10-23 | Windows | Spotify, YouTube Music and YouTube confirmed working; browser playback tested in Chrome, including seeking; YouTube skipping works within playlists | User-reported manual testing |
