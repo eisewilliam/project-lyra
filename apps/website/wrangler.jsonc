@@ -2,9 +2,11 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "lyra-website",
   "main": "worker/index.js",
-  // Matches the runtime shipped with the pinned Wrangler version.
+  // Keep runtime behavior stable when updating the build toolchain.
   "compatibility_date": "2026-09-03",
   "workers_dev": true,
+  // Enables branch previews; assets and compatibility stay at the top level.
+  "previews": {},
   "routes": [
     { "pattern": "lyra.eiselabs.com", "custom_domain": true }
   ],
