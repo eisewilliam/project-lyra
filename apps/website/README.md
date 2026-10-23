@@ -59,7 +59,7 @@ The loop pauses when the hero is off screen or the tab is hidden, honours reduce
 
 The site is a client-rendered React SPA. Vite writes the HTML shell, hashed bundles and public assets to `dist/client`; React mounts into the empty `#root` element in the browser. The home route ships in the entry bundle, and TanStack Router loads the downloads route separately. The Worker serves these files and rewrites metadata for crawlers; it does not render React page content. The glass animation and demos run in the browser.
 
-`wrangler.jsonc` deploys `worker/index.js` as `lyra-website` in account `0a0358f164a50f4668afff0a1949559d`, serving **https://lyra.eiselabs.com** with `dist/client` bound to `ASSETS`. Page requests run through the Worker so canonical links and social previews are rewritten, while known static asset paths are served directly. HTML asset redirects and automatic SPA fallback are disabled because the Worker handles fallback itself. Missing files stay 404s. Workers logs and traces are enabled. The compatibility date matches the runtime shipped with the pinned Wrangler version; advance it with a tested toolchain update.
+`wrangler.jsonc` deploys `worker/index.js` as `lyra-website`, serving **https://lyra.eiselabs.com** with `dist/client` bound to `ASSETS`. The account ID is supplied through `CLOUDFLARE_ACCOUNT_ID` rather than committed to the repository. Page requests run through the Worker so canonical links and social previews are rewritten, while known static asset paths are served directly. HTML asset redirects and automatic SPA fallback are disabled because the Worker handles fallback itself. Missing files stay 404s. Workers logs and traces are enabled. The compatibility date matches the runtime shipped with the pinned Wrangler version; advance it with a tested toolchain update.
 
 From this directory:
 
@@ -67,13 +67,16 @@ From this directory:
 npm ci
 npx wrangler login
 npx wrangler whoami
+export CLOUDFLARE_ACCOUNT_ID="<your-account-id>"
 npm run deploy:check    # build, type check, and package without uploading
 npm run preview:worker # build and run the real asset Worker locally on :8787
 # In another terminal:
 npm run verify:deployment
 ```
 
-`npm run deploy` builds and publishes the Worker and its assets to the configured account and custom domain. Cloudflare manages the domain's DNS record and TLS certificate. Check the live deployment with `npm run verify:deployment -- https://lyra.eiselabs.com`. Credentials belong in Wrangler's local login or `CLOUDFLARE_API_TOKEN`, never in the repository.
+`npm run deploy` builds and publishes the Worker and its assets to the account selected by `CLOUDFLARE_ACCOUNT_ID` and the configured custom domain. Find the account ID in the Cloudflare dashboard or `npx wrangler whoami`; it is an identifier, while `CLOUDFLARE_API_TOKEN` is a credential. Keep both values outside the repository. Cloudflare manages the domain's DNS record and TLS certificate. Check the live deployment with `npm run verify:deployment -- https://lyra.eiselabs.com`. Credentials belong in Wrangler's local login or `CLOUDFLARE_API_TOKEN`, never in the repository.
+
+In CI, set `CLOUDFLARE_ACCOUNT_ID` as an environment variable and store `CLOUDFLARE_API_TOKEN` as a secret in the CI provider. See [Wrangler's supported environment variables](https://developers.cloudflare.com/workers/wrangler/system-environment-variables/#supported-environment-variables).
 
 For Cloudflare's Git-connected Workers Builds, use root directory `apps/website`, build command `npm run build`, deploy command `npx wrangler deploy`, and Node.js 24. Connect the intended production branch in Cloudflare; committing this configuration alone does not enable automatic deployments. Do not also enable an independent deployment workflow for the same branch.
 
