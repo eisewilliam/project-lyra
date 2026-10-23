@@ -79,7 +79,7 @@ For Cloudflare's Git-connected Workers Builds, use root directory `apps/website`
 
 ## Downloads and source
 
-`src/site-config.ts` centralises the repository (`https://github.com/EiseWilliam/project-lyra`, public later), the releases page and per-platform binary URLs. Binary URLs stay `null` until verified public files exist, so Download Lyra opens the downloads page with an honest pending state. Platform requirements and first-launch notes come from the repository README and platform adapters; update `signedBuilds` when releases are signed.
+`src/site-config.ts` centralises the public repository (`https://github.com/eisewilliam/project-lyra`), the releases page and per-platform binary URLs. The homepage and platform download buttons use GitHub's stable `releases/latest/download/` URLs, so future stable releases keep the same links. The public 0.2.0 installers and `latest.json` were verified without signing in before enabling `releasesPublished`. macOS builds are signed and notarized; Windows installers still carry first-launch SmartScreen advice. Platform requirements and first-launch notes come from the repository README and platform adapters; update `siteConfig.signed` when signing changes.
 
 Lyra is not Spotify-only. `players.named` in `src/site-config.ts` lists the players the site names (Spotify, Apple Music, YouTube Music); the players section, closing note, steps, liner notes, FAQ, platform requirements and downloads page read from it. Update the static meta description in `index.html` alongside it.
 

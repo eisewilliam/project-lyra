@@ -4,11 +4,32 @@ use crate::{
     domain::{NotFoundReason, TrackRef},
     runtime::LyraRuntime,
 };
-use std::{collections::HashSet, sync::Mutex};
+use std::{
+    collections::HashSet,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex,
+    },
+    time::Duration,
+};
+
+/// Waits between automatic lookups after the playing track's lookup fails
+/// for a transient reason. The error shows meanwhile; lyrics replace it as
+/// soon as one succeeds.
+const RETRY_DELAYS: [Duration; 4] = [
+    Duration::from_secs(5),
+    Duration::from_secs(15),
+    Duration::from_secs(45),
+    Duration::from_secs(120),
+];
 
 pub struct LyricsRefresh<S = LrclibClient> {
     source: S,
     in_flight: Mutex<HashSet<String>>,
+    /// Bumped by every lookup of the playing track; an automatic retry that
+    /// finds it changed hands over to the newer lookup.
+    generation: AtomicU64,
+    retry_delays: Vec<Duration>,
 }
 
 impl Default for LyricsRefresh {
@@ -22,6 +43,8 @@ impl<S: LyricSource> LyricsRefresh<S> {
         Self {
             source,
             in_flight: Mutex::new(HashSet::new()),
+            generation: AtomicU64::new(0),
+            retry_delays: RETRY_DELAYS.to_vec(),
         }
     }
 
@@ -51,16 +74,55 @@ impl<S: LyricSource> LyricsRefresh<S> {
             }
             track
         };
+        let mut delays = self.retry_delays.iter();
+        let mut forget = force;
+        loop {
+            let Some(generation) = self.lookup(runtime, &track, &mut forget).await? else {
+                return Ok(());
+            };
+            let Some(delay) = delays.next() else {
+                return Ok(());
+            };
+            tokio::time::sleep(*delay).await;
+            if self.generation.load(Ordering::SeqCst) != generation
+                || !Self::still_failing(runtime, &track.uri)?
+            {
+                return Ok(());
+            }
+        }
+    }
+
+    /// One lookup of the playing track. Returns its generation when it failed
+    /// transiently and may be retried. The claim is released on return, so a
+    /// manual retry can run while an automatic one waits, and takes it over.
+    async fn lookup(
+        &self,
+        runtime: &Mutex<LyraRuntime>,
+        track: &TrackRef,
+        forget: &mut bool,
+    ) -> Result<Option<u64>, String> {
         let Some(_claim) = FetchClaim::acquire(&self.in_flight, &track.uri)? else {
-            return Ok(());
+            return Ok(None);
         };
-        if force {
+        if std::mem::take(forget) {
             runtime
                 .lock()
                 .map_err(|e| e.to_string())?
                 .forget_track(&track.uri);
         }
-        self.fetch_and_store(runtime, &track).await
+        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let outcome = self.fetch_and_store(runtime, track).await?;
+        Ok((outcome == Outcome::Failed).then_some(generation))
+    }
+
+    /// The track is still playing, may still be looked up, and its last
+    /// lookup failed transiently.
+    fn still_failing(runtime: &Mutex<LyraRuntime>, uri: &str) -> Result<bool, String> {
+        let rt = runtime.lock().map_err(|e| e.to_string())?;
+        Ok(rt
+            .current_track()
+            .is_some_and(|track| track.uri == uri && rt.lookup_blocked(&track).is_none())
+            && rt.has_transient_error(uri))
     }
 
     /// Look up a track that is not being followed, to settle whether it is
@@ -84,7 +146,7 @@ impl<S: LyricSource> LyricsRefresh<S> {
         let Some(_claim) = FetchClaim::acquire(&self.in_flight, &track.uri)? else {
             return Ok(());
         };
-        self.fetch_and_store(runtime, track).await
+        self.fetch_and_store(runtime, track).await.map(drop)
     }
 
     /// Fetch without holding the runtime lock, then record the result.
@@ -92,26 +154,40 @@ impl<S: LyricSource> LyricsRefresh<S> {
         &self,
         runtime: &Mutex<LyraRuntime>,
         track: &TrackRef,
-    ) -> Result<(), String> {
+    ) -> Result<Outcome, String> {
         let result = self.source.fetch(track).await;
         let mut rt = runtime.lock().map_err(|e| e.to_string())?;
-        match result {
-            Ok(Some(doc)) => rt.store_lyrics(doc),
-            Ok(None) => rt.store_negative(&track.uri),
+        Ok(match result {
+            Ok(Some(doc)) => {
+                rt.store_lyrics(doc);
+                Outcome::Settled
+            }
+            Ok(None) => {
+                rt.store_negative(&track.uri);
+                Outcome::Settled
+            }
             Err(error) => {
+                // Rate limits and overload get their own message: the server
+                // answered, so the user's connection is fine.
                 let reason = if error
                     .downcast_ref::<super::lrclib::LrclibHttpError>()
-                    .is_some_and(|error| error.is_rate_limit())
+                    .is_some_and(|error| error.is_busy())
                 {
                     NotFoundReason::RateLimit
                 } else {
                     NotFoundReason::NetworkError
                 };
                 rt.store_transient_error(&track.uri, reason);
+                Outcome::Failed
             }
-        }
-        Ok(())
+        })
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum Outcome {
+    Settled,
+    Failed,
 }
 
 // Hold the claim through result storage; release it on completion or cancellation.
@@ -186,14 +262,46 @@ mod tests {
         Mutex::new(rt)
     }
 
+    /// Fails its first `failures` lookups, then finds synced lyrics.
+    struct Flaky {
+        calls: AtomicUsize,
+        failures: usize,
+    }
+    impl LyricSource for Flaky {
+        fn name(&self) -> &str {
+            "flaky"
+        }
+        async fn fetch(&self, track: &TrackRef) -> anyhow::Result<Option<LyricDocument>> {
+            if self.calls.fetch_add(1, Ordering::SeqCst) < self.failures {
+                anyhow::bail!("offline")
+            }
+            Ok(Some(crate::lyrics::parser::parse_lrc(
+                &track.uri,
+                "[00:01.00]Found",
+                crate::domain::LyricSourceKind::Lrclib,
+            )?))
+        }
+    }
+
+    fn flaky(failures: usize, delay_ms: u64) -> LyricsRefresh<Flaky> {
+        let mut refresh = LyricsRefresh::new(Flaky {
+            calls: AtomicUsize::new(0),
+            failures,
+        });
+        refresh.retry_delays = vec![Duration::from_millis(delay_ms); 3];
+        refresh
+    }
+
     #[tokio::test]
     async fn transient_failure_is_not_persisted_as_a_miss() {
         let rt = runtime("transient");
-        let refresh = LyricsRefresh::new(Source {
+        let mut refresh = LyricsRefresh::new(Source {
             calls: AtomicUsize::new(0),
             fail: true,
         });
+        refresh.retry_delays = vec![Duration::from_millis(1); 2];
         refresh.refresh(&rt).await.unwrap();
+        assert_eq!(refresh.source.calls.load(Ordering::SeqCst), 3);
         let mut rt = rt.lock().unwrap();
         assert!(!rt.is_negative("spotify:track:test"));
         assert!(matches!(
@@ -234,7 +342,9 @@ mod tests {
             }
         }
         let rt = runtime("rate-limit");
-        LyricsRefresh::new(Limited).refresh(&rt).await.unwrap();
+        let mut refresh = LyricsRefresh::new(Limited);
+        refresh.retry_delays.clear();
+        refresh.refresh(&rt).await.unwrap();
         let mut rt = rt.lock().unwrap();
         assert!(!rt.is_negative("spotify:track:test"));
         assert!(matches!(
@@ -243,6 +353,51 @@ mod tests {
                 reason: NotFoundReason::RateLimit
             }
         ));
+    }
+
+    #[tokio::test]
+    async fn playing_track_is_retried_until_lyrics_arrive() {
+        let rt = runtime("auto-retry");
+        let refresh = flaky(2, 1);
+        refresh.refresh(&rt).await.unwrap();
+        assert_eq!(refresh.source.calls.load(Ordering::SeqCst), 3);
+        assert!(matches!(
+            rt.lock().unwrap().tick().lyrics_status,
+            LyricsStatus::Ready
+        ));
+    }
+
+    #[tokio::test]
+    async fn retries_stop_when_the_track_changes() {
+        let rt = runtime("retry-skip");
+        let refresh = flaky(usize::MAX, 40);
+        let skip = async {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            let mut guard = rt.lock().unwrap();
+            let mut snapshot = guard.last_playback_snapshot.clone().unwrap();
+            snapshot.track = Some(TrackRef::fixture("spotify:track:next"));
+            guard.set_playback_snapshot(snapshot);
+        };
+        let (result, ()) = tokio::join!(refresh.refresh(&rt), skip);
+        result.unwrap();
+        assert_eq!(refresh.source.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn manual_retry_takes_over_a_waiting_automatic_retry() {
+        let rt = runtime("retry-manual");
+        let mut refresh = flaky(usize::MAX, 0);
+        refresh.retry_delays = vec![Duration::from_millis(100)];
+        let manual = async {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            refresh.force_refresh(&rt).await
+        };
+        let (automatic, manual) = tokio::join!(refresh.refresh(&rt), manual);
+        automatic.unwrap();
+        manual.unwrap();
+        // First lookup, the manual one, and the manual one's single retry;
+        // the superseded automatic retry never runs.
+        assert_eq!(refresh.source.calls.load(Ordering::SeqCst), 3);
     }
 
     #[tokio::test]

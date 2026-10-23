@@ -142,7 +142,7 @@ export function LyricsPlaceholder({
 
         {onRetry ? (
           <button type="button" className="lyrics-placeholder-retry" onClick={onRetry}>
-            Retry
+            {state === 'empty' ? 'Search again' : 'Retry'}
           </button>
         ) : null}
       </output>

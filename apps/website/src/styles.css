@@ -618,12 +618,6 @@ h3 { font-size: var(--text-h3); font-weight: 500; line-height: 1.3; letter-spaci
   position: absolute; z-index: -1; top: -64px; left: 50%; width: 100vw; height: 200px; translate: -50% 0;
   -webkit-mask-image: linear-gradient(90deg, transparent 42%, #000 68%, #000 92%, transparent); mask-image: linear-gradient(90deg, transparent 42%, #000 68%, #000 92%, transparent);
 }
-.release-status {
-  margin-top: 30px; display: inline-flex; align-items: center; gap: 12px; padding: 11px 18px 11px 14px;
-  border-radius: 999px; border: 1px solid var(--rule-strong); background: rgba(0, 0, 0, 0.55);
-  font-size: 14.5px; line-height: 1.45; color: var(--muted);
-}
-.status-light { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 4px rgba(179, 218, 209, 0.14), 0 0 14px rgba(179, 218, 209, 0.8); }
 .device-note { margin-top: 16px; font-size: 15px; color: var(--paper); max-width: 34em; }
 .platform-list { width: var(--page); margin: 64px auto 0; border-top: 1px solid var(--rule); }
 .platform-row {
@@ -705,8 +699,6 @@ h3 { font-size: var(--text-h3); font-weight: 500; line-height: 1.3; letter-spaci
   .download-page { padding-top: 128px; }
   .download-staff { display: none; }
   .platform-facts > div { grid-template-columns: 1fr; gap: 2px; }
-  .release-status { border-radius: 16px; align-items: flex-start; }
-  .status-light { margin-top: 6px; }
 }
 
 /* Phones and portrait tablets: the light sits above, the copy near the thumb. */

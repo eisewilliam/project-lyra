@@ -4,11 +4,13 @@ use crate::domain::{LyricDocument, LyricSourceKind};
 use crate::lyrics::parser;
 use anyhow::Result;
 
-/// Negative cache entries expire after this many seconds. A track marked
-/// `.nomatch` will be re-fetched once the sentinel file is older than this —
-/// covers the case where LRCLib gains lyrics for a track after a first miss.
-const NEGATIVE_TTL_SECS: u64 = 14 * 24 * 60 * 60;
-const NEGATIVE_CACHE_VERSION: &str = "v3";
+const DAY_SECS: u64 = 24 * 60 * 60;
+/// How long a `.nomatch` sentinel is trusted, by how many lookups in a row
+/// have missed. LRCLIB gains lyrics daily, so a new release that misses today
+/// is checked again tomorrow; a track that keeps missing waits longer.
+const NEGATIVE_TTL_SECS: [u64; 4] = [DAY_SECS, 3 * DAY_SECS, 7 * DAY_SECS, 14 * DAY_SECS];
+/// Bumped when lookups improve, so earlier misses are looked up again.
+const NEGATIVE_CACHE_VERSION: &str = "v4";
 
 #[derive(Clone)]
 pub struct LyricCache {
@@ -111,47 +113,52 @@ impl LyricCache {
     }
 
     /// Sentinel file marking a known-missing track so we skip LRCLIB retries.
+    /// Records how many lookups in a row have missed.
     pub fn mark_negative(&self, track_key: &str) -> Result<()> {
         std::fs::create_dir_all(&self.cache_dir)?;
-        let path = self
-            .cache_dir
-            .join(format!("{}.nomatch", Self::stem(track_key)));
-        std::fs::write(path, NEGATIVE_CACHE_VERSION)?;
+        let path = self.negative_path(track_key);
+        let misses = Self::negative_misses(&path).unwrap_or(0).saturating_add(1);
+        std::fs::write(path, format!("{NEGATIVE_CACHE_VERSION} {misses}"))?;
         Ok(())
     }
 
+    /// True while the track's last miss is recent enough to trust. An expired
+    /// sentinel stays on disk so a repeat miss is trusted for longer.
     pub fn is_negative(&self, track_key: &str) -> bool {
-        let path = self
-            .cache_dir
-            .join(format!("{}.nomatch", Self::stem(track_key)));
-        let Ok(meta) = std::fs::metadata(&path) else {
+        let path = self.negative_path(track_key);
+        let Some(misses) = Self::negative_misses(&path) else {
             return false;
         };
-        match std::fs::read_to_string(&path) {
-            Ok(version) if version.trim() == NEGATIVE_CACHE_VERSION => {}
-            _ => {
-                let _ = std::fs::remove_file(&path);
-                return false;
-            }
+        let ttl = NEGATIVE_TTL_SECS[(misses as usize - 1).min(NEGATIVE_TTL_SECS.len() - 1)];
+        std::fs::metadata(&path)
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age.as_secs() < ttl)
+    }
+
+    /// Misses recorded by the sentinel at `path`, at least 1. Sentinels from
+    /// another version are removed.
+    fn negative_misses(path: &Path) -> Option<u32> {
+        let raw = std::fs::read_to_string(path).ok()?;
+        let mut fields = raw.split_whitespace();
+        if fields.next() != Some(NEGATIVE_CACHE_VERSION) {
+            let _ = std::fs::remove_file(path);
+            return None;
         }
-        let Ok(modified) = meta.modified() else {
-            return false;
-        };
-        match modified.elapsed() {
-            Ok(age) if age.as_secs() < NEGATIVE_TTL_SECS => true,
-            _ => {
-                let _ = std::fs::remove_file(&path);
-                false
-            }
-        }
+        let misses = fields.next().and_then(|n| n.parse().ok()).unwrap_or(1);
+        Some(u32::max(misses, 1))
+    }
+
+    fn negative_path(&self, track_key: &str) -> PathBuf {
+        self.cache_dir
+            .join(format!("{}.nomatch", Self::stem(track_key)))
     }
 
     /// Remove the negative sentinel for a track so the next refresh attempt
     /// re-queries the upstream provider. Used by the manual-retry flow.
     pub fn clear_negative(&self, track_key: &str) -> Result<()> {
-        let path = self
-            .cache_dir
-            .join(format!("{}.nomatch", Self::stem(track_key)));
+        let path = self.negative_path(track_key);
         if path.exists() {
             std::fs::remove_file(path)?;
         }
@@ -224,24 +231,40 @@ mod tests {
         assert!(cache.is_negative("spotify:track:abc"));
     }
 
-    #[test]
-    fn expired_negative_marker_is_purged() {
-        let (cache, t) = tmp_cache();
-        let key = "spotify:track:expired";
-        cache.mark_negative(key).unwrap();
-        let path = t
-            .as_path()
-            .join("lyrics_cache")
-            .join(format!("{}.nomatch", LyricCache::stem(key)));
-        let aged = SystemTime::now() - Duration::from_secs(NEGATIVE_TTL_SECS + 60);
+    fn age_negative(cache: &LyricCache, key: &str, days: u64) {
+        let aged = SystemTime::now() - Duration::from_secs(days * DAY_SECS + 60);
         std::fs::File::options()
             .write(true)
-            .open(&path)
+            .open(cache.negative_path(key))
             .unwrap()
             .set_modified(aged)
             .unwrap();
+    }
+
+    #[test]
+    fn repeated_misses_are_trusted_for_longer() {
+        let (cache, _t) = tmp_cache();
+        let key = "spotify:track:expired";
+        cache.mark_negative(key).unwrap();
+        age_negative(&cache, key, 1);
+        assert!(
+            !cache.is_negative(key),
+            "a first miss is checked again after a day"
+        );
+
+        cache.mark_negative(key).unwrap();
+        age_negative(&cache, key, 1);
+        assert!(cache.is_negative(key), "a second miss waits three days");
+        age_negative(&cache, key, 3);
         assert!(!cache.is_negative(key));
-        assert!(!path.exists(), "expired sentinel must be removed");
+
+        for _ in 0..10 {
+            cache.mark_negative(key).unwrap();
+        }
+        age_negative(&cache, key, 13);
+        assert!(cache.is_negative(key), "the wait tops out at two weeks");
+        age_negative(&cache, key, 14);
+        assert!(!cache.is_negative(key));
     }
 
     #[test]
@@ -255,16 +278,14 @@ mod tests {
 
     #[test]
     fn legacy_negative_marker_is_purged() {
-        let (cache, t) = tmp_cache();
+        let (cache, _t) = tmp_cache();
         let key = "spotify:track:legacy";
-        let path = t
-            .as_path()
-            .join("lyrics_cache")
-            .join(format!("{}.nomatch", LyricCache::stem(key)));
-        std::fs::write(&path, "").unwrap();
-
-        assert!(!cache.is_negative(key));
-        assert!(!path.exists(), "legacy sentinel must be removed");
+        let path = cache.negative_path(key);
+        for legacy in ["", "v3"] {
+            std::fs::write(&path, legacy).unwrap();
+            assert!(!cache.is_negative(key));
+            assert!(!path.exists(), "legacy sentinel must be removed");
+        }
     }
 }
 

@@ -10,8 +10,30 @@ offered it as an update.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-23
+
+Lyrics load more reliably, and songs wrongly remembered as having no lyrics
+find them.
+
+### Fixed
+
+- Lyrics load reliably when the lyric server is briefly overloaded. Lyra
+  retries quietly instead of showing "Couldn't reach lyric server", and if a
+  lookup still fails it keeps trying in the background, so lyrics appear on
+  their own once the server recovers.
+- When the lyric server is busy, Lyra now says so instead of suggesting your
+  connection is down.
+- Songs credited to several artists, such as "Ayra Starr, Danny Ocean", now
+  find their lyrics.
+- Songs that had no lyrics are checked again sooner: after a day at first,
+  waiting longer only if they keep coming up empty. Songs remembered as having
+  no lyrics are all checked again once after updating.
+- The "no lyrics" message has a Search again button.
+
 ### Changed
 
+- The website now offers public downloads for macOS, Windows and Linux, with
+  direct download buttons in place of the coming-soon notice.
 - The player support matrix confirms YouTube Music and YouTube in Chrome on
   macOS and Windows, including seeking and YouTube skipping within playlists.
 
@@ -187,7 +209,8 @@ The first pre-release, for internal testing ahead of 0.1.0.
 - As a pre-release, this build is not offered as an update; install each beta
   from its release page.
 
-[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.1
 [0.2.0]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.0
 [0.2.0-beta.2]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.0-beta.2
 [0.2.0-beta.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.0-beta.1

@@ -15,9 +15,9 @@ import { useMainProgressAndWordAnimation } from './hooks/use-main-progress-and-w
 import { useTrackSkip, type SkipDirection } from './hooks/use-track-skip';
 import { useLineMenu } from './hooks/use-line-menu';
 import {
+  canSearchLyricsAgain,
   getNotFoundReason,
   isLyricsNotFound,
-  isRetryableNotFound,
   resolveLyricsSurfaceState,
 } from '@/utils/lyrics-state';
 import { applyHostOsDataset, detectHostOs } from '@/utils/os';
@@ -241,7 +241,7 @@ function App() {
   const notFoundReason = isLyricsNotFound(lyricsStatus)
     ? getNotFoundReason(lyricsStatus)
     : null;
-  const canRetry = isRetryableNotFound(lyricsStatus);
+  const canRetry = hasTrack && canSearchLyricsAgain(lyricsStatus);
 
   const handleArtworkError = useCallback(() => {
     setArtworkError(true);
