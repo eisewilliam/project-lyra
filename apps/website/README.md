@@ -82,6 +82,8 @@ For Cloudflare's Git-connected Workers Builds, use root directory `apps/website`
 
 Cloudflare keeps **Production** and **Previews Base** build settings separately. In **Previews Base**, also set root directory `apps/website` and build command `npm run build`, with preview command `npx wrangler preview`. The pinned Wrangler version supports Worker Previews, and the empty `previews` block in `wrangler.jsonc` enables branch previews with the same static assets and compatibility settings. See [Cloudflare's preview setup](https://developers.cloudflare.com/workers/previews/get-started/).
 
+Existing branch previews keep their own saved build settings. Select each existing branch from the environment switcher and update **Settings > Builds** to the same root directory, build command and preview command; changing **Previews Base** alone does not update them.
+
 ## Downloads and source
 
 `src/site-config.ts` centralises the public repository (`https://github.com/eisewilliam/project-lyra`), the releases page and per-platform binary URLs. The homepage and platform download buttons use GitHub's stable `releases/latest/download/` URLs, so future stable releases keep the same links. The public 0.2.0 installers and `latest.json` were verified without signing in before enabling `releasesPublished`. macOS builds are signed and notarized; Windows installers still carry first-launch SmartScreen advice. Platform requirements and first-launch notes come from the repository README and platform adapters; update `siteConfig.signed` when signing changes.
