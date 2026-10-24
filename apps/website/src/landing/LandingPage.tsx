@@ -82,7 +82,7 @@ function Hero({ platform }: { platform: Platform | null }) {
         <motion.span className="hero-line" variants={heroRise}>See your</motion.span>
         <motion.span className="hero-line" variants={heroRise}>Music.</motion.span>
       </h1>
-      <motion.p className="hero-lead" variants={heroRise}>Lyra brings live, synced lyrics to your screen, so you can follow along without switching apps.</motion.p>
+      <motion.p className="hero-lead" variants={heroRise}>Lyra brings live, synced lyrics to wherever you go on your computer, so you can follow along without switching apps.</motion.p>
       <motion.div className="hero-actions" variants={heroRise}>
         <DownloadButton platform={platform} />
         <Link className="text-link" to="/download">Other downloads</Link>
@@ -105,8 +105,8 @@ interface Surface {
 }
 
 const surfaces: Surface[] = [
-  { id: 'window', name: 'Lyra window', text: 'The whole song: artwork, playback controls and the full lyric sheet, with the current line in focus. Click any line to jump there.', detail: 'The window takes its color from the artwork of whatever is playing.' },
-  { id: 'island', name: 'Marquee', text: 'A dynamic panel you can place anywhere on your screen. It displays the current and the next line in your song’s lyrics.', detail: 'It gets out of your way when you pause, and you can resize it to fit your preference.' },
+  { id: 'window', name: 'Lyra window', text: 'The whole song: artwork, playback controls and the full lyric sheet, with the current line in focus. Click any line to jump there.', detail: 'The window gets its theme from the artwork of your music.' },
+  { id: 'island', name: 'Marquee', text: 'A dynamic panel you can place anywhere on your screen. It displays the current and the next line in your song’s lyrics.', detail: 'You can resize to your preference, and set it to get out of the way when you hit pause.' },
   { id: 'overlay', name: 'Karaoke overlay', text: 'Follow the lyrics as they fill in, word by word.', detail: 'Add a background so the words stay readable over whatever’s on your screen.' },
 ];
 const sceneLabels: Record<SurfaceId, string> = {
@@ -308,7 +308,7 @@ function Surfaces() {
     <div className="surfaces-wash" aria-hidden="true" />
     <div className="section-head">
       <h2 id="surfaces-title">Choose from 3 options.</h2>
-      <p className="lead">Lyra finds synced lyrics for the music you’re playing, you decide how it is displayed.</p>
+      <p className="lead">Lyra finds synced lyrics for your music. You decide how it is displayed.</p>
     </div>
     {pinned
       ? <PinnedStory song={song} demo={demo} onSongChange={setSongId} />
@@ -539,7 +539,7 @@ function Closing({ platform }: { platform: Platform | null }) {
       <StaffLines id="closing-staff" className="closing-staff"
         lyrics={[[1, 'we keep a light between us', '18%'], [3, 'keep the song in sight', '60%']]} />
     </div>
-    <h2 id="closing-title">Make room<br />for the words.</h2>
+    <h2 id="closing-title">Make room<br />for your Music.</h2>
     <p className="lead">Free and open source, for macOS, Windows and Linux.</p>
     <div className="closing-actions">
       <DownloadButton platform={platform} />
