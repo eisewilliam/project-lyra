@@ -3,7 +3,8 @@ use crate::lyrics::{parser, LyricSource};
 use anyhow::Result;
 use reqwest::{header, StatusCode};
 use serde::Deserialize;
-use std::time::Duration;
+use std::sync::{Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 
 const BASE_URL: &str = "https://lrclib.net/api";
 const USER_AGENT: &str = concat!(
@@ -30,11 +31,17 @@ const REQUEST_ATTEMPTS: u32 = 3;
 const OVERLOADED_ATTEMPTS: u32 = 5;
 /// First retry delay; each further retry waits three times as long.
 const RETRY_BACKOFF: Duration = Duration::from_millis(500);
-/// Longest `Retry-After` honoured inside one lookup. A longer wait is left to
-/// the refresh coordinator's slower retries.
+/// Longest wait taken inside one lookup. While LRCLIB has asked for a longer
+/// pause, nothing is sent and lookups fail at once; the refresh
+/// coordinator's slower retries take over.
 const MAX_RETRY_WAIT: Duration = Duration::from_secs(5);
 /// Shortest wait taken for a `Retry-After`; `0` would retry at once.
 const MIN_RETRY_AFTER: Duration = Duration::from_secs(1);
+/// Longest pause taken for one `Retry-After`, whatever it asks.
+const MAX_PAUSE: Duration = Duration::from_secs(60 * 60);
+/// How long after a busy answer LRCLIB still counts as busy, so background
+/// lookups hold off.
+const BUSY_WINDOW: Duration = Duration::from_secs(60);
 
 #[derive(Debug)]
 pub struct LrclibHttpError {
@@ -61,6 +68,17 @@ pub struct LrclibClient {
     http: reqwest::Client,
     base_url: String,
     retry_backoff: Duration,
+    /// LRCLIB's latest busy answer. Every lookup shares it, so a wait LRCLIB
+    /// asks for holds for all of them, not only the request that got it.
+    busy: Mutex<Option<BusyAnswer>>,
+}
+
+#[derive(Clone, Copy)]
+struct BusyAnswer {
+    at: Instant,
+    status: u16,
+    /// Nothing is sent to LRCLIB before this.
+    until: Instant,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -102,6 +120,7 @@ impl LrclibClient {
             http,
             base_url: BASE_URL.to_owned(),
             retry_backoff: RETRY_BACKOFF,
+            busy: Mutex::new(None),
         }
     }
 
@@ -111,12 +130,13 @@ impl LrclibClient {
     async fn request(&self, url: &str) -> Result<(StatusCode, Vec<u8>)> {
         let mut attempt = 1;
         loop {
+            self.wait_turn().await?;
             let mut attempts = REQUEST_ATTEMPTS;
-            let mut retry_after = None;
+            let mut busy = false;
             let failure: anyhow::Error = match self.http.get(url).send().await {
                 Ok(resp) if is_busy_status(resp.status().as_u16()) => {
                     let status = resp.status().as_u16();
-                    retry_after = parse_retry_after(resp.headers());
+                    let retry_after = parse_retry_after(resp.headers());
                     if status == StatusCode::SERVICE_UNAVAILABLE.as_u16() {
                         attempts = OVERLOADED_ATTEMPTS;
                     }
@@ -124,6 +144,8 @@ impl LrclibClient {
                     log::warn!(
                         "LRCLIB busy: HTTP {status}, Retry-After {retry_after:?}, try {attempt} of {attempts}"
                     );
+                    busy = true;
+                    self.note_busy(status, pause(self.retry_backoff, attempt, retry_after));
                     LrclibHttpError { status }.into()
                 }
                 Ok(resp) => {
@@ -136,12 +158,55 @@ impl LrclibClient {
                 Err(error) if error.is_builder() || error.is_redirect() => return Err(error.into()),
                 Err(error) => error.into(),
             };
-            if attempt >= attempts || retry_after.is_some_and(|after| after > MAX_RETRY_WAIT) {
+            if attempt >= attempts {
                 return Err(failure);
             }
-            tokio::time::sleep(retry_wait(self.retry_backoff, attempt, retry_after)).await;
+            // After a busy answer, `wait_turn` takes the pause it set.
+            if !busy {
+                tokio::time::sleep(spread(backoff(self.retry_backoff, attempt))).await;
+            }
             attempt += 1;
         }
+    }
+
+    /// Wait out the pause LRCLIB last asked for, plus up to 30% so lookups
+    /// sharing it come back spread out. A pause longer than `MAX_RETRY_WAIT`
+    /// is not waited: nothing is sent, and the lookup fails with the status
+    /// that asked for it.
+    async fn wait_turn(&self) -> Result<()> {
+        let busy = *self.lock_busy();
+        let Some(busy) = busy else {
+            return Ok(());
+        };
+        let wait = busy.until.saturating_duration_since(Instant::now());
+        if wait > MAX_RETRY_WAIT {
+            return Err(LrclibHttpError {
+                status: busy.status,
+            }
+            .into());
+        }
+        if !wait.is_zero() {
+            tokio::time::sleep(spread(wait)).await;
+        }
+        Ok(())
+    }
+
+    /// Record a busy answer: nothing is sent for `pause` from now, or until
+    /// an earlier answer's pause ends if that is later.
+    fn note_busy(&self, status: u16, pause: Duration) {
+        let now = Instant::now();
+        let until = now + pause.min(MAX_PAUSE);
+        let mut busy = self.lock_busy();
+        let until = busy.map_or(until, |earlier| earlier.until.max(until));
+        *busy = Some(BusyAnswer {
+            at: now,
+            status,
+            until,
+        });
+    }
+
+    fn lock_busy(&self) -> MutexGuard<'_, Option<BusyAnswer>> {
+        self.busy.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// `/api/get` — exact-signature lookup. Server enforces ±2s duration
@@ -213,20 +278,24 @@ fn parse_retry_after(headers: &header::HeaderMap) -> Option<Duration> {
     Some(Duration::from_secs(seconds))
 }
 
-/// Wait before the try after `attempt` (counted from 1). A `Retry-After` is
-/// honoured, never under a second, plus up to 30%, so clients that were told
-/// the same wait come back spread out. Without one, `backoff` triples per try.
-fn retry_wait(backoff: Duration, attempt: u32, retry_after: Option<Duration>) -> Duration {
-    match retry_after {
-        Some(after) => {
-            let after = after.clamp(MIN_RETRY_AFTER, MAX_RETRY_WAIT);
-            after + jitter(after * 3 / 10)
-        }
-        None => {
-            let backoff = backoff * 3u32.pow(attempt - 1);
-            (backoff + jitter(backoff / 2)).min(MAX_RETRY_WAIT)
-        }
-    }
+/// Pause after a busy answer to try `attempt` (counted from 1): its
+/// `Retry-After`, never under a second, or else the request's own backoff.
+fn pause(first: Duration, attempt: u32, retry_after: Option<Duration>) -> Duration {
+    retry_after.map_or_else(
+        || backoff(first, attempt),
+        |after| after.max(MIN_RETRY_AFTER),
+    )
+}
+
+/// Backoff after try `attempt` (counted from 1): `first`, tripling per try,
+/// within the lookup's limit.
+fn backoff(first: Duration, attempt: u32) -> Duration {
+    (first * 3u32.pow(attempt - 1)).min(MAX_RETRY_WAIT)
+}
+
+/// `wait` plus up to 30%, so clients told the same wait come back spread out.
+fn spread(wait: Duration) -> Duration {
+    wait + jitter(wait * 3 / 10)
 }
 
 /// A wait between zero and `max`, so clients retrying together drift apart.
@@ -248,6 +317,12 @@ impl Default for LrclibClient {
 impl LyricSource for LrclibClient {
     fn name(&self) -> &str {
         "lrclib"
+    }
+
+    fn is_busy(&self) -> bool {
+        let busy = *self.lock_busy();
+        let now = Instant::now();
+        busy.is_some_and(|busy| busy.until > now || now.duration_since(busy.at) < BUSY_WINDOW)
     }
 
     async fn fetch(&self, track: &TrackRef) -> Result<Option<LyricDocument>> {
@@ -834,21 +909,28 @@ mod tests {
     }
 
     fn server(responses: Vec<(u16, &'static str)>) -> LrclibClient {
+        server_with_headers(responses.into_iter().map(|(s, b)| (s, b, "")).collect())
+    }
+
+    /// Answers each request in turn; `headers` are extra header lines, each
+    /// ending in CRLF. Requests past the last answer find no server.
+    fn server_with_headers(responses: Vec<(u16, &'static str, &'static str)>) -> LrclibClient {
         use std::io::{Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let base_url = format!("http://{}", listener.local_addr().unwrap());
         std::thread::spawn(move || {
-            for (status, body) in responses {
+            for (status, body, headers) in responses {
                 let (mut stream, _) = listener.accept().unwrap();
                 let mut request = [0; 8192];
                 let _bytes_read = stream.read(&mut request).unwrap();
-                write!(stream, "HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+                write!(stream, "HTTP/1.1 {status} Test\r\n{headers}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
             }
         });
         LrclibClient {
             http: reqwest::Client::new(),
             base_url,
             retry_backoff: Duration::from_millis(1),
+            busy: Mutex::new(None),
         }
     }
 
@@ -902,18 +984,45 @@ mod tests {
 
     #[test]
     fn retry_after_is_honoured_with_a_floor_and_spread() {
-        let backoff = Duration::from_millis(500);
+        let first = Duration::from_millis(500);
+        // `Retry-After: 0` still pauses a second; a longer one is kept.
+        assert_eq!(pause(first, 1, Some(Duration::ZERO)), MIN_RETRY_AFTER);
+        assert_eq!(
+            pause(first, 1, Some(Duration::from_secs(60))),
+            Duration::from_secs(60)
+        );
+        // Without one the backoff grows, within the lookup's limit.
+        assert_eq!(pause(first, 1, None), first);
+        assert_eq!(pause(first, 3, None), Duration::from_millis(4_500));
+        assert_eq!(pause(first, 4, None), MAX_RETRY_WAIT);
         for _ in 0..20 {
-            // `Retry-After: 0` still waits a second.
-            let zero = retry_wait(backoff, 1, Some(Duration::ZERO));
-            assert!((Duration::from_secs(1)..=Duration::from_millis(1_300)).contains(&zero));
-            let two = retry_wait(backoff, 1, Some(Duration::from_secs(2)));
+            let two = spread(Duration::from_secs(2));
             assert!((Duration::from_secs(2)..=Duration::from_millis(2_600)).contains(&two));
         }
-        // Without a server wait the backoff grows, within the lookup's limit.
-        assert!(retry_wait(backoff, 1, None) <= Duration::from_millis(750));
-        assert!(retry_wait(backoff, 3, None) >= Duration::from_millis(4_500));
-        assert!(retry_wait(backoff, 4, None) <= MAX_RETRY_WAIT);
+    }
+
+    #[tokio::test]
+    async fn long_retry_after_pauses_every_lookup() {
+        // One answer only: any request after it would find no server and
+        // fail with a connection error, not LRCLIB's status.
+        let client = server_with_headers(vec![(429, "{}", "Retry-After: 60\r\n")]);
+        assert!(!client.is_busy());
+        for _ in 0..2 {
+            let error = client.fetch(&track()).await.unwrap_err();
+            assert_eq!(error.downcast_ref::<LrclibHttpError>().unwrap().status, 429);
+        }
+        assert!(client.is_busy());
+    }
+
+    #[tokio::test]
+    async fn short_pause_is_waited_out_by_other_lookups() {
+        let client = server(vec![(404, "{}"), (200, "[]")]);
+        client.note_busy(503, Duration::from_millis(200));
+        let started = Instant::now();
+        assert!(client.fetch(&track()).await.unwrap().is_none());
+        assert!(started.elapsed() >= Duration::from_millis(200));
+        // Still counts as busy for background lookups after the pause.
+        assert!(client.is_busy());
     }
 
     #[test]
