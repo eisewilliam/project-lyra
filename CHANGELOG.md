@@ -19,6 +19,12 @@ offered it as an update.
 ### Fixed
 
 - Website changes can be previewed on their own branch before release.
+- "Lyric server busy" no longer stays up after the lyric server recovers.
+  Playing a song again, or moving to a song Lyra checked in the background,
+  looks its lyrics up afresh.
+- Lyrics show more often while the lyric server is overloaded: Lyra waits out
+  short spikes for a few seconds longer before reporting it busy.
+- Lyra makes fewer requests for songs whose player reports a blank album.
 
 ## [0.2.1] - 2026-10-23
 
