@@ -333,3 +333,9 @@ export type UpdateInfo = {
   current_version: string;
   status: UpdateStatus;
 };
+
+/** What the OS will do about launching Lyra at the next login.
+    `requires_approval`: registered, but macOS blocks it until the user allows
+    it in System Settings › Login Items. `unavailable`: a development build
+    outside Lyra.app, which leaves the installed app's login item alone. */
+export type AutostartStatus = 'enabled' | 'disabled' | 'requires_approval' | 'unavailable';

@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
   AppSettings,
+  AutostartStatus,
   BrowserLyrics,
   FollowRule,
   KnownPlayerInfo,
@@ -207,12 +208,16 @@ export function windowReady(label: SurfaceLabel): Promise<void> {
   return invoke('window_ready', { label });
 }
 
-export function getAutostartStatus(): Promise<boolean> {
+export function getAutostartStatus(): Promise<AutostartStatus> {
   return invoke('get_autostart_status');
 }
 
-export function setAutostart(enabled: boolean): Promise<void> {
+export function setAutostart(enabled: boolean): Promise<AutostartStatus> {
   return invoke('set_autostart', { enabled });
+}
+
+export function openLoginItemsSettings(): Promise<void> {
+  return invoke('open_login_items_settings');
 }
 
 export function setSurfaceOccluded(label: SurfaceLabel, occluded: boolean): Promise<void> {

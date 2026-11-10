@@ -839,28 +839,30 @@ pub fn set_surface_occluded(
     }
 }
 
-/// Query whether autostart at login is currently enabled (delegates to the OS).
+/// What the OS will do about launching Lyra at the next login.
 #[tauri::command]
-pub fn get_autostart_status(app: AppHandle) -> bool {
-    use tauri_plugin_autostart::ManagerExt;
-    app.autolaunch().is_enabled().unwrap_or(false)
+pub fn get_autostart_status(app: AppHandle) -> crate::autostart::AutostartStatus {
+    crate::autostart::status(&app)
 }
 
-/// Enable or disable app autostart at login and persist the preference.
+/// Turn launch at login on or off, persist the choice, and return the
+/// resulting OS status (which can be "requires approval" on macOS).
 #[tauri::command]
 pub fn set_autostart(
     enabled: bool,
     state: State<'_, AppState>,
     app: AppHandle,
-) -> Result<(), String> {
-    use tauri_plugin_autostart::ManagerExt;
-    if enabled {
-        app.autolaunch().enable().map_err(|e| e.to_string())?;
-    } else {
-        app.autolaunch().disable().map_err(|e| e.to_string())?;
-    }
+) -> Result<crate::autostart::AutostartStatus, String> {
+    let status = crate::autostart::set(&app, enabled)?;
     // Mirror into UiState so the frontend can read it from ui-settings-changed.
-    let new_state = state.ui.mutate(|s| s.autostart_enabled = enabled);
+    let new_state = state.ui.mutate(|s| s.autostart_enabled = status.is_on());
     let _ = app.emit("ui-settings-changed", new_state);
-    Ok(())
+    Ok(status)
+}
+
+/// Open System Settings at Login Items, where macOS asks the user to allow a
+/// blocked login item. No-op where there is no such panel.
+#[tauri::command]
+pub fn open_login_items_settings() {
+    crate::autostart::open_login_items_settings();
 }

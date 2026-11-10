@@ -46,3 +46,4 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["std", 
 libc = "0.2"
 dispatch2 = { version = "0.3", default-features = false, features = ["std", "libc"] }
 window-vibrancy = "0.8.1"
+objc2-service-management = { version = "0.3", default-features = false, features = ["std", "SMAppService", "objc2", "objc2-foundation"] }

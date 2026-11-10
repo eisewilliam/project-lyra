@@ -1,3 +1,4 @@
+mod autostart;
 mod commands;
 mod island_size;
 mod linux;
@@ -1065,18 +1066,16 @@ pub fn run() {
             // place, before any of them is shown.
             apply_preferred_monitor_positioning(app.handle(), &initial);
 
-            // Sync the OS-level autostart state with the persisted preference.
-            // If the user previously enabled autostart but the LaunchAgent was
-            // removed externally, this re-applies their intent.
+            // Reconcile launch at login with the saved preference (and move
+            // macOS off the legacy LaunchAgent), then save what the OS reports.
             {
-                use tauri_plugin_autostart::ManagerExt;
-                let plugin_enabled = app.handle().autolaunch().is_enabled().unwrap_or(false);
-                if initial.autostart_enabled != plugin_enabled {
-                    if initial.autostart_enabled {
-                        let _ = app.handle().autolaunch().enable();
-                    } else {
-                        let _ = app.handle().autolaunch().disable();
-                    }
+                let status = autostart::sync_on_startup(app.handle(), initial.autostart_enabled);
+                if status != autostart::AutostartStatus::Unavailable
+                    && status.is_on() != initial.autostart_enabled
+                {
+                    app.state::<AppState>()
+                        .ui
+                        .mutate(|s| s.autostart_enabled = status.is_on());
                 }
             }
 
@@ -1219,6 +1218,7 @@ pub fn run() {
             commands::set_preferred_monitor,
             commands::get_autostart_status,
             commands::set_autostart,
+            commands::open_login_items_settings,
             commands::window_ready,
             commands::set_surface_occluded,
             updater::get_update_status,

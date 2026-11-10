@@ -38,6 +38,11 @@ offered it as an update.
 - Website changes can be previewed on their own branch before release.
 - On Linux, Lyra no longer quits as it starts when click-through is turned on
   for the main window or the Marquee.
+- On macOS 13 and later, Launch at login works reliably. Lyra now appears as
+  "Lyra" under Open at Login in System Settings, rather than under the
+  developer's name in Allow in the Background. If macOS is blocking it, Settings
+  says so and offers a button to Login Items, instead of showing the switch on
+  while Lyra doesn't open. Your existing choice carries over.
 
 ## [0.2.1] - 2026-10-23
 

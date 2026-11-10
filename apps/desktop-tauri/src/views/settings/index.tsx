@@ -22,7 +22,7 @@ export default function Settings() {
     state,
     section: requested,
     setSection,
-    autostartEnabled,
+    autostartStatus,
     monitors,
     artworkSrc,
     actions,
@@ -90,7 +90,7 @@ export default function Settings() {
                 state={state}
                 actions={actions}
                 activeLabel={activeLabel}
-                autostartEnabled={autostartEnabled}
+                autostartStatus={autostartStatus}
                 monitors={monitors}
                 artworkSrc={artworkSrcUrl}
                 touchBar={touchBar}
