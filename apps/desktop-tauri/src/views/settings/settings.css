@@ -1227,6 +1227,37 @@ body[data-os="windows"] .settings-ambient-bg {
   display: none;
 }
 
+/* ----------------================ Linux ================---------------- */
+
+/* Round buttons set in from the corner, as GNOME and most GTK desktops draw
+   them, in place of Windows' full-height caption buttons. Colours come from
+   the default light and dark tokens. */
+body[data-os="linux"] .settings-win-controls {
+  top: 10px;
+  right: 10px;
+  height: 24px;
+  gap: 8px;
+}
+
+body[data-os="linux"] .settings-win-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--input-bg);
+  color: var(--text-primary);
+}
+
+body[data-os="linux"] .settings-win-btn:hover,
+body[data-os="linux"] .settings-win-btn.close:hover {
+  background: var(--input-hover);
+  color: var(--text-primary);
+}
+
+/* No window controls on the left to clear. */
+body[data-os="linux"] .sidebar-titlebar {
+  height: 40px;
+}
+
 /* ── Settings Ambient Background ────────────────────────────────────────── */
 .settings-ambient-bg {
   border-radius: inherit;

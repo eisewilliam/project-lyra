@@ -71,7 +71,7 @@ pub fn set_island_locked(locked: bool, state: State<'_, AppState>, app: AppHandl
 pub fn set_island_click_through(enabled: bool, state: State<'_, AppState>, app: AppHandle) {
     let new_state = state.ui.mutate(|s| s.island_click_through = enabled);
     if let Some(island) = app.get_webview_window("island") {
-        let _ = island.set_ignore_cursor_events(enabled);
+        crate::linux::apply_ignore_cursor_events_when_ready(&island, enabled);
     }
     let _ = app.emit("ui-settings-changed", new_state);
 }

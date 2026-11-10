@@ -46,7 +46,9 @@ import { noop } from './utils';
 import './app.css';
 
 const hostOs = detectHostOs();
-const isWindows = hostOs === 'windows';
+// Windows and Linux windows have no native title bar, so they draw their own
+// minimize, maximize and close buttons.
+const drawsWindowControls = hostOs !== 'macos';
 const isMac = hostOs === 'macos';
 applyHostOsDataset();
 
@@ -315,7 +317,7 @@ function App() {
 
   return (
     <main className="lyra-window">
-      {isWindows && <WindowControls />}
+      {drawsWindowControls && <WindowControls />}
 
       <AmbientBackground
         artworkSrc={artworkSrc}

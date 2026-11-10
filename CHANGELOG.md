@@ -17,6 +17,15 @@ offered it as an update.
 - Changes to `main` require a pull request and passing checks for the parts of
   the project they affect. The project owner can merge without another review;
   other contributors need approval. Unchanged parts can skip their builds.
+- On Windows and Linux, opening Lyra while it is already running brings up
+  the running copy instead of starting a second one with its own tray icon and
+  lyrics.
+- On Linux desktops that use Wayland, Lyra runs through XWayland, where the
+  Marquee and Karaoke lyrics can be placed, dragged and kept above other
+  windows. Starting Lyra with `GDK_BACKEND=wayland` turns this off; those
+  surfaces then appear wherever the desktop puts them.
+- On Linux, the Lyra and Settings windows use Lyra's own title bar and window
+  buttons rather than the desktop's title bar on top of them.
 
 ### Fixed
 
@@ -27,6 +36,8 @@ offered it as an update.
 - On Windows, buttons in Settings use the same typeface as the rest of the
   window instead of Arial.
 - Website changes can be previewed on their own branch before release.
+- On Linux, Lyra no longer quits as it starts when click-through is turned on
+  for the main window or the Marquee.
 
 ## [0.2.1] - 2026-10-23
 

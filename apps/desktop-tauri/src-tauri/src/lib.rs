@@ -412,7 +412,9 @@ pub(crate) fn apply_main_window_settings(
     window: &lyra_core::domain::WindowSettings,
 ) {
     if let Some(main) = app.get_webview_window("main") {
-        let _ = main.set_ignore_cursor_events(window.click_through);
+        // `main` is still hidden at startup; on Linux click-through has to
+        // wait until the window is first shown.
+        linux::apply_ignore_cursor_events_when_ready(&main, window.click_through);
         sync_main_window_on_top(&main, window.always_on_top);
     }
 }
@@ -938,6 +940,11 @@ fn set_thread_qos_utility() {}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // First of all: this changes the environment, which is only safe while
+    // the process has a single thread, and GTK reads it when it starts.
+    #[cfg(target_os = "linux")]
+    linux::prefer_x11();
+
     // Tauri creates the windows before `setup` runs, and on Windows creating
     // each WebView2 pumps the message loop, so a page that loads quickly
     // (release builds serve it from the binary) can call commands while the
@@ -974,6 +981,14 @@ pub fn run() {
     let updates = updater::Updates::new(context.config());
 
     let builder = tauri::Builder::default();
+    // Launching Lyra while it is already running opens the running copy
+    // instead of starting a second one with its own tray icon and overlays.
+    // The plugin has to be registered before every other plugin.
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || tray::open_lyra(&handle));
+    }));
     let builder = if cfg!(debug_assertions) {
         builder.plugin(
             tauri_plugin_log::Builder::default()
@@ -1126,6 +1141,16 @@ pub fn run() {
 
             #[cfg(target_os = "linux")]
             {
+                // The windows draw their own title bar and controls, like on
+                // Windows; a desktop title bar on top would double it. Edges
+                // of the undecorated `main` window still resize it.
+                if let Some(main_win) = app.get_webview_window("main") {
+                    let _ = main_win.set_decorations(false);
+                }
+                if let Some(settings_win) = app.get_webview_window("settings") {
+                    let _ = settings_win.set_decorations(false);
+                }
+
                 // Linux: poll players through MPRIS on the user's D-Bus
                 // session bus. MPRIS is distro-independent.
                 let handle = app.handle().clone();

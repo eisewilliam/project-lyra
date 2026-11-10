@@ -13,7 +13,9 @@ import { SETTINGS_SECTION_LABELS } from './settings-sections';
 import type { Section } from './types';
 import './settings.css';
 
-const isWindows = detectHostOs() === 'windows';
+// Windows and Linux windows have no native title bar, so they draw their own
+// minimize and close buttons.
+const drawsWindowControls = detectHostOs() !== 'macos';
 
 export default function Settings() {
   const {
@@ -56,7 +58,7 @@ export default function Settings() {
         <img src={artworkSrcUrl} alt="" decoding="async" key={artworkSrcUrl} />
         <div className="settings-ambient-dimmer absolute inset-0"></div>
       </div>
-      {isWindows && <SettingsWinControls />}
+      {drawsWindowControls && <SettingsWinControls />}
       <SettingsNav
         ref={sidebarRef}
         section={section}
