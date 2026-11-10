@@ -280,6 +280,16 @@ export type IslandFrame = {
   max_width: number;
 };
 
+/** Where the settings sidebar's Liquid Glass goes, in CSS px from the
+    window's top left corner (`set_settings_sidebar_glass`). */
+export type SidebarGlass = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  radius: number;
+};
+
 export type KaraokeSettingsPatch = Partial<{
   position: string;
   alignment: string;

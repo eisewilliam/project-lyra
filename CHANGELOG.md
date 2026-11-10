@@ -12,12 +12,20 @@ offered it as an update.
 
 ### Changed
 
+- On macOS 26, the Settings sidebar floats on Liquid Glass, like System
+  Settings. With Reduce Transparency on, or on older macOS, it looks as before.
 - Changes to `main` require a pull request and passing checks for the parts of
   the project they affect. The project owner can merge without another review;
   other contributors need approval. Unchanged parts can skip their builds.
 
 ### Fixed
 
+- Settings → Appearance → Theme works: Light and Dark now change Settings
+  and its menus right away. Before, every choice followed the system.
+- In Settings, the explanation under each setting is smaller and quieter
+  than the setting's name, so the two no longer read as equals.
+- On Windows, buttons in Settings use the same typeface as the rest of the
+  window instead of Arial.
 - Website changes can be previewed on their own branch before release.
 
 ## [0.2.1] - 2026-10-23

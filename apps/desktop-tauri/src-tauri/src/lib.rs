@@ -1065,6 +1065,9 @@ pub fn run() {
                 }
             }
 
+            // Light or dark, as the Theme setting says, before anything shows.
+            commands::apply_theme(app.handle(), &initial.theme);
+
             // Click-through for karaoke (always) and the island (when the user
             // turned it on) is applied in `window_ready`, once each window is
             // realized.
@@ -1144,6 +1147,7 @@ pub fn run() {
             commands::set_island_click_through,
             commands::open_main_window,
             commands::island_pointer_inside,
+            commands::set_settings_sidebar_glass,
             commands::get_touch_bar_support,
             commands::customize_touch_bar,
             commands::show_native_menu,

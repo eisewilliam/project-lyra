@@ -13,6 +13,7 @@ import type {
   PlayerSessionInfo,
   RenderSnapshot,
   SettingsPatch,
+  SidebarGlass,
   TouchBarSupport,
   UiState,
   UpdateInfo,
@@ -280,4 +281,10 @@ export function installUpdate(): Promise<void> {
 
 export function islandPointerInside(): Promise<boolean> {
   return invoke('island_pointer_inside');
+}
+
+/** Floats Liquid Glass behind the settings sidebar (macOS 26+), or removes it
+    with `null`. Resolves whether glass is showing. */
+export function setSettingsSidebarGlass(glass: SidebarGlass | null): Promise<boolean> {
+  return invoke('set_settings_sidebar_glass', { glass });
 }

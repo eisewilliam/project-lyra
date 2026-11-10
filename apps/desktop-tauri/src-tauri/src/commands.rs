@@ -136,6 +136,34 @@ pub fn island_pointer_inside(app: AppHandle) -> bool {
     }
 }
 
+/// Where the settings sidebar's glass goes, in CSS px from the window's top
+/// left corner. The webview fills the window, so these are also points.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub struct SidebarGlass {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub radius: f64,
+}
+
+/// Float Liquid Glass behind the settings sidebar, as System Settings does on
+/// macOS 26, or take it away with `None`. Returns whether glass is showing.
+/// Sync so it runs on the main thread, where AppKit views may be changed.
+#[tauri::command]
+pub fn set_settings_sidebar_glass(app: AppHandle, glass: Option<SidebarGlass>) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        crate::macos::set_settings_sidebar_glass(&app, glass)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, glass);
+        false
+    }
+}
+
 /// Show and focus the main window (from the island or the first-run card).
 #[tauri::command]
 pub fn open_main_window(app: AppHandle) {
@@ -192,8 +220,21 @@ pub fn set_font_scale(surface: String, scale: f32, state: State<'_, AppState>, a
 
 #[tauri::command]
 pub fn set_theme(theme: String, state: State<'_, AppState>, app: AppHandle) {
+    apply_theme(&app, &theme);
     let new_state = state.ui.mutate(|s| s.theme = theme);
     let _ = app.emit("ui-settings-changed", new_state);
+}
+
+/// Gives the app the appearance the Theme setting asks for: `light` or `dark`,
+/// or the system's for anything else (`auto`). Settings styles itself from
+/// `prefers-color-scheme`, which follows it, as do native materials and
+/// pop-up menus. The Marquee keeps its own dark appearance.
+pub fn apply_theme(app: &AppHandle, theme: &str) {
+    app.set_theme(match theme {
+        "light" => Some(tauri::Theme::Light),
+        "dark" => Some(tauri::Theme::Dark),
+        _ => None,
+    });
 }
 
 #[derive(Deserialize)]
