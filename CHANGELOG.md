@@ -10,8 +10,17 @@ offered it as an update.
 
 ## [Unreleased]
 
+### Added
+
+- The website has a page for each platform, at lyra.eiselabs.com/macos,
+  /windows and /linux, with what Lyra needs, which installer to choose and how
+  to install it.
+
 ### Changed
 
+- The website's pages arrive ready to read: their text, titles and
+  descriptions are in the page itself rather than added once the page has
+  loaded, so search engines and link previews show each page properly.
 - Changes to `main` require a pull request and passing checks for the parts of
   the project they affect. The project owner can merge without another review;
   other contributors need approval. Unchanged parts can skip their builds.

@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "src/styles.css"
+        ],
+        "createdAt": "2026-11-05T09:56:36.701Z",
+        "reason": "Claude triage: .sung-word is the karaoke word fill, a lit/unlit split animated across each sung word in the demo overlay, not decorative gradient text; pre-existing design"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/styles.css"
+        ],
+        "createdAt": "2026-11-05T10:47:51.037Z",
+        "reason": "Agent: .measure-staff is a drawn musical staff; the inset stripes on the last measure are its final double barline (thin, thick), not a card accent; pre-existing design"
+      }
+    ]
+  }
+}

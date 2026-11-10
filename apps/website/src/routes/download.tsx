@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { DownloadPage } from '../download/DownloadPage.tsx';
+import { pageHead, pages } from '../pages.ts';
 import { isPlatform, type Platform } from '../site-config.ts';
 
 // `?platform=` preselects a platform, e.g. from a platform's Download Lyra button.
@@ -13,6 +14,6 @@ export const Route = createFileRoute('/download')({
   validateSearch: (search: Record<string, unknown>): DownloadSearch => ({
     platform: isPlatform(search.platform) ? search.platform : undefined,
   }),
-  head: () => ({ meta: [{ title: 'Download Lyra' }] }),
+  head: () => pageHead(pages.download),
   component: DownloadPage,
 });
