@@ -23,6 +23,7 @@ pub enum AutostartStatus {
     Disabled,
     /// Lyra is registered but macOS blocks it until the user allows it in
     /// System Settings › General › Login Items.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     RequiresApproval,
     /// This build cannot register itself: a development binary running
     /// outside `Lyra.app`. Kept away from the installed app's login item.
