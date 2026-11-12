@@ -88,6 +88,11 @@ Each LRCLIB request is tried up to three times while the server answers 429/5xx 
 
 Confirmed misses (`Ok(None)`) persist a `.nomatch` sentinel recording how many lookups in a row missed; it is trusted for 1, 3, 7 and then 14 days, and an expired sentinel stays on disk so a repeat miss waits longer. Bumping `NEGATIVE_CACHE_VERSION` makes every earlier miss look up again. Provider errors are recorded only in memory as `NotFound { reason }`: `RateLimit` when LRCLIB answered busy (429/5xx), otherwise `NetworkError`; they do not poison the negative cache. A failed lookup of the playing track is retried automatically after 5 s, 15 s, 45 s and 2 min while it stays current and the failure stands; the claim is released between tries, and a newer lookup (such as a manual retry) supersedes the waiting one. A probe that fails on a track which started playing during it takes over those retries, since the track's own lookup found the probe in flight and left it the work. Manual retry bypasses the negative-cache eligibility check and clears transient failure state; the main pane offers it for failures and for remembered misses. Existing cached documents still win.
 
+Lyric documents record `source_duration_ms`, the length of the recording their timings were made for (the LRCLIB record's `duration`, which LRCLIB requires on publish; else the length looked up with; `None` for overrides and older cache files). Confirmed misses record the length they were looked up with. `LyraRuntime` uses these to keep versions of one track apart:
+- **Waiting for a length.** A track that reports no duration, when it first appears or after it stops reporting one (Spotify does this for a moment while it switches a track to its music video), shows `Loading` and is not looked up for up to `DURATION_GRACE` (4 s). `LyricsRefresh` waits in core meanwhile, so the frontend's single refresh request still lands. Players that never report a length then behave as before.
+- **Per-length keys.** Keys without a duration in them (`spotify:track:…`, `smtc::…`, `mpris::…`, Apple Music IDs) move to `<key>::<seconds>` in `set_playback_snapshot` when the result cached under the plain key was made for a length more than `LyricDocument::DURATION_TOLERANCE_MS` (6 s) away. The refined key is the track's `uri` everywhere after that: cache, misses, overrides, offsets, refresh claims and the frontend. `meta::` keys already carry their duration.
+- **Mismatched timing.** Timed lyrics whose source length differs from the playing length by more than the tolerance are presented as plain text (`Unsynced`). A per-length key with a confirmed miss shows the plain key's words, without timing.
+
 Render states are `Loading`, `Ready`, `Unsynced`, structured `NotFound` with a reason, or `Error`. No track and confirmed misses use `Miss`; pending uncached tracks use `Loading`. Timed documents use `Ready`; plain text uses `Unsynced` and is exposed only to the main pane through `get_plain_lyrics`. Transient failures are forgotten whenever the playing track changes, so a track played again (or one a background probe failed on) shows `Loading` and is looked up again. The frontend requests a refresh once per `Loading` episode per track URI and re-arms when the status settles; manual retry is explicit.
 
 ### Persistence stores
@@ -107,7 +112,9 @@ Cache filenames are percent-encoded track URIs:
 - Fetched: `lyrics_cache/spotify%3Atrack%3Aabc123.lrc`
 - User override (wins over cache): `lyrics_overrides/spotify%3Atrack%3Aabc123.lrc`
 - Plain text: `lyrics_cache/spotify%3Atrack%3Aabc123.txt`
-- Negative (no lyrics found): `lyrics_cache/spotify%3Atrack%3Aabc123.nomatch`
+- Negative (no lyrics found): `lyrics_cache/spotify%3Atrack%3Aabc123.nomatch` (`v4 <misses> <duration_ms>`)
+- Source length of cached lyrics: `lyrics_cache/spotify%3Atrack%3Aabc123.meta.json` (`{"source_duration_ms": …}`)
+- Per-length key (music video sharing the song's ID): `lyrics_cache/spotify%3Atrack%3Aabc123%3A%3A571.lrc`
 
 ### Key lyra-core modules
 

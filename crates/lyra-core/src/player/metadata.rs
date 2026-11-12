@@ -14,6 +14,17 @@ pub fn metadata_key(artist: &str, title: &str, duration_ms: u64) -> String {
     )
 }
 
+/// Key for one length of a track whose key has no duration in it (native
+/// IDs such as `spotify:track:…`, which a player can reuse for both a song
+/// and its music video). Metadata keys already carry their duration and are
+/// returned unchanged.
+pub fn duration_variant_key(track_key: &str, duration_ms: u64) -> String {
+    if track_key.starts_with("meta::") {
+        return track_key.to_string();
+    }
+    format!("{track_key}::{}", (duration_ms + 500) / 1000)
+}
+
 /// Substrings of bundle IDs (macOS), AUMIDs (Windows) and MPRIS bus names
 /// (Linux) that identify web browsers. Lowercase.
 const BROWSER_IDS: &[&str] = &[

@@ -18,6 +18,14 @@ offered it as an update.
 
 ### Fixed
 
+- Lyrics no longer drift out of sync on music videos that add scenes the song
+  doesn't have, such as intros, dialogue or credits. When the only lyrics
+  found were timed to a different version of the song, Lyra shows the words
+  without timing instead of highlighting the wrong lines. A music video and
+  its song keep separate lyrics and timing adjustments, even when the player
+  uses the same track for both.
+- Lyra waits a moment for a newly loaded track to report its length before
+  choosing lyrics, so a video that is still loading isn't given the song's.
 - Website changes can be previewed on their own branch before release.
 - "Lyric server busy" no longer stays up after the lyric server recovers.
   Playing a song again, or moving to a song Lyra checked in the background,
