@@ -410,7 +410,7 @@ fn karaoke_band(app: &AppHandle, monitor: &tauri::Monitor) -> Option<(f64, f64)>
     if !on_monitor {
         return None;
     }
-    let position = window.outer_position().ok()?;
+    let position = window_position(&window)?;
     let size = window.outer_size().ok()?;
     let sf = monitor.scale_factor();
     let top = f64::from(position.y - monitor.position().y) / sf;
@@ -424,10 +424,19 @@ fn window_points(window: &tauri::WebviewWindow) -> Option<(f64, f64)> {
     Some((f64::from(size.width) / sf, f64::from(size.height) / sf))
 }
 
+/// Where the window is, in physical pixels. `None` when the window system
+/// doesn't say: a native Wayland client is told nothing about its position
+/// (the toolkit then reports the origin, which is not a real place).
+fn window_position(window: &tauri::WebviewWindow) -> Option<tauri::PhysicalPosition<i32>> {
+    if crate::linux::native_wayland() {
+        return None;
+    }
+    window.outer_position().ok()
+}
+
 /// The window's top-left corner in points from `monitor`'s top-left corner.
 fn origin_on(window: &tauri::WebviewWindow, monitor: &tauri::Monitor) -> Option<(f64, f64)> {
-    // Wayland reports no window positions.
-    let position = window.outer_position().ok()?;
+    let position = window_position(window)?;
     let sf = monitor.scale_factor();
     Some((
         f64::from(position.x - monitor.position().x) / sf,
@@ -515,7 +524,7 @@ pub fn fit_island_now(app: &AppHandle, resize: bool) {
             .and_then(|monitor| Some((monitor, origin_on(&window, monitor)?)));
         // Only a window at its saved place moves the saved place with it; at
         // startup the window is sized before it is restored there.
-        let at_saved_place = window.outer_position().ok().is_some_and(|position| {
+        let at_saved_place = window_position(&window).is_some_and(|position| {
             ui.island_pos
                 .is_some_and(|(x, y)| (position.x - x).abs() <= 1 && (position.y - y).abs() <= 1)
         });

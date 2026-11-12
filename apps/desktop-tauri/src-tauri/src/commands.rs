@@ -71,7 +71,7 @@ pub fn set_island_locked(locked: bool, state: State<'_, AppState>, app: AppHandl
 pub fn set_island_click_through(enabled: bool, state: State<'_, AppState>, app: AppHandle) {
     let new_state = state.ui.mutate(|s| s.island_click_through = enabled);
     if let Some(island) = app.get_webview_window("island") {
-        let _ = island.set_ignore_cursor_events(enabled);
+        crate::linux::apply_ignore_cursor_events_when_ready(&island, enabled);
     }
     let _ = app.emit("ui-settings-changed", new_state);
 }
@@ -136,6 +136,34 @@ pub fn island_pointer_inside(app: AppHandle) -> bool {
     }
 }
 
+/// Where the settings sidebar's glass goes, in CSS px from the window's top
+/// left corner. The webview fills the window, so these are also points.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub struct SidebarGlass {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub radius: f64,
+}
+
+/// Float Liquid Glass behind the settings sidebar, as System Settings does on
+/// macOS 26, or take it away with `None`. Returns whether glass is showing.
+/// Sync so it runs on the main thread, where AppKit views may be changed.
+#[tauri::command]
+pub fn set_settings_sidebar_glass(app: AppHandle, glass: Option<SidebarGlass>) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        crate::macos::set_settings_sidebar_glass(&app, glass)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, glass);
+        false
+    }
+}
+
 /// Show and focus the main window (from the island or the first-run card).
 #[tauri::command]
 pub fn open_main_window(app: AppHandle) {
@@ -192,8 +220,21 @@ pub fn set_font_scale(surface: String, scale: f32, state: State<'_, AppState>, a
 
 #[tauri::command]
 pub fn set_theme(theme: String, state: State<'_, AppState>, app: AppHandle) {
+    apply_theme(&app, &theme);
     let new_state = state.ui.mutate(|s| s.theme = theme);
     let _ = app.emit("ui-settings-changed", new_state);
+}
+
+/// Gives the app the appearance the Theme setting asks for: `light` or `dark`,
+/// or the system's for anything else (`auto`). Settings styles itself from
+/// `prefers-color-scheme`, which follows it, as do native materials and
+/// pop-up menus. The Marquee keeps its own dark appearance.
+pub fn apply_theme(app: &AppHandle, theme: &str) {
+    app.set_theme(match theme {
+        "light" => Some(tauri::Theme::Light),
+        "dark" => Some(tauri::Theme::Dark),
+        _ => None,
+    });
 }
 
 #[derive(Deserialize)]
@@ -798,28 +839,30 @@ pub fn set_surface_occluded(
     }
 }
 
-/// Query whether autostart at login is currently enabled (delegates to the OS).
+/// What the OS will do about launching Lyra at the next login.
 #[tauri::command]
-pub fn get_autostart_status(app: AppHandle) -> bool {
-    use tauri_plugin_autostart::ManagerExt;
-    app.autolaunch().is_enabled().unwrap_or(false)
+pub fn get_autostart_status(app: AppHandle) -> crate::autostart::AutostartStatus {
+    crate::autostart::status(&app)
 }
 
-/// Enable or disable app autostart at login and persist the preference.
+/// Turn launch at login on or off, persist the choice, and return the
+/// resulting OS status (which can be "requires approval" on macOS).
 #[tauri::command]
 pub fn set_autostart(
     enabled: bool,
     state: State<'_, AppState>,
     app: AppHandle,
-) -> Result<(), String> {
-    use tauri_plugin_autostart::ManagerExt;
-    if enabled {
-        app.autolaunch().enable().map_err(|e| e.to_string())?;
-    } else {
-        app.autolaunch().disable().map_err(|e| e.to_string())?;
-    }
+) -> Result<crate::autostart::AutostartStatus, String> {
+    let status = crate::autostart::set(&app, enabled)?;
     // Mirror into UiState so the frontend can read it from ui-settings-changed.
-    let new_state = state.ui.mutate(|s| s.autostart_enabled = enabled);
+    let new_state = state.ui.mutate(|s| s.autostart_enabled = status.is_on());
     let _ = app.emit("ui-settings-changed", new_state);
-    Ok(())
+    Ok(status)
+}
+
+/// Open System Settings at Login Items, where macOS asks the user to allow a
+/// blocked login item. No-op where there is no such panel.
+#[tauri::command]
+pub fn open_login_items_settings() {
+    crate::autostart::open_login_items_settings();
 }

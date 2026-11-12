@@ -13,17 +13,22 @@
   "assets": {
     "directory": "./dist/client",
     "binding": "ASSETS",
-    // The Worker rewrites page metadata; static files can go straight to assets.
+    // The Worker maps page addresses to their prerendered files; static
+    // files can go straight to assets.
     "run_worker_first": [
       "/*",
       "!/assets/*",
       "!/favicon.svg",
       "!/favicon-32.png",
       "!/apple-touch-icon.png",
-      "!/og-image.png"
+      "!/og-image.png",
+      "!/robots.txt",
+      "!/sitemap.xml",
+      "!/pages.json"
     ],
-    // The existing Worker owns page fallback. /index.html must be fetchable
-    // without redirecting /download and other page requests back to /.
+    // The Worker owns page routing: /download serves download/index.html,
+    // /download/ redirects to /download, and unknown pages get the SPA shell
+    // (_shell.html) with a 404 status.
     "html_handling": "none",
     "not_found_handling": "none"
   },

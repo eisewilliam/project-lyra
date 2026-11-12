@@ -10,11 +10,20 @@
 
 import { Route as rootRouteImport } from './routes/__root';
 import { Route as IndexRouteImport } from './routes/index';
+import { Route as SplatRouteImport } from './routes/$';
 import { Route as DownloadRouteImport } from './routes/download';
+import { Route as LinuxRouteImport } from './routes/linux';
+import { Route as MacosRouteImport } from './routes/macos';
+import { Route as WindowsRouteImport } from './routes/windows';
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any);
+const SplatRoute = SplatRouteImport.update({
+  id: '/$',
+  path: '/$',
   getParentRoute: () => rootRouteImport,
 } as any);
 const DownloadRoute = DownloadRouteImport.update({
@@ -22,31 +31,62 @@ const DownloadRoute = DownloadRouteImport.update({
   path: '/download',
   getParentRoute: () => rootRouteImport,
 } as any);
+const LinuxRoute = LinuxRouteImport.update({
+  id: '/linux',
+  path: '/linux',
+  getParentRoute: () => rootRouteImport,
+} as any);
+const MacosRoute = MacosRouteImport.update({
+  id: '/macos',
+  path: '/macos',
+  getParentRoute: () => rootRouteImport,
+} as any);
+const WindowsRoute = WindowsRouteImport.update({
+  id: '/windows',
+  path: '/windows',
+  getParentRoute: () => rootRouteImport,
+} as any);
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute;
+  '/$': typeof SplatRoute;
   '/download': typeof DownloadRoute;
+  '/linux': typeof LinuxRoute;
+  '/macos': typeof MacosRoute;
+  '/windows': typeof WindowsRoute;
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute;
+  '/$': typeof SplatRoute;
   '/download': typeof DownloadRoute;
+  '/linux': typeof LinuxRoute;
+  '/macos': typeof MacosRoute;
+  '/windows': typeof WindowsRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   '/': typeof IndexRoute;
+  '/$': typeof SplatRoute;
   '/download': typeof DownloadRoute;
+  '/linux': typeof LinuxRoute;
+  '/macos': typeof MacosRoute;
+  '/windows': typeof WindowsRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
-  fullPaths: '/' | '/download';
+  fullPaths: '/' | '/$' | '/download' | '/linux' | '/macos' | '/windows';
   fileRoutesByTo: FileRoutesByTo;
-  to: '/' | '/download';
-  id: '__root__' | '/' | '/download';
+  to: '/' | '/$' | '/download' | '/linux' | '/macos' | '/windows';
+  id: '__root__' | '/' | '/$' | '/download' | '/linux' | '/macos' | '/windows';
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
+  SplatRoute: typeof SplatRoute;
   DownloadRoute: typeof DownloadRoute;
+  LinuxRoute: typeof LinuxRoute;
+  MacosRoute: typeof MacosRoute;
+  WindowsRoute: typeof WindowsRoute;
 }
 
 declare module '@tanstack/react-router' {
@@ -58,6 +98,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    '/$': {
+      id: '/$';
+      path: '/$';
+      fullPath: '/$';
+      preLoaderRoute: typeof SplatRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     '/download': {
       id: '/download';
       path: '/download';
@@ -65,13 +112,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DownloadRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    '/linux': {
+      id: '/linux';
+      path: '/linux';
+      fullPath: '/linux';
+      preLoaderRoute: typeof LinuxRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    '/macos': {
+      id: '/macos';
+      path: '/macos';
+      fullPath: '/macos';
+      preLoaderRoute: typeof MacosRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    '/windows': {
+      id: '/windows';
+      path: '/windows';
+      fullPath: '/windows';
+      preLoaderRoute: typeof WindowsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SplatRoute: SplatRoute,
   DownloadRoute: DownloadRoute,
+  LinuxRoute: LinuxRoute,
+  MacosRoute: MacosRoute,
+  WindowsRoute: WindowsRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>();
+
+import type { getRouter } from './router.tsx';
+import type { createStart } from '@tanstack/react-start';
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true;
+    router: Awaited<ReturnType<typeof getRouter>>;
+  }
+}
