@@ -31,8 +31,10 @@ function rise(node: Element, copy: Element) {
 export function LyricLightField({ playing, heroRef, copyRef, startTime, onUnsupported }: LyricLightFieldProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<LyricLight | null>(null);
-  // The engine starts a frame after mounting; this keeps `playing` for it.
+  // The engine starts a frame after mounting; these keep the latest props for
+  // it, which can change as a prerendered page hydrates.
   const playingRef = useRef(playing);
+  const startTimeRef = useRef(startTime);
   const [unsupported, setUnsupported] = useState(false);
 
   useEffect(() => {
@@ -50,7 +52,7 @@ export function LyricLightField({ playing, heroRef, copyRef, startTime, onUnsupp
       }
       engineRef.current = engine;
       if (import.meta.env.DEV) window.__lyricLight = engine;
-      if (startTime !== undefined) engine.time = startTime;
+      if (startTimeRef.current !== undefined) engine.time = startTimeRef.current;
 
       // The light dims behind the copy itself, not the full-width copy container,
       // measured where the copy comes to rest once it has risen in.
@@ -146,6 +148,10 @@ export function LyricLightField({ playing, heroRef, copyRef, startTime, onUnsupp
     playingRef.current = playing;
     engineRef.current?.setPlaying(playing);
   }, [playing]);
+
+  useEffect(() => {
+    startTimeRef.current = startTime;
+  }, [startTime]);
 
   if (unsupported) {
     return <img className="hero-art" src="/assets/resonance-light.webp" alt="" aria-hidden="true" width="1536" height="720" />;

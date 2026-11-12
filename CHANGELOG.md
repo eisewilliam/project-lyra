@@ -10,8 +10,17 @@ offered it as an update.
 
 ## [Unreleased]
 
+### Added
+
+- The website has a page for each platform, at lyra.eiselabs.com/macos,
+  /windows and /linux, with what Lyra needs, which installer to choose and how
+  to install it.
+
 ### Changed
 
+- The website's pages arrive ready to read: their text, titles and
+  descriptions are in the page itself rather than added once the page has
+  loaded, so search engines and link previews show each page properly.
 - On macOS 26, the Settings sidebar floats on Liquid Glass, like System
   Settings. With Reduce Transparency on, or on older macOS, it looks as before.
 - Changes to `main` require a pull request and passing checks for the parts of
