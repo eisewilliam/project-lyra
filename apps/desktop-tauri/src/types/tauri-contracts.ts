@@ -159,33 +159,33 @@ export type LyricLineSlim = {
 };
 
 export type UiState = {
-  island_visible: boolean;
+  marquee_visible: boolean;
   floating_visible: boolean;
   karaoke_visible: boolean;
   /** Position lock: no dragging; hover and clicks still work. */
-  island_locked: boolean;
-  /** The island ignores the mouse; clicks reach the app behind it. */
-  island_click_through: boolean;
-  /** Where the user left the island (physical px); null keeps its default
+  marquee_locked: boolean;
+  /** The marquee ignores the mouse; clicks reach the app behind it. */
+  marquee_click_through: boolean;
+  /** Where the user left the marquee (physical px); null keeps its default
       place. The host owns it: it settles and saves it after a drag. */
-  island_pos: [number, number] | null;
+  marquee_pos: [number, number] | null;
   /** Hide while no player has a track; a paused track still shows. */
-  island_hide_when_idle: boolean;
+  marquee_hide_when_idle: boolean;
   /** Size as a multiple of the base design; null matches the display. */
-  island_scale: number | null;
+  marquee_scale: number | null;
   /** Width at Medium size, in points; other sizes scale it. */
-  island_base_width: number;
+  marquee_base_width: number;
   /** 2 shows the current and next line, 1 only the current one. */
-  island_lines: number;
-  island_font_scale: number;
+  marquee_lines: number;
+  marquee_font_scale: number;
   karaoke_font_scale: number;
   floating_font_scale: number;
-  island_show_cover: boolean;
-  island_cover_circle: boolean;
-  island_cover_spin: boolean;
+  marquee_show_cover: boolean;
+  marquee_cover_circle: boolean;
+  marquee_cover_spin: boolean;
   /** 0 solid … 1 clearest; 0.5 is the standard look. */
-  island_transparency: number;
-  island_show_on_fullscreen: boolean;
+  marquee_transparency: number;
+  marquee_show_on_fullscreen: boolean;
   karaoke_show_on_fullscreen: boolean;
   floating_show_on_fullscreen: boolean;
   theme: string;
@@ -250,12 +250,12 @@ export type SettingsPatch = Partial<{
 
 export type UiStatePatch = Partial<UiState>;
 
-export type IslandSettingsPatch = Partial<{
+export type MarqueeSettingsPatch = Partial<{
   show_cover: boolean;
   cover_circle: boolean;
   cover_spin: boolean;
   transparency: number;
-  /** One of `ISLAND_SCALE_STEPS`. */
+  /** One of `MARQUEE_SCALE_STEPS`. */
   scale: number;
   /** `true` returns the size to matching the display. */
   match_screen: boolean;
@@ -265,8 +265,8 @@ export type IslandSettingsPatch = Partial<{
 }>;
 
 /** The Marquee's size on its current display, as fitted by the host
-    (`island_size.rs`). Lengths are in points. */
-export type IslandFrame = {
+    (`marquee_size.rs`). Lengths are in points. */
+export type MarqueeFrame = {
   scale: number;
   /** `scale` was matched to the display rather than chosen. */
   auto_scale: boolean;

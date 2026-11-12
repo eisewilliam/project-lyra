@@ -1,5 +1,5 @@
 // Shared playback-sync primitives used by all three lyric surfaces (main,
-// island, karaoke). These were previously copy-pasted into each view; keeping
+// marquee, karaoke). These were previously copy-pasted into each view; keeping
 // one definition means a sync/interpolation fix lands everywhere at once.
 import type { LyricWord, PlaybackCaps } from '@/types/tauri-contracts';
 import { setSurfaceOccluded, windowReady, type SurfaceLabel } from '@/utils/tauri-commands';

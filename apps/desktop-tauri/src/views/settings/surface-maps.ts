@@ -1,5 +1,5 @@
 import type {
-  IslandSettingsPatch,
+  MarqueeSettingsPatch,
   KaraokeSettingsPatch,
   UiState,
 } from '@/types/tauri-contracts';
@@ -7,30 +7,30 @@ import type { Surface } from './types';
 
 export const SURFACE_VISIBILITY_KEYS: Record<Surface, keyof UiState> = {
   main: 'floating_visible',
-  island: 'island_visible',
+  marquee: 'marquee_visible',
   karaoke: 'karaoke_visible',
 };
 
 export const SURFACE_FULLSCREEN_KEYS: Record<Surface, keyof UiState> = {
   main: 'floating_show_on_fullscreen',
-  island: 'island_show_on_fullscreen',
+  marquee: 'marquee_show_on_fullscreen',
   karaoke: 'karaoke_show_on_fullscreen',
 };
 
 export const SURFACE_FONT_SCALE_KEYS: Record<Surface, keyof UiState> = {
   main: 'floating_font_scale',
-  island: 'island_font_scale',
+  marquee: 'marquee_font_scale',
   karaoke: 'karaoke_font_scale',
 };
 
-export const ISLAND_SETTINGS_FIELDS: Partial<Record<keyof UiState, keyof IslandSettingsPatch>> = {
-  island_show_cover: 'show_cover',
-  island_cover_circle: 'cover_circle',
-  island_cover_spin: 'cover_spin',
-  island_transparency: 'transparency',
-  island_base_width: 'base_width',
-  island_lines: 'lines',
-  island_hide_when_idle: 'hide_when_idle',
+export const MARQUEE_SETTINGS_FIELDS: Partial<Record<keyof UiState, keyof MarqueeSettingsPatch>> = {
+  marquee_show_cover: 'show_cover',
+  marquee_cover_circle: 'cover_circle',
+  marquee_cover_spin: 'cover_spin',
+  marquee_transparency: 'transparency',
+  marquee_base_width: 'base_width',
+  marquee_lines: 'lines',
+  marquee_hide_when_idle: 'hide_when_idle',
 };
 
 export const KARAOKE_SETTINGS_FIELDS: Partial<Record<keyof UiState, keyof KaraokeSettingsPatch>> = {

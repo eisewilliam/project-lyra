@@ -9,8 +9,8 @@ import {
   Toggle,
 } from '@/components/settings-controls';
 import { useRowAria } from '@/components/settings-controls/row-context';
-import { ISLAND_SCALE_STEPS, islandScaleLabel } from '@/constants/island-size';
-import { useIslandFrame } from '@/hooks/use-island-frame';
+import { MARQUEE_SCALE_STEPS, marqueeScaleLabel } from '@/constants/marquee-size';
+import { useMarqueeFrame } from '@/hooks/use-marquee-frame';
 import type { MonitorInfo } from '@/types/tauri-contracts';
 import { runSettingsAction } from '@/utils/settings-action-runner';
 import {
@@ -18,8 +18,8 @@ import {
   FONT_FAMILY_OPTIONS,
   FONT_SCALE_STEPS,
   FONT_SIZE_STEPS,
-  ISLAND_TRANSPARENCY_STEPS,
-  ISLAND_WIDTH_STEPS,
+  MARQUEE_TRANSPARENCY_STEPS,
+  MARQUEE_WIDTH_STEPS,
   KARAOKE_ALIGNMENT_OPTIONS,
   KARAOKE_BACKGROUND_STEPS,
   KARAOKE_OFFSET_STEPS,
@@ -31,7 +31,7 @@ import {
 } from '../settings-options';
 import type { ConsolidatedState, FloatingSurface, Section, SettingsBodyProps } from '../types';
 import { PlayersSection } from './players-section';
-import { AppearancePreview, IslandPreview, KaraokePreview } from './previews';
+import { AppearancePreview, MarqueePreview, KaraokePreview } from './previews';
 import { TouchBarSection } from './touch-bar-section';
 import { UpdatesGroup } from './updates-group';
 
@@ -39,15 +39,15 @@ const MATCH_SCREEN = 'match-screen';
 
 /** Size of the Marquee: a fixed size, or matched to whichever display it is
     on. While matched, the option names the size picked for that display. */
-function IslandSizeRow({
+function MarqueeSizeRow({
   scale,
   onChange,
 }: Readonly<{ scale: number | null; onChange: (scale: number | null) => Promise<void> }>) {
-  const frame = useIslandFrame();
-  const matched = frame?.auto_scale ? ` (${islandScaleLabel(frame.scale)})` : '';
+  const frame = useMarqueeFrame();
+  const matched = frame?.auto_scale ? ` (${marqueeScaleLabel(frame.scale)})` : '';
   const options = [
     { value: MATCH_SCREEN, label: `Match screen${matched}` },
-    ...ISLAND_SCALE_STEPS.map((step) => ({ value: String(step.value), label: step.label })),
+    ...MARQUEE_SCALE_STEPS.map((step) => ({ value: String(step.value), label: step.label })),
   ];
   return (
     <Row label="Size" hint="Match screen picks a size for each display.">
@@ -89,8 +89,8 @@ export function PinnedPreview({
   artworkSrc,
 }: Readonly<{ section: Section; state: ConsolidatedState; artworkSrc: string }>) {
   const { ui, app } = state;
-  if (section === 'island') {
-    return <IslandPreview ui={ui} appearance={app.appearance} artworkSrc={artworkSrc} />;
+  if (section === 'marquee') {
+    return <MarqueePreview ui={ui} appearance={app.appearance} artworkSrc={artworkSrc} />;
   }
   if (section === 'karaoke') {
     return <KaraokePreview ui={ui} appearance={app.appearance} artworkSrc={artworkSrc} />;
@@ -364,37 +364,37 @@ export function Body({
     );
   }
 
-  const showCover = ui.island_show_cover ?? true;
+  const showCover = ui.marquee_show_cover ?? true;
 
   return (
     <>
       <Group title="Visibility">
         <Row label={`Show ${activeLabel}`} hint="A dynamic panel above your other windows, wherever you place it.">
-          <Toggle value={ui.island_visible} onChange={() => actions.toggleVisible('island')} />
+          <Toggle value={ui.marquee_visible} onChange={() => actions.toggleVisible('marquee')} />
         </Row>
         <Row label="Show over full-screen apps">
-          <Toggle value={ui.island_show_on_fullscreen} onChange={(v: boolean) => actions.setFullscreen('island', v)} />
+          <Toggle value={ui.marquee_show_on_fullscreen} onChange={(v: boolean) => actions.setFullscreen('marquee', v)} />
         </Row>
         <Row label="Hide when nothing is playing" hint="A paused song still shows.">
           <Toggle
-            value={ui.island_hide_when_idle ?? true}
-            onChange={(v: boolean) => actions.island('island_hide_when_idle', v)}
+            value={ui.marquee_hide_when_idle ?? true}
+            onChange={(v: boolean) => actions.marquee('marquee_hide_when_idle', v)}
           />
         </Row>
       </Group>
 
       <Group title="Window">
         <Row label="Lock position" hint="Stops the Marquee from being dragged.">
-          <Toggle value={ui.island_locked} onChange={(v: boolean) => actions.setLock(v)} />
+          <Toggle value={ui.marquee_locked} onChange={(v: boolean) => actions.setLock(v)} />
         </Row>
         <Row label="Click-through" hint="Clicks pass to the app behind the Marquee, and its controls turn off.">
-          <Toggle value={ui.island_click_through} onChange={(v: boolean) => actions.setIslandClickThrough(v)} />
+          <Toggle value={ui.marquee_click_through} onChange={(v: boolean) => actions.setMarqueeClickThrough(v)} />
         </Row>
         <Row label="Position" hint="Back to the bottom center of the screen.">
           <button
             type="button"
             className="action-btn"
-            onClick={() => runSettingsAction(actions.resetIslandPosition())}
+            onClick={() => runSettingsAction(actions.resetMarqueePosition())}
           >
             Reset position
           </button>
@@ -402,43 +402,43 @@ export function Body({
       </Group>
 
       <Group title="Layout">
-        <IslandSizeRow scale={ui.island_scale ?? null} onChange={actions.setIslandSize} />
+        <MarqueeSizeRow scale={ui.marquee_scale ?? null} onChange={actions.setMarqueeSize} />
         <Row label="Width">
           <SnapSlider
-            steps={ISLAND_WIDTH_STEPS}
-            value={ui.island_base_width ?? 600}
-            onChange={(v) => actions.island('island_base_width', v, 'island-width')}
+            steps={MARQUEE_WIDTH_STEPS}
+            value={ui.marquee_base_width ?? 600}
+            onChange={(v) => actions.marquee('marquee_base_width', v, 'marquee-width')}
           />
         </Row>
         <Row label="Lines">
           <Segmented
-            value={String(ui.island_lines ?? 2)}
+            value={String(ui.marquee_lines ?? 2)}
             options={LINE_COUNT_OPTIONS}
-            onChange={(v: string) => actions.island('island_lines', Number.parseInt(v, 10))}
+            onChange={(v: string) => actions.marquee('marquee_lines', Number.parseInt(v, 10))}
           />
         </Row>
-        {textScale('island', ui.island_font_scale)}
+        {textScale('marquee', ui.marquee_font_scale)}
       </Group>
 
       <Group title="Background">
         <Row label="Transparency" hint="Lyrics keep their contrast at every level.">
           <SnapSlider
-            steps={ISLAND_TRANSPARENCY_STEPS}
-            value={ui.island_transparency ?? 0.5}
-            onChange={(v) => actions.island('island_transparency', v, 'island-transparency')}
+            steps={MARQUEE_TRANSPARENCY_STEPS}
+            value={ui.marquee_transparency ?? 0.5}
+            onChange={(v) => actions.marquee('marquee_transparency', v, 'marquee-transparency')}
           />
         </Row>
       </Group>
 
       <Group title="Cover art">
         <Row label="Show cover art">
-          <Toggle value={showCover} onChange={(v: boolean) => actions.island('island_show_cover', v)} />
+          <Toggle value={showCover} onChange={(v: boolean) => actions.marquee('marquee_show_cover', v)} />
         </Row>
         <Row label="Circular" disabled={!showCover}>
-          <Toggle value={ui.island_cover_circle ?? false} onChange={(v: boolean) => actions.island('island_cover_circle', v)} />
+          <Toggle value={ui.marquee_cover_circle ?? false} onChange={(v: boolean) => actions.marquee('marquee_cover_circle', v)} />
         </Row>
         <Row label="Spin while playing" disabled={!showCover}>
-          <Toggle value={ui.island_cover_spin ?? false} onChange={(v: boolean) => actions.island('island_cover_spin', v)} />
+          <Toggle value={ui.marquee_cover_spin ?? false} onChange={(v: boolean) => actions.marquee('marquee_cover_spin', v)} />
         </Row>
       </Group>
     </>

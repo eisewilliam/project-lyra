@@ -7,24 +7,24 @@ import {
   getRenderSnapshot,
   getSettings,
   getUiState,
-  resetIslandPosition,
+  resetMarqueePosition,
   setAutostart,
   setFontScale,
-  setIslandClickThrough,
-  setIslandLocked,
+  setMarqueeClickThrough,
+  setMarqueeLocked,
   setPreferredMonitor,
   setShowOnFullscreen,
   setTheme,
   setTouchBarControlStrip,
   toggleSurface,
-  updateIslandSettings,
+  updateMarqueeSettings,
   updateKaraokeSettings,
   updateSettings,
 } from '@/utils/tauri-commands';
 import { applyHostOsDataset } from '@/utils/os';
 import type { MonitorInfo, RenderSnapshot, UiState, AppSettings, SettingsPatch, UiStatePatch } from '@/types/tauri-contracts';
 import {
-  ISLAND_SETTINGS_FIELDS,
+  MARQUEE_SETTINGS_FIELDS,
   KARAOKE_SETTINGS_FIELDS,
   SURFACE_FONT_SCALE_KEYS,
   SURFACE_FULLSCREEN_KEYS,
@@ -227,12 +227,12 @@ export function useSettings() {
       );
     },
     setLock: async (locked: boolean) => {
-      await optimisticUiAction({ island_locked: locked }, () => setIslandLocked(locked));
+      await optimisticUiAction({ marquee_locked: locked }, () => setMarqueeLocked(locked));
     },
-    setIslandClickThrough: async (enabled: boolean) => {
+    setMarqueeClickThrough: async (enabled: boolean) => {
       await optimisticUiAction(
-        { island_click_through: enabled },
-        () => setIslandClickThrough(enabled),
+        { marquee_click_through: enabled },
+        () => setMarqueeClickThrough(enabled),
       );
     },
     setTouchBarControlStrip: async (enabled: boolean) => {
@@ -241,14 +241,14 @@ export function useSettings() {
         () => setTouchBarControlStrip(enabled),
       );
     },
-    setIslandSize: async (scale: number | null) => {
+    setMarqueeSize: async (scale: number | null) => {
       await optimisticUiAction(
-        { island_scale: scale },
-        () => updateIslandSettings(scale === null ? { match_screen: true } : { scale }),
+        { marquee_scale: scale },
+        () => updateMarqueeSettings(scale === null ? { match_screen: true } : { scale }),
       );
     },
-    resetIslandPosition: async () => {
-      await optimisticUiAction({ island_pos: null }, () => resetIslandPosition());
+    resetMarqueePosition: async () => {
+      await optimisticUiAction({ marquee_pos: null }, () => resetMarqueePosition());
     },
     setFont: async (surface: FloatingSurface | 'karaoke', scale: number) => {
       await optimisticUiAction(
@@ -256,12 +256,12 @@ export function useSettings() {
         () => debounced(`font-${surface}`, 80, () => setFontScale(surface, scale)),
       );
     },
-    island: async (key: keyof UiState, value: unknown, dbKey?: string) => {
+    marquee: async (key: keyof UiState, value: unknown, dbKey?: string) => {
       const payload = {};
-      const field = ISLAND_SETTINGS_FIELDS[key];
+      const field = MARQUEE_SETTINGS_FIELDS[key];
       if (!field) return;
       Object.assign(payload, { [field]: typeof value === 'number' ? value : Boolean(value) });
-      const send = () => updateIslandSettings(payload);
+      const send = () => updateMarqueeSettings(payload);
       await optimisticUiAction(
         { [key]: value },
         () => (dbKey ? debounced(dbKey, 80, send) : send()),

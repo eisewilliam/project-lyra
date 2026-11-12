@@ -3,15 +3,15 @@ import { createRoot } from 'react-dom/client'
 import { installNativeFeel } from '@/utils/native-feel'
 import './index.css'
 import App from './views/app'
-import Island from './views/island'
+import Marquee from './views/marquee'
 import Karaoke from './views/karaoke'
 import Settings from './views/settings'
 
 const path = globalThis.location.pathname;
 
 let surface = 'main';
-if (path === '/island') {
-  surface = 'island';
+if (path === '/marquee') {
+  surface = 'marquee';
 } else if (path === '/karaoke') {
   surface = 'karaoke';
 } else if (path === '/settings') {
@@ -19,8 +19,8 @@ if (path === '/island') {
 }
 
 let view = <App />;
-if (surface === 'island') {
-  view = <Island />;
+if (surface === 'marquee') {
+  view = <Marquee />;
 } else if (surface === 'karaoke') {
   view = <Karaoke />;
 } else if (surface === 'settings') {

@@ -1,4 +1,4 @@
-use crate::island_size;
+use crate::marquee_size;
 use crate::tray;
 use crate::ui_state::UiState;
 use crate::AppState;
@@ -45,7 +45,7 @@ pub fn set_show_on_fullscreen(
 ) {
     let new_state = state.ui.mutate(|s| match surface.as_str() {
         "main" => s.floating_show_on_fullscreen = value,
-        "island" => s.island_show_on_fullscreen = value,
+        "marquee" => s.marquee_show_on_fullscreen = value,
         "karaoke" => s.karaoke_show_on_fullscreen = value,
         _ => {}
     });
@@ -53,25 +53,25 @@ pub fn set_show_on_fullscreen(
     let _ = app.emit("ui-settings-changed", new_state);
 }
 
-/// Position lock only: a locked island can't be dragged but still responds
+/// Position lock only: a locked marquee can't be dragged but still responds
 /// to hover and clicks. Click-through is a separate setting.
 #[tauri::command]
-pub fn set_island_locked(locked: bool, state: State<'_, AppState>, app: AppHandle) {
-    let new_state = state.ui.mutate(|s| s.island_locked = locked);
+pub fn set_marquee_locked(locked: bool, state: State<'_, AppState>, app: AppHandle) {
+    let new_state = state.ui.mutate(|s| s.marquee_locked = locked);
     if let Some(refs) = app.try_state::<tray::TrayMenuRefs>() {
         refs.sync(&new_state);
     }
-    let _ = app.emit("island-lock-changed", new_state.island_locked);
+    let _ = app.emit("marquee-lock-changed", new_state.marquee_locked);
     let _ = app.emit("ui-settings-changed", new_state);
 }
 
-/// Let clicks pass through the island to whatever is behind it. Disables
-/// hover controls and click actions on the island.
+/// Let clicks pass through the marquee to whatever is behind it. Disables
+/// hover controls and click actions on the marquee.
 #[tauri::command]
-pub fn set_island_click_through(enabled: bool, state: State<'_, AppState>, app: AppHandle) {
-    let new_state = state.ui.mutate(|s| s.island_click_through = enabled);
-    if let Some(island) = app.get_webview_window("island") {
-        let _ = island.set_ignore_cursor_events(enabled);
+pub fn set_marquee_click_through(enabled: bool, state: State<'_, AppState>, app: AppHandle) {
+    let new_state = state.ui.mutate(|s| s.marquee_click_through = enabled);
+    if let Some(marquee) = app.get_webview_window("marquee") {
+        let _ = marquee.set_ignore_cursor_events(enabled);
     }
     let _ = app.emit("ui-settings-changed", new_state);
 }
@@ -121,13 +121,13 @@ pub fn copy_text(text: String, app: AppHandle) -> Result<(), String> {
     app.clipboard().write_text(text).map_err(|e| e.to_string())
 }
 
-/// Whether the pointer is over the island (macOS hover safety check). Sync so
+/// Whether the pointer is over the marquee (macOS hover safety check). Sync so
 /// it runs on the main thread, where AppKit state may be read.
 #[tauri::command]
-pub fn island_pointer_inside(app: AppHandle) -> bool {
+pub fn marquee_pointer_inside(app: AppHandle) -> bool {
     #[cfg(target_os = "macos")]
     {
-        crate::macos::island_pointer_inside(&app)
+        crate::macos::marquee_pointer_inside(&app)
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -136,7 +136,7 @@ pub fn island_pointer_inside(app: AppHandle) -> bool {
     }
 }
 
-/// Show and focus the main window (from the island or the first-run card).
+/// Show and focus the main window (from the marquee or the first-run card).
 #[tauri::command]
 pub fn open_main_window(app: AppHandle) {
     tray::open_lyra(&app);
@@ -183,7 +183,7 @@ pub fn open_automation_settings() {
 pub fn set_font_scale(surface: String, scale: f32, state: State<'_, AppState>, app: AppHandle) {
     let new_state = state.ui.mutate(|s| match surface.as_str() {
         "main" => s.floating_font_scale = scale,
-        "island" => s.island_font_scale = scale,
+        "marquee" => s.marquee_font_scale = scale,
         "karaoke" => s.karaoke_font_scale = scale,
         _ => {}
     });
@@ -208,12 +208,12 @@ pub struct KaraokePatch {
 }
 
 #[derive(serde::Deserialize)]
-pub struct IslandPatch {
+pub struct MarqueePatch {
     pub show_cover: Option<bool>,
     pub cover_circle: Option<bool>,
     pub cover_spin: Option<bool>,
     pub transparency: Option<f32>,
-    /// A size from `island_size::SCALE_STEPS`.
+    /// A size from `marquee_size::SCALE_STEPS`.
     pub scale: Option<f32>,
     /// `true` returns the size to matching the display.
     pub match_screen: Option<bool>,
@@ -222,7 +222,7 @@ pub struct IslandPatch {
     pub hide_when_idle: Option<bool>,
 }
 
-impl IslandPatch {
+impl MarqueePatch {
     fn changes_size(&self) -> bool {
         self.scale.is_some()
             || self.match_screen.is_some()
@@ -232,39 +232,40 @@ impl IslandPatch {
 }
 
 #[tauri::command]
-pub fn update_island_settings(patch: IslandPatch, state: State<'_, AppState>, app: AppHandle) {
+pub fn update_marquee_settings(patch: MarqueePatch, state: State<'_, AppState>, app: AppHandle) {
     let new_state = state.ui.mutate(|s| {
         if let Some(v) = patch.show_cover {
-            s.island_show_cover = v;
+            s.marquee_show_cover = v;
         }
         if let Some(v) = patch.cover_circle {
-            s.island_cover_circle = v;
+            s.marquee_cover_circle = v;
         }
         if let Some(v) = patch.cover_spin {
-            s.island_cover_spin = v;
+            s.marquee_cover_spin = v;
         }
         if let Some(v) = patch.transparency.filter(|v| v.is_finite()) {
-            s.island_transparency = v.clamp(0.0, 1.0);
+            s.marquee_transparency = v.clamp(0.0, 1.0);
         }
         if let Some(v) = patch.scale.filter(|v| v.is_finite()) {
-            s.island_scale = Some(island_size::nearest_step(v));
+            s.marquee_scale = Some(marquee_size::nearest_step(v));
         }
         if patch.match_screen == Some(true) {
-            s.island_scale = None;
+            s.marquee_scale = None;
         }
         if let Some(v) = patch.base_width {
-            s.island_base_width = v.clamp(island_size::MIN_BASE_WIDTH, island_size::MAX_BASE_WIDTH);
+            s.marquee_base_width =
+                v.clamp(marquee_size::MIN_BASE_WIDTH, marquee_size::MAX_BASE_WIDTH);
         }
         if let Some(v) = patch.lines {
-            s.island_lines = v.clamp(1, 2);
+            s.marquee_lines = v.clamp(1, 2);
         }
         if let Some(v) = patch.hide_when_idle {
-            s.island_hide_when_idle = v;
+            s.marquee_hide_when_idle = v;
         }
     });
     let _ = app.emit("ui-settings-changed", new_state);
     if patch.changes_size() {
-        island_size::fit_island(&app, true);
+        marquee_size::fit_marquee(&app, true);
     }
 }
 
@@ -301,27 +302,27 @@ pub fn set_overlay_position(label: String, x: i32, y: i32, app: AppHandle) {
     let _ = crate::macos::set_overlay_position(&app, &label, x, y);
 }
 
-/// Called by the island frontend when a drag ends: settles the island into
+/// Called by the marquee frontend when a drag ends: settles the marquee into
 /// the safe area of its display, on an edge or the centre line when it is
 /// close to one, and saves where it ends up.
 #[tauri::command]
-pub fn settle_island_position(app: AppHandle) {
-    island_size::settle_island(&app);
+pub fn settle_marquee_position(app: AppHandle) {
+    marquee_size::settle_marquee(&app);
 }
 
-/// Forget where the user put the island and return it to its default place.
+/// Forget where the user put the marquee and return it to its default place.
 #[tauri::command]
-pub fn reset_island_position(state: State<'_, AppState>, app: AppHandle) {
-    let new_state = state.ui.mutate(|s| s.island_pos = None);
+pub fn reset_marquee_position(state: State<'_, AppState>, app: AppHandle) {
+    let new_state = state.ui.mutate(|s| s.marquee_pos = None);
     let _ = app.emit("ui-settings-changed", &new_state);
     crate::apply_preferred_monitor_positioning(&app, &new_state);
 }
 
-/// The island's size on its current display, once it has been fitted. Changes
-/// arrive as `island-frame` events.
+/// The marquee's size on its current display, once it has been fitted. Changes
+/// arrive as `marquee-frame` events.
 #[tauri::command]
-pub fn get_island_frame(state: State<'_, AppState>) -> Option<island_size::IslandFrame> {
-    state.island_fit.current()
+pub fn get_marquee_frame(state: State<'_, AppState>) -> Option<marquee_size::MarqueeFrame> {
+    state.marquee_fit.current()
 }
 
 // ── Core Runtime ──────────────────────────────────────────────────────────────
@@ -506,12 +507,12 @@ pub fn update_settings(patch: SettingsPatch, state: State<'_, AppState>, app: Ap
     };
 
     // Apply OS-level window flags to the main window. The overlay panels
-    // (island/karaoke) manage their own click-through/level natively, so only
+    // (marquee/karaoke) manage their own click-through/level natively, so only
     // the regular main window is driven from these settings.
     crate::apply_main_window_settings(&app, &s.window);
-    // Battery saver drops the island's glass along with the CSS effects.
+    // Battery saver drops the marquee's glass along with the CSS effects.
     if s.behavior.battery_saver != battery_saver_was {
-        crate::macos::set_island_glass(&app, !s.behavior.battery_saver);
+        crate::macos::set_marquee_glass(&app, !s.behavior.battery_saver);
     }
     state
         .players
@@ -658,7 +659,7 @@ pub fn get_available_monitors(app: AppHandle) -> Vec<MonitorInfo> {
     // Use any existing window to query monitor information.
     let Some(win) = app
         .get_webview_window("main")
-        .or_else(|| app.get_webview_window("island"))
+        .or_else(|| app.get_webview_window("marquee"))
         .or_else(|| app.get_webview_window("settings"))
     else {
         return vec![];
@@ -690,15 +691,15 @@ pub fn get_available_monitors(app: AppHandle) -> Vec<MonitorInfo> {
 }
 
 /// Persist the preferred monitor and immediately reposition all surfaces onto
-/// it. Resets the island's saved position so it re-centres on the new display.
+/// it. Resets the marquee's saved position so it re-centres on the new display.
 #[tauri::command]
 pub fn set_preferred_monitor(name: Option<String>, state: State<'_, AppState>, app: AppHandle) {
     let new_state = state.ui.mutate(|s| {
-        // If the monitor is actually changing, clear the saved island position
+        // If the monitor is actually changing, clear the saved marquee position
         // so apply_preferred_monitor_positioning puts it in its default place
         // on the new display.
         if s.preferred_monitor != name {
-            s.island_pos = None;
+            s.marquee_pos = None;
         }
         s.preferred_monitor = name;
     });
@@ -724,14 +725,14 @@ pub fn window_ready(label: String, state: State<'_, AppState>, app: AppHandle) {
     let ui = state.ui.snapshot();
     let configured_visible = match label.as_str() {
         "main" => ui.floating_visible,
-        "island" => ui.island_visible,
+        "marquee" => ui.marquee_visible,
         "karaoke" => ui.karaoke_visible,
         _ => false,
     };
     tray::apply_window_visibility(&app, &label, &ui);
 
     // Karaoke is a display-only overlay — always click-through.
-    // Island is click-through only when the user turned that on.
+    // Marquee is click-through only when the user turned that on.
     // Deferred here (rather than in `setup()`) because the window must be
     // realized — i.e. shown and backed by an actual GTK/gdk surface on
     // Linux — before `set_ignore_cursor_events` is safe to call. `setup()`
@@ -743,10 +744,10 @@ pub fn window_ready(label: String, state: State<'_, AppState>, app: AppHandle) {
                 crate::linux::apply_ignore_cursor_events_when_ready(&win, true);
             }
         }
-        "island" => {
+        "marquee" => {
             if let Some(win) = app.get_webview_window(&label) {
-                crate::linux::apply_ignore_cursor_events_when_ready(&win, ui.island_click_through);
-                crate::macos::sync_island_glass_state(&win);
+                crate::linux::apply_ignore_cursor_events_when_ready(&win, ui.marquee_click_through);
+                crate::macos::sync_marquee_glass_state(&win);
             }
         }
         _ => {}
@@ -783,7 +784,7 @@ pub fn set_surface_occluded(
     state: State<'_, AppState>,
     app: AppHandle,
 ) {
-    if !matches!(label.as_str(), "main" | "island" | "karaoke") {
+    if !matches!(label.as_str(), "main" | "marquee" | "karaoke") {
         return;
     }
     // Rare, and a surface that stops updating is first explained here.

@@ -102,11 +102,11 @@ export function LyraWindow({ song, position, playing, source = null, ignored = n
 
 function SongRing({ song, songTime }: { song: Song; songTime: number }) {
   const [delay] = useState(() => -songTime);
-  return <rect className="island-ring-fill" x="2" y="2" width="40" height="40" rx="9" pathLength="100"
+  return <rect className="marquee-ring-fill" x="2" y="2" width="40" height="40" rx="9" pathLength="100"
     style={{ animationDelay: `${delay}s`, animationDuration: `${song.duration}s` }} />;
 }
 
-// Lines wider than the island slide across while they are sung, like the
+// Lines wider than the marquee slide across while they are sung, like the
 // app's gliding line.
 function GlidingLine({ line, offset, className }: { line: SongLine; offset: number; className: string }) {
   const viewportRef = useRef<HTMLSpanElement>(null);
@@ -130,21 +130,21 @@ function GlidingLine({ line, offset, className }: { line: SongLine; offset: numb
   </span>;
 }
 
-export function FloatingIsland({ song, position }: { song: Song; position: SongPosition }) {
+export function FloatingMarquee({ song, position }: { song: Song; position: SongPosition }) {
   const { index, loop, lineOffset, songTime } = position;
   const line = lineAt(song, index);
   const next = lineAt(song, index + 1);
-  return <div className="surface surface-island">
-    <span className="island-art">
+  return <div className="surface surface-marquee">
+    <span className="marquee-art">
       <DemoArtwork song={song} />
-      <svg viewBox="0 0 44 44"><rect className="island-ring-track" x="2" y="2" width="40" height="40" rx="9" />
+      <svg viewBox="0 0 44 44"><rect className="marquee-ring-track" x="2" y="2" width="40" height="40" rx="9" />
         <SongRing key={song.id + loop} song={song} songTime={songTime} /></svg>
     </span>
-    <span className="island-lines">
-      <GlidingLine key={song.id + loop + '-' + index} line={line} offset={lineOffset} className="island-current" />
-      <span className="island-next">{next.text}</span>
+    <span className="marquee-lines">
+      <GlidingLine key={song.id + loop + '-' + index} line={line} offset={lineOffset} className="marquee-current" />
+      <span className="marquee-next">{next.text}</span>
     </span>
-    <span className="island-bars"><i /><i /><i /><i /></span>
+    <span className="marquee-bars"><i /><i /><i /><i /></span>
   </div>;
 }
 

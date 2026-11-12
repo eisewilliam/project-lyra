@@ -145,7 +145,7 @@ That boundary is deliberate. Platform adapters and desktop surfaces can evolve w
 ```text
 apps/
   desktop-tauri/        Tauri 2 desktop host and React/Vite UI
-    src/                Four SPA surfaces: main, island, karaoke, settings
+    src/                Four SPA surfaces: main, marquee, karaoke, settings
     src-tauri/          Rust Tauri bridge, tray integration, window state
 
 crates/

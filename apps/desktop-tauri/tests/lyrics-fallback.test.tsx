@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MainLyricsPane } from '../src/views/app/components/main-lyrics-pane';
-import { PanelPlaceholder } from '../src/views/island/components/placeholder';
+import { PanelPlaceholder } from '../src/views/marquee/components/placeholder';
 import { KaraokePlaceholder } from '../src/views/karaoke/components/placeholder';
 import { resolveLyricsSurfaceState } from '../src/utils/lyrics-state';
 import { shouldShowTrackIntro } from '../src/utils/lyric-renderer';

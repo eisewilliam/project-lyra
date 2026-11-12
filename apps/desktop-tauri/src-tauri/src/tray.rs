@@ -14,9 +14,9 @@ use crate::ui_state::UiState;
 use crate::AppState;
 
 pub struct TrayMenuRefs {
-    pub show_island: CheckMenuItem<Wry>,
+    pub show_marquee: CheckMenuItem<Wry>,
     pub show_karaoke: CheckMenuItem<Wry>,
-    pub lock_island: CheckMenuItem<Wry>,
+    pub lock_marquee: CheckMenuItem<Wry>,
     now_playing: MenuItem<Wry>,
     play_pause: MenuItem<Wry>,
     next: MenuItem<Wry>,
@@ -61,9 +61,9 @@ fn now_playing_label(render: &RenderSnapshot) -> String {
 
 impl TrayMenuRefs {
     pub fn sync(&self, state: &UiState) {
-        let _ = self.show_island.set_checked(state.island_visible);
+        let _ = self.show_marquee.set_checked(state.marquee_visible);
         let _ = self.show_karaoke.set_checked(state.karaoke_visible);
-        let _ = self.lock_island.set_checked(state.island_locked);
+        let _ = self.lock_marquee.set_checked(state.marquee_locked);
     }
 
     /// Mirror the followed track and transport state into the menu-bar menu.
@@ -126,17 +126,17 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
     let show_lyra = MenuItemBuilder::new("Open Lyra")
         .id("show_lyra")
         .build(app)?;
-    let show_island = CheckMenuItemBuilder::new("Show Marquee")
-        .id("toggle_island")
-        .checked(initial.island_visible)
+    let show_marquee = CheckMenuItemBuilder::new("Show Marquee")
+        .id("toggle_marquee")
+        .checked(initial.marquee_visible)
         .build(app)?;
     let show_karaoke = CheckMenuItemBuilder::new("Show Karaoke Lyrics")
         .id("toggle_karaoke")
         .checked(initial.karaoke_visible)
         .build(app)?;
-    let lock_island = CheckMenuItemBuilder::new("Lock Marquee Position")
-        .id("toggle_island_lock")
-        .checked(initial.island_locked)
+    let lock_marquee = CheckMenuItemBuilder::new("Lock Marquee Position")
+        .id("toggle_marquee_lock")
+        .checked(initial.marquee_locked)
         .build(app)?;
 
     let settings = MenuItemBuilder::new("Settings…")
@@ -155,10 +155,10 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
             &next,
             &PredefinedMenuItem::separator(app)?,
             &show_lyra,
-            &show_island,
+            &show_marquee,
             &show_karaoke,
             &PredefinedMenuItem::separator(app)?,
-            &lock_island,
+            &lock_marquee,
             &PredefinedMenuItem::separator(app)?,
             &settings,
             &PredefinedMenuItem::separator(app)?,
@@ -171,9 +171,9 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
         .build(app)?;
 
     app.manage(TrayMenuRefs {
-        show_island,
+        show_marquee,
         show_karaoke,
-        lock_island,
+        lock_marquee,
         now_playing,
         play_pause,
         next,
@@ -189,9 +189,9 @@ pub fn create_tray(app: &AppHandle, initial: &UiState) -> tauri::Result<()> {
         .icon_as_template(true)
         .on_menu_event(move |app, event| match event.id().as_ref() {
             "show_lyra" => open_lyra(app),
-            "toggle_island" => toggle_surface(app, "island"),
+            "toggle_marquee" => toggle_surface(app, "marquee"),
             "toggle_karaoke" => toggle_surface(app, "karaoke"),
-            "toggle_island_lock" => toggle_island_lock(app),
+            "toggle_marquee_lock" => toggle_marquee_lock(app),
             "settings" => open_settings(app),
             "tray_play_pause" => send_command(app, PlayerCommand::PlayPause),
             "tray_next" => send_command(app, PlayerCommand::Next),
@@ -243,14 +243,14 @@ pub fn toggle_surface(app: &AppHandle, label: &str) {
     let state = app.state::<AppState>();
     let new_state = state.ui.mutate(|s| match label {
         "main" => s.floating_visible = !s.floating_visible,
-        "island" => s.island_visible = !s.island_visible,
+        "marquee" => s.marquee_visible = !s.marquee_visible,
         "karaoke" => s.karaoke_visible = !s.karaoke_visible,
         _ => {}
     });
     apply_window_visibility(app, label, &new_state);
     if label == "karaoke" {
         // Out of the Karaoke lyrics' way, or back where it was.
-        crate::island_size::place_island(app, None);
+        crate::marquee_size::place_marquee(app, None);
     }
     if let Some(refs) = app.try_state::<TrayMenuRefs>() {
         refs.sync(&new_state);
@@ -258,20 +258,20 @@ pub fn toggle_surface(app: &AppHandle, label: &str) {
     let _ = app.emit("ui-settings-changed", new_state);
 }
 
-pub fn toggle_island_lock(app: &AppHandle) {
+pub fn toggle_marquee_lock(app: &AppHandle) {
     let state = app.state::<AppState>();
-    let new_state = state.ui.mutate(|s| s.island_locked = !s.island_locked);
+    let new_state = state.ui.mutate(|s| s.marquee_locked = !s.marquee_locked);
     if let Some(refs) = app.try_state::<TrayMenuRefs>() {
         refs.sync(&new_state);
     }
-    let _ = app.emit("island-lock-changed", new_state.island_locked);
+    let _ = app.emit("marquee-lock-changed", new_state.marquee_locked);
     let _ = app.emit("ui-settings-changed", new_state);
 }
 
 pub fn apply_window_visibility(app: &AppHandle, label: &str, state: &UiState) {
     let (visible, on_fullscreen) = match label {
         "main" => (state.floating_visible, state.floating_show_on_fullscreen),
-        "island" => (state.island_visible, state.island_show_on_fullscreen),
+        "marquee" => (state.marquee_visible, state.marquee_show_on_fullscreen),
         "karaoke" => (state.karaoke_visible, state.karaoke_show_on_fullscreen),
         _ => return,
     };
@@ -333,7 +333,7 @@ mod tests {
     fn dock_is_regular_when_main_surface_is_visible() {
         let state = UiState {
             floating_visible: true,
-            island_visible: false,
+            marquee_visible: false,
             karaoke_visible: false,
             ..UiState::default()
         };
@@ -345,7 +345,7 @@ mod tests {
     fn dock_is_accessory_when_only_menu_bar_and_overlays_remain() {
         let state = UiState {
             floating_visible: false,
-            island_visible: true,
+            marquee_visible: true,
             karaoke_visible: true,
             ..UiState::default()
         };

@@ -9,7 +9,7 @@ All windows are served from one SPA. [`src/main.tsx`](src/main.tsx) selects the 
 | Window label | Path | Role |
 |---|---|---|
 | `main` | `/` | Full Lyra window |
-| `island` | `/island` | Floating island overlay |
+| `marquee` | `/marquee` | Marquee (floating lyric panel) |
 | `karaoke` | `/karaoke` | Karaoke overlay |
 | `settings` | `/settings` | Settings window |
 
@@ -67,7 +67,7 @@ The Tauri Rust layer in `src-tauri/` is the bridge around that core. It manages 
 | Path | Role |
 |---|---|
 | `src/views/app/` | Full Lyra window |
-| `src/views/island/` | Floating island overlay |
+| `src/views/marquee/` | Marquee (floating lyric panel) |
 | `src/views/karaoke/` | Karaoke overlay |
 | `src/views/settings/` | Settings UI |
 | `src-tauri/src/commands.rs` | Tauri commands exposed to the UI |

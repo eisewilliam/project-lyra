@@ -17,7 +17,7 @@ const NAV_GROUPS: { header: string | null; items: NavItem[] }[] = [
     header: 'Surfaces',
     items: [
       { id: 'main', label: SETTINGS_SECTION_LABELS.main, icon: <IconMainWindow /> },
-      { id: 'island', label: SETTINGS_SECTION_LABELS.island, icon: <IconMarquee /> },
+      { id: 'marquee', label: SETTINGS_SECTION_LABELS.marquee, icon: <IconMarquee /> },
       { id: 'karaoke', label: SETTINGS_SECTION_LABELS.karaoke, icon: <IconKaraoke /> },
       { id: 'touchbar', label: SETTINGS_SECTION_LABELS.touchbar, icon: <IconTouchBar /> },
     ],

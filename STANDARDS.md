@@ -18,7 +18,7 @@ Lyra is a desktop lyrics app with a Rust core, Tauri bridge, and React UI. These
 
 ### Architecture
 
-- Keep the SPA routing model: `/`, `/island`, `/karaoke`, and `/settings`.
+- Keep the SPA routing model: `/`, `/marquee`, `/karaoke`, and `/settings`.
 - Prefer shared hooks for repeated IPC, event subscription, visibility, playback snapshot, and settings behavior.
 - View components should compose focused components; avoid large files that mix IPC, animation loops, rendering, persistence, and controls.
 - Use typed Tauri command wrappers instead of raw `invoke` scattered through views.
@@ -167,7 +167,7 @@ Lyra is a desktop lyrics app with a Rust core, Tauri bridge, and React UI. These
   - `cd apps/desktop-tauri && pnpm build`
 - Bridge-impacting changes must also pass:
   - `cargo check --manifest-path apps/desktop-tauri/src-tauri/Cargo.toml`
-- UI refactors require a manual smoke test of main, island, karaoke, and settings surfaces.
+- UI refactors require a manual smoke test of main, marquee, karaoke, and settings surfaces.
 - Frontend behavior touching settings, visibility, playback display, or lyric rendering needs a manual smoke-test note.
 - Accessibility changes need keyboard-only verification.
 - Animation or visual-effect changes need verification in normal and reduced-motion modes.

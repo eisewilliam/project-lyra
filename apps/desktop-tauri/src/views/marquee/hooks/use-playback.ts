@@ -15,7 +15,7 @@ import type { LyricsStatus } from '@/utils/lyrics-state';
 const noop = (...args: unknown[]) => { if (args) return; };
 const PLAY_TOGGLE_GUARD_MS = 800;
 
-export function useIslandPlayback({
+export function useMarqueePlayback({
   ensureWindowReady,
 }: {
   ensureWindowReady: () => Promise<void>;
