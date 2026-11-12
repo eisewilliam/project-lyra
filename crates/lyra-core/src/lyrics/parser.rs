@@ -99,6 +99,7 @@ pub fn parse_lrc(track_key: &str, raw: &str, source: LyricSourceKind) -> Result<
 
     Ok(LyricDocument {
         plain_lyrics: None,
+        source_duration_ms: None,
         track_key: track_key.to_string(),
         source,
         lines,

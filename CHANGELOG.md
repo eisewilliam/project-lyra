@@ -38,6 +38,14 @@ offered it as an update.
 
 ### Fixed
 
+- Lyrics no longer drift out of sync on music videos that add scenes the song
+  doesn't have, such as intros, dialogue or credits. When the only lyrics
+  found were timed to a different version of the song, Lyra shows the words
+  without timing instead of highlighting the wrong lines. A music video and
+  its song keep separate lyrics and timing adjustments, even when the player
+  uses the same track for both.
+- Lyra waits a moment for a newly loaded track to report its length before
+  choosing lyrics, so a video that is still loading isn't given the song's.
 - Settings → Appearance → Theme works: Light and Dark now change Settings
   and its menus right away. Before, every choice followed the system.
 - In Settings, the explanation under each setting is smaller and quieter
