@@ -11,7 +11,7 @@ import {
 import { useRowAria } from '@/components/settings-controls/row-context';
 import { ISLAND_SCALE_STEPS, islandScaleLabel } from '@/constants/island-size';
 import { useIslandFrame } from '@/hooks/use-island-frame';
-import type { MonitorInfo } from '@/types/tauri-contracts';
+import type { AutostartStatus, MonitorInfo } from '@/types/tauri-contracts';
 import { runSettingsAction } from '@/utils/settings-action-runner';
 import {
   BACKGROUND_OPACITY_STEPS,
@@ -98,6 +98,13 @@ export function PinnedPreview({
   return null;
 }
 
+const AUTOSTART_HINTS: Record<AutostartStatus, string | undefined> = {
+  enabled: undefined,
+  disabled: undefined,
+  requires_approval: 'macOS is blocking Lyra from opening at login.',
+  unavailable: 'Works in the installed Lyra app, not this development build.',
+};
+
 function monitorLabel(m: MonitorInfo, idx: number): string {
   const res = `${m.width}×${m.height}`;
   const rawName = m.name?.replace(/^\\\\\.\\/u, '') ?? null;
@@ -110,7 +117,7 @@ export function Body({
   state,
   actions,
   activeLabel,
-  autostartEnabled,
+  autostartStatus,
   monitors,
   artworkSrc,
   touchBar,
@@ -138,9 +145,27 @@ export function Body({
           <Row label="Hide when paused" hint="Hides every Lyra window while playback is paused.">
             <Toggle value={app.behavior.hide_when_paused} onChange={(v: boolean) => actions.updateAppSetting('behavior', 'hide_when_paused', v)} />
           </Row>
-          <Row label="Launch at login">
-            <Toggle value={autostartEnabled} onChange={(v: boolean) => actions.setAutostart(v)} />
+          <Row
+            label="Launch at login"
+            hint={AUTOSTART_HINTS[autostartStatus]}
+            disabled={autostartStatus === 'unavailable'}
+          >
+            <Toggle
+              value={autostartStatus === 'enabled' || autostartStatus === 'requires_approval'}
+              onChange={(v: boolean) => actions.setAutostart(v)}
+            />
           </Row>
+          {autostartStatus === 'requires_approval' && (
+            <Row label="Allow Lyra in Login Items">
+              <button
+                type="button"
+                className="action-btn"
+                onClick={() => runSettingsAction(actions.openLoginItemsSettings())}
+              >
+                Open Login Items
+              </button>
+            </Row>
+          )}
         </Group>
 
         <Group title="Storage">

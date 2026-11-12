@@ -1,5 +1,6 @@
 import type {
   AppSettings,
+  AutostartStatus,
   MonitorInfo,
   TouchBarSupport,
   UiState,
@@ -29,6 +30,7 @@ export type Actions = {
   island: (key: keyof UiState, value: unknown, dbKey?: string) => Promise<void>;
   karaoke: (key: keyof UiState, value: unknown, dbKey?: string) => Promise<void>;
   setAutostart: (enabled: boolean) => Promise<void>;
+  openLoginItemsSettings: () => Promise<void>;
   clearCache: () => Promise<void>;
   setPreferredMonitor: (name: string | null) => Promise<void>;
   setTouchBarControlStrip: (enabled: boolean) => Promise<void>;
@@ -39,7 +41,7 @@ export type SettingsBodyProps = {
   state: ConsolidatedState;
   actions: Actions;
   activeLabel: string | undefined;
-  autostartEnabled: boolean;
+  autostartStatus: AutostartStatus;
   monitors: MonitorInfo[];
   /** Current track artwork (or a transparent placeholder) for previews. */
   artworkSrc: string;

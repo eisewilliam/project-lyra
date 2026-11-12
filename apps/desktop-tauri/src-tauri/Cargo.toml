@@ -30,6 +30,11 @@ tokio = { workspace = true }
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-updater = "2"
 
+# macOS already keeps one instance per app bundle and reports a second launch
+# as a reopen event.
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+tauri-plugin-single-instance = "2"
+
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
 
@@ -37,7 +42,8 @@ gtk = "0.18"
 tauri-nspanel = "2.1.1"
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSData", "NSDictionary", "NSDistributedNotificationCenter", "NSEnumerator", "NSGeometry", "NSKeyValueObserving", "NSNotification", "NSProcessInfo", "NSSet", "NSString"] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "objc2-core-foundation", "NSAccessibility", "NSAppearance", "NSApplication", "NSBezierPath", "NSButton", "NSButtonTouchBarItem", "NSClickGestureRecognizer", "NSColor", "NSControl", "NSCustomTouchBarItem", "NSEvent", "NSFont", "NSFontDescriptor", "NSGestureRecognizer", "NSGraphicsContext", "NSImage", "NSLayoutAnchor", "NSLayoutConstraint", "NSMenu", "NSMenuItem", "NSPanGestureRecognizer", "NSParagraphStyle", "NSResponder", "NSRunningApplication", "NSScreen", "NSStackView", "NSTextField", "NSTouch", "NSTouchBar", "NSTouchBarItem", "NSTrackingArea", "NSView", "NSWindow", "NSWorkspace"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "objc2-core-foundation", "NSAccessibility", "NSAppearance", "NSApplication", "NSBezierPath", "NSButton", "NSButtonTouchBarItem", "NSClickGestureRecognizer", "NSColor", "NSControl", "NSCustomTouchBarItem", "NSEvent", "NSFont", "NSFontDescriptor", "NSGestureRecognizer", "NSGlassEffectView", "NSGraphics", "NSGraphicsContext", "NSImage", "NSLayoutAnchor", "NSLayoutConstraint", "NSMenu", "NSMenuItem", "NSPanGestureRecognizer", "NSParagraphStyle", "NSResponder", "NSRunningApplication", "NSScreen", "NSStackView", "NSTextField", "NSToolbar", "NSTouch", "NSTouchBar", "NSTouchBarItem", "NSTrackingArea", "NSView", "NSWindow", "NSWorkspace"] }
 libc = "0.2"
 dispatch2 = { version = "0.3", default-features = false, features = ["std", "libc"] }
 window-vibrancy = "0.8.1"
+objc2-service-management = { version = "0.3", default-features = false, features = ["std", "SMAppService", "objc2", "objc2-foundation"] }

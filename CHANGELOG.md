@@ -12,13 +12,37 @@ offered it as an update.
 
 ### Changed
 
+- On macOS 26, the Settings sidebar floats on Liquid Glass, like System
+  Settings. With Reduce Transparency on, or on older macOS, it looks as before.
 - Changes to `main` require a pull request and passing checks for the parts of
   the project they affect. The project owner can merge without another review;
   other contributors need approval. Unchanged parts can skip their builds.
+- On Windows and Linux, opening Lyra while it is already running brings up
+  the running copy instead of starting a second one with its own tray icon and
+  lyrics.
+- On Linux desktops that use Wayland, Lyra runs through XWayland, where the
+  Marquee and Karaoke lyrics can be placed, dragged and kept above other
+  windows. Starting Lyra with `GDK_BACKEND=wayland` turns this off; those
+  surfaces then appear wherever the desktop puts them.
+- On Linux, the Lyra and Settings windows use Lyra's own title bar and window
+  buttons rather than the desktop's title bar on top of them.
 
 ### Fixed
 
+- Settings → Appearance → Theme works: Light and Dark now change Settings
+  and its menus right away. Before, every choice followed the system.
+- In Settings, the explanation under each setting is smaller and quieter
+  than the setting's name, so the two no longer read as equals.
+- On Windows, buttons in Settings use the same typeface as the rest of the
+  window instead of Arial.
 - Website changes can be previewed on their own branch before release.
+- On Linux, Lyra no longer quits as it starts when click-through is turned on
+  for the main window or the Marquee.
+- On macOS 13 and later, Launch at login works reliably. Lyra now appears as
+  "Lyra" under Open at Login in System Settings, rather than under the
+  developer's name in Allow in the Background. If macOS is blocking it, Settings
+  says so and offers a button to Login Items, instead of showing the switch on
+  while Lyra doesn't open. Your existing choice carries over.
 - "Lyric server busy" no longer stays up after the lyric server recovers.
   Playing a song again, or moving to a song Lyra checked in the background,
   looks its lyrics up afresh.
