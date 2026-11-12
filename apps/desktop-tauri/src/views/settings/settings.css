@@ -41,7 +41,9 @@
     --bg-card: rgba(255, 255, 255, 0.045);
     --text-primary: #f0f0f4;
     --text-secondary: #adadb7;
-    --text-quiet: #9797a3;
+    /* Secondary text under a label: well below the label, still ≥ 4.5:1 on
+       the group panels. */
+    --text-quiet: #8b8a95;
     --border-color: rgba(255, 255, 255, 0.085);
     --input-bg: rgba(255, 255, 255, 0.09);
     --input-hover: rgba(255, 255, 255, 0.14);
@@ -79,6 +81,14 @@ body {
   font-size: 13px;
   user-select: none;
   cursor: default;
+}
+
+/* Controls take the page's type. Without this, buttons and pop-ups fall back
+   to the engine's default face (Arial in WebView2). Zero specificity, so each
+   control's own size and weight still apply. */
+:where(.settings-shell) :where(button, input, select, textarea) {
+  font-family: inherit;
+  letter-spacing: inherit;
 }
 
 /* ── Sidebar ───────────────────────────────────────────────────────────────
@@ -226,8 +236,16 @@ input[type="checkbox"]:focus-visible,
   align-items: center;
   height: 32px;
   padding: 0 28px 7px;
-  font-size: 11.5px;
+  border-top: 1px solid transparent;
+  font-size: 11px;
+  line-height: 14px;
   color: var(--text-quiet);
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+/* The same hairline as the top, while more settings wait below. */
+.pane-footer.has-more {
+  border-top-color: var(--border-color);
 }
 
 /* A section swaps in place with a short fade; nothing slides. */
@@ -272,14 +290,17 @@ input[type="checkbox"]:focus-visible,
   margin-top: 14px;
 }
 
+/* Three text roles, each one step apart on two axes so none is mistaken for
+   its neighbour: the heading is small, semibold and secondary; a label is
+   full size, medium and primary; its hint is small, regular and quiet. */
 .group-title {
   display: block;
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   padding-left: 14px;
-  font-size: 13px;
-  line-height: 18px;
+  font-size: 12px;
+  line-height: 16px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-secondary);
 }
 
 .group-rows {
@@ -300,32 +321,46 @@ input[type="checkbox"]:focus-visible,
   justify-content: space-between;
   gap: 18px;
   box-sizing: border-box;
-  min-height: 42px;
+  /* One height for every row, with a hint or without, so a group reads as an
+     even ladder; a lone label centres in it. */
+  min-height: 52px;
   padding: 9px 0;
 }
 
-.row.has-hint {
-  min-height: 52px;
+/* Appearance keeps shorter single-line rows so it fits beside its preview. */
+.section-appearance .row:not(.has-hint) {
+  min-height: 42px;
 }
 
+/* The label is the setting's name: semibold and primary. */
 .row-label {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 3px;
+  gap: 1px;
   min-width: 0;
   font-size: 13px;
   line-height: 18px;
-  font-weight: 400;
+  font-weight: 600;
   color: var(--text-primary);
 }
 
-/* One line of explanation under a row label. */
+/* The hint is a footnote to it: two sizes down, regular and quiet, held tight
+   to the label so the pair reads as one setting rather than two lines. */
 .row-hint {
   color: var(--text-quiet);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 400;
   line-height: 15px;
+  text-wrap: pretty;
+}
+
+/* A fact shown where a control would be, such as the version. */
+.row-value {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .row-control {
@@ -466,8 +501,8 @@ input[type="checkbox"]:focus-visible,
 .player-session-artist {
   overflow: hidden;
   color: var(--text-quiet);
-  font-size: 11.5px;
-  line-height: 15px;
+  font-size: 11px;
+  line-height: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -924,6 +959,34 @@ body[data-os="macos"] {
   }
 }
 
+/* ── Sidebar glass (macOS 26) ──────────────────────────────────────────────
+   Like System Settings, the sidebar floats as a pane of Liquid Glass, inset
+   from the window's edges. The glass is native and sits behind the page
+   (use-sidebar-glass.ts places it on the sidebar's box), so the page clears
+   the sidebar and cuts its own backdrop away there. Corners stay concentric
+   with the window's: its radius less the inset. */
+.settings-shell[data-sidebar-glass] {
+  --sidebar-glass-inset: 8px;
+  background: transparent;
+}
+
+.settings-shell[data-sidebar-glass] .settings-ambient-bg {
+  background: var(--shell-bg);
+  clip-path: var(--sidebar-glass-hole, none);
+}
+
+.settings-shell[data-sidebar-glass] .settings-sidebar {
+  margin: var(--sidebar-glass-inset) 0 var(--sidebar-glass-inset) var(--sidebar-glass-inset);
+  border-radius: 18px;
+  background: transparent;
+  border-right: none;
+}
+
+/* The inset already clears part of the window controls. */
+.settings-shell[data-sidebar-glass] .sidebar-titlebar {
+  height: calc(52px - var(--sidebar-glass-inset));
+}
+
 /* MacOS Native Buttons Override */
 body[data-os="macos"] .action-btn {
   background: rgba(255, 255, 255, 0.1);
@@ -1162,6 +1225,37 @@ body[data-os="windows"] .custom-select-trigger:hover {
 /* Disable ambient artwork background in Windows */
 body[data-os="windows"] .settings-ambient-bg {
   display: none;
+}
+
+/* ----------------================ Linux ================---------------- */
+
+/* Round buttons set in from the corner, as GNOME and most GTK desktops draw
+   them, in place of Windows' full-height caption buttons. Colours come from
+   the default light and dark tokens. */
+body[data-os="linux"] .settings-win-controls {
+  top: 10px;
+  right: 10px;
+  height: 24px;
+  gap: 8px;
+}
+
+body[data-os="linux"] .settings-win-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--input-bg);
+  color: var(--text-primary);
+}
+
+body[data-os="linux"] .settings-win-btn:hover,
+body[data-os="linux"] .settings-win-btn.close:hover {
+  background: var(--input-hover);
+  color: var(--text-primary);
+}
+
+/* No window controls on the left to clear. */
+body[data-os="linux"] .sidebar-titlebar {
+  height: 40px;
 }
 
 /* ── Settings Ambient Background ────────────────────────────────────────── */
@@ -1558,4 +1652,17 @@ body[data-os="windows"] .settings-ambient-bg {
   .settings-preview .panel-art.is-spinning {
     animation: none;
   }
+}
+
+/* The one action a row is waiting on, such as installing a ready update. */
+.settings-shell .action-btn.is-primary,
+body[data-os="macos"] .settings-shell .action-btn.is-primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: #fff;
+}
+
+.settings-shell .action-btn.is-primary:hover,
+body[data-os="macos"] .settings-shell .action-btn.is-primary:hover {
+  background: color-mix(in srgb, var(--accent) 88%, #fff);
 }

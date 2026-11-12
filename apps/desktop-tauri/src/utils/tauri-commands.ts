@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
   AppSettings,
+  AutostartStatus,
   BrowserLyrics,
   FollowRule,
   KnownPlayerInfo,
@@ -13,6 +14,7 @@ import type {
   PlayerSessionInfo,
   RenderSnapshot,
   SettingsPatch,
+  SidebarGlass,
   TouchBarSupport,
   UiState,
   UpdateInfo,
@@ -206,12 +208,16 @@ export function windowReady(label: SurfaceLabel): Promise<void> {
   return invoke('window_ready', { label });
 }
 
-export function getAutostartStatus(): Promise<boolean> {
+export function getAutostartStatus(): Promise<AutostartStatus> {
   return invoke('get_autostart_status');
 }
 
-export function setAutostart(enabled: boolean): Promise<void> {
+export function setAutostart(enabled: boolean): Promise<AutostartStatus> {
   return invoke('set_autostart', { enabled });
+}
+
+export function openLoginItemsSettings(): Promise<void> {
+  return invoke('open_login_items_settings');
 }
 
 export function setSurfaceOccluded(label: SurfaceLabel, occluded: boolean): Promise<void> {
@@ -280,4 +286,10 @@ export function installUpdate(): Promise<void> {
 
 export function marqueePointerInside(): Promise<boolean> {
   return invoke('marquee_pointer_inside');
+}
+
+/** Floats Liquid Glass behind the settings sidebar (macOS 26+), or removes it
+    with `null`. Resolves whether glass is showing. */
+export function setSettingsSidebarGlass(glass: SidebarGlass | null): Promise<boolean> {
+  return invoke('set_settings_sidebar_glass', { glass });
 }

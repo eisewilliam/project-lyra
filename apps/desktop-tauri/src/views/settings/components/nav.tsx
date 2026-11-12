@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { SETTINGS_SECTION_LABELS } from '../settings-sections';
 import type { Section } from '../types';
 
@@ -25,17 +25,20 @@ const NAV_GROUPS: { header: string | null; items: NavItem[] }[] = [
 ];
 
 export function SettingsNav({
+  ref,
   section,
   showTouchBar,
   onSectionChange,
 }: Readonly<{
+  /** The sidebar itself; the macOS glass is placed behind it. */
+  ref?: Ref<HTMLElement>;
   section: Section;
   /** Only Macs with a Touch Bar list its page. */
   showTouchBar: boolean;
   onSectionChange: (section: Section) => void;
 }>) {
   return (
-    <aside className="settings-sidebar flex shrink-0 flex-col z-[1]">
+    <aside ref={ref} className="settings-sidebar flex shrink-0 flex-col z-[1]">
       {/* Clears the window controls and doubles as the sidebar's drag handle. */}
       <div className="sidebar-titlebar shrink-0" data-tauri-drag-region="deep" />
       <nav className="flex flex-col" aria-label="Settings sections">

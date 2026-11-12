@@ -768,15 +768,18 @@ if (!isTauri) {
         return;
 
       case 'get_autostart_status':
-        return uiState.autostart_enabled;
+        return uiState.autostart_enabled ? 'enabled' : 'disabled';
 
       case 'set_autostart': {
         const { enabled } = args as { enabled: boolean };
         uiState.autostart_enabled = enabled;
         saveUiState();
         void emit('ui-settings-changed', uiState);
-        return;
+        return enabled ? 'enabled' : 'disabled';
       }
+
+      case 'open_login_items_settings':
+        return;
 
       case 'set_surface_occluded':
         return;

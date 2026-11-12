@@ -612,6 +612,110 @@ fn fit_marquee_glass(ns_window: &NSWindow, docked: bool) {
     }
 }
 
+// ── Settings sidebar glass ─────────────────────────────────────────────────────
+//
+// On macOS 26 System Settings floats its sidebar as a pane of Liquid Glass,
+// inset from the window's edges. The settings page says where its sidebar
+// sits; the glass goes there behind the webview, above the window's sidebar
+// material, and the page leaves that area clear so the glass shows through.
+
+/// Put Liquid Glass behind the settings sidebar, move it, or take it away
+/// (`None`). Returns whether glass is showing: never before macOS 26 or with
+/// Reduce Transparency, where the window keeps its sidebar material alone.
+/// Called from a synchronous command, which Tauri runs on the main thread.
+#[cfg(target_os = "macos")]
+pub fn set_settings_sidebar_glass(
+    app: &AppHandle,
+    glass: Option<crate::commands::SidebarGlass>,
+) -> bool {
+    use objc2_app_kit::{
+        NSGlassEffectView, NSTitlebarSeparatorStyle, NSToolbar, NSWindowOrderingMode,
+        NSWindowToolbarStyle,
+    };
+    use objc2_foundation::NSSize;
+
+    let Some(mtm) = MainThreadMarker::new() else {
+        return false;
+    };
+    let Some(window) = app
+        .get_webview_window("settings")
+        .and_then(|window| ns_window(&window))
+    else {
+        return false;
+    };
+    let Some(content_view) = window.contentView() else {
+        return false;
+    };
+    // The class arrived in macOS 26; naming it by type before then aborts.
+    let Some(glass_class) = AnyClass::get(c"NSGlassEffectView") else {
+        return false;
+    };
+    let existing = content_view
+        .subviews()
+        .iter()
+        .find(|view| view.isKindOfClass(glass_class));
+    let reduced_transparency =
+        NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceTransparency();
+    let Some(glass) = glass.filter(|_| !reduced_transparency) else {
+        if let Some(view) = existing {
+            view.removeFromSuperview();
+        }
+        window.setToolbar(None);
+        return false;
+    };
+
+    // An empty unified toolbar is what gives System Settings its look around
+    // the glass: macOS 26 rounds a window with a toolbar more, so the glass's
+    // corners follow the window's, and centres the window buttons in a taller
+    // bar, inside the glass rather than on its edge.
+    if window.toolbar().is_none() {
+        window.setToolbar(Some(&NSToolbar::new(mtm)));
+        window.setToolbarStyle(NSWindowToolbarStyle::Unified);
+        window.setTitlebarSeparatorStyle(NSTitlebarSeparatorStyle::None);
+    }
+
+    let bounds = content_view.bounds();
+    let y = if content_view.isFlipped() {
+        glass.y
+    } else {
+        bounds.size.height - glass.y - glass.height
+    };
+    let frame = NSRect::new(
+        NSPoint::new(glass.x, y),
+        NSSize::new(glass.width, glass.height),
+    );
+    let view = match existing.and_then(|view| view.downcast::<NSGlassEffectView>().ok()) {
+        Some(view) => view,
+        None => {
+            let view = NSGlassEffectView::initWithFrame(mtm.alloc(), frame);
+            // Above the window's sidebar material, so the glass bends the
+            // desktop it shows, and below the webview.
+            let material = AnyClass::get(c"NSVisualEffectView").and_then(|class| {
+                content_view
+                    .subviews()
+                    .iter()
+                    .find(|view| view.isKindOfClass(class))
+            });
+            match material {
+                Some(material) => content_view.addSubview_positioned_relativeTo(
+                    &view,
+                    NSWindowOrderingMode::Above,
+                    Some(&*material),
+                ),
+                None => content_view.addSubview_positioned_relativeTo(
+                    &view,
+                    NSWindowOrderingMode::Below,
+                    None,
+                ),
+            }
+            view
+        }
+    };
+    view.setFrame(frame);
+    view.setCornerRadius(glass.radius);
+    true
+}
+
 #[cfg(not(target_os = "macos"))]
 pub fn init_overlay_panels(_app: &AppHandle, _marquee_glass: bool) -> tauri::Result<()> {
     Ok(())

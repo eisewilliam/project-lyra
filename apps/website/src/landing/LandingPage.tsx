@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode, type RefObject } from 'react';
-import { getRouteApi, Link } from '@tanstack/react-router';
+import { getRouteApi, Link, useHydrated } from '@tanstack/react-router';
 import { AnimatePresence, motion, useMotionValue, useMotionValueEvent, useScroll, useSpring, useTransform,
   type MotionValue, type Transition, type Variants } from 'motion/react';
 import { Pause, Play } from '@phosphor-icons/react';
@@ -7,6 +7,7 @@ import { DownloadButton } from '../components/DownloadButton.tsx';
 import { ExternalLink } from '../components/ExternalLink.tsx';
 import { PlayerIcon, type PlayerName } from '../components/PlayerIcons.tsx';
 import { StaffLines } from '../components/StaffLines.tsx';
+import { useMediaQuery, usePrefersReducedMotion, useVisitorPlatform } from '../hydration.ts';
 import { playersAndOthers, playersOrOthers, siteConfig, type Platform } from '../site-config.ts';
 import { LyricLightField } from '../hero/LyricLightField.tsx';
 import { PHRASE_LENGTH, STILL_TIME } from '../hero/phrases.ts';
@@ -46,9 +47,12 @@ interface DemoPlayback {
 // when the visitor prefers reduced motion.
 function useDemoPlayback(ref: RefObject<Element | null>, song: Song, threshold = 0.3): DemoPlayback {
   const inView = useInView(ref, threshold);
-  const [wantsPlay, setWantsPlay] = useState(() => !reducedMotion());
+  const reduced = usePrefersReducedMotion();
+  // Until the visitor chooses, demos play unless they prefer reduced motion.
+  const [choice, setChoice] = useState<boolean | null>(null);
+  const wantsPlay = choice ?? !reduced;
   const playing = wantsPlay && inView;
-  return { playing, wantsPlay, toggle: () => setWantsPlay(value => !value), position: useSongClock(song, playing) };
+  return { playing, wantsPlay, toggle: () => setChoice(!wantsPlay), position: useSongClock(song, playing) };
 }
 
 const ease = [0.2, 0.8, 0.2, 1] as const;
@@ -63,20 +67,21 @@ const heroRise: Variants = {
 
 function Hero({ platform }: { platform: Platform | null }) {
   const search = route.useSearch();
-  const [startFrame] = useState(() => parseFrame(search.frame));
-  const [lightOn, setLightOn] = useState(() => !reducedMotion() && startFrame === undefined && search.motion !== 'off');
+  // The page is prerendered without a query string, so the QA hooks apply
+  // once it is hydrated.
+  const hydrated = useHydrated();
+  const startFrame = hydrated ? parseFrame(search.frame) : undefined;
+  const motionOff = hydrated && search.motion === 'off';
+  const reduced = usePrefersReducedMotion();
+  // Until the visitor chooses, the light plays unless they prefer reduced motion.
+  const [choice, setChoice] = useState<boolean | null>(null);
+  const lightOn = choice ?? (!reduced && startFrame === undefined && !motionOff);
   const [lightSupported, setLightSupported] = useState(true);
   const heroRef = useRef<HTMLElement>(null);
   const copyRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const update = () => { if (media.matches) setLightOn(false); };
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
   return <section className={'hero ' + (lightOn ? 'motion-on' : 'motion-off')} aria-labelledby="hero-title" ref={heroRef}>
     <LyricLightField playing={lightOn} heroRef={heroRef} copyRef={copyRef}
-      startTime={startFrame ?? (reducedMotion() ? STILL_TIME : undefined)} onUnsupported={() => setLightSupported(false)} />
+      startTime={startFrame ?? (reduced ? STILL_TIME : undefined)} onUnsupported={() => setLightSupported(false)} />
     <motion.div className="hero-copy" ref={copyRef} initial="hidden" animate="shown" variants={heroStagger}>
       <h1 id="hero-title" tabIndex={-1}>
         <motion.span className="hero-line" variants={heroRise}>See your</motion.span>
@@ -88,7 +93,7 @@ function Hero({ platform }: { platform: Platform | null }) {
         <Link className="text-link" to="/download">Other downloads</Link>
       </motion.div>
     </motion.div>
-    {lightSupported && <button type="button" className="motion-control" onClick={() => setLightOn(value => !value)}
+    {lightSupported && <button type="button" className="motion-control" onClick={() => setChoice(!lightOn)}
       aria-label={lightOn ? 'Pause background animation' : 'Play background animation'}>
       {lightOn ? <Pause weight="fill" aria-hidden="true" /> : <Play weight="fill" aria-hidden="true" />}
     </button>}
@@ -114,17 +119,6 @@ const sceneLabels: Record<SurfaceId, string> = {
   marquee: 'The Marquee docked above an open document',
   overlay: 'The karaoke overlay over a bright desktop',
 };
-
-function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
-  useEffect(() => {
-    const media = window.matchMedia(query);
-    const update = () => setMatches(media.matches);
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, [query]);
-  return matches;
-}
 
 function DemoToggle({ demo, compact = false }: { demo: DemoPlayback; compact?: boolean }) {
   const label = demo.wantsPlay ? 'Pause demo' : 'Play demo';
@@ -550,7 +544,7 @@ function Closing({ platform }: { platform: Platform | null }) {
 }
 
 export function LandingPage() {
-  const { platform } = route.useRouteContext();
+  const platform = useVisitorPlatform();
   return <main id="main-content">
     <Hero platform={platform} />
     <Surfaces />

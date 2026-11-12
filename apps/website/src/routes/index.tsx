@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { LandingPage } from '../landing/LandingPage.tsx';
+import { pageHead, pages, structuredData } from '../pages.ts';
 
 // QA hooks: `?frame=<phrase>:<seconds>` renders one still frame of the hero
 // light; `?motion=off` starts with the hero paused.
@@ -16,6 +17,10 @@ export const Route = createFileRoute('/')({
   validateSearch: (search: Record<string, unknown>): LandingSearch => ({
     frame: typeof search.frame === 'string' ? search.frame : undefined,
     motion: search.motion === 'off' ? 'off' : undefined,
+  }),
+  head: () => ({
+    ...pageHead(pages.home),
+    scripts: [{ type: 'application/ld+json', children: JSON.stringify(structuredData()).replaceAll('<', '\\u003c') }],
   }),
   component: LandingPage,
 });

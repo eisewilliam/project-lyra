@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useReducedMotion } from 'motion/react';
+import { usePrefersReducedMotion } from '../hydration.ts';
 
 // Quiet echo of the hero: five curved staff lines of light, with lyrics
 // written along two of them in the same italic as the hero field. In view, the
@@ -26,7 +26,7 @@ export type StaffLyric = [line: number, text: string, offset: string];
 
 export function StaffLines({ id, lyrics = [], className = '' }: { id: string; lyrics?: StaffLyric[]; className?: string }) {
   const ref = useRef<SVGSVGElement>(null);
-  const still = useReducedMotion() ?? false;
+  const still = usePrefersReducedMotion();
   const [shown, setShown] = useState(false);
 
   // Start when the staff comes into view, and pause its animations off screen.

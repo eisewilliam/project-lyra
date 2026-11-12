@@ -7,6 +7,7 @@ import {
   getRenderSnapshot,
   getSettings,
   getUiState,
+  openLoginItemsSettings,
   resetMarqueePosition,
   setAutostart,
   setFontScale,
@@ -22,7 +23,7 @@ import {
   updateSettings,
 } from '@/utils/tauri-commands';
 import { applyHostOsDataset } from '@/utils/os';
-import type { MonitorInfo, RenderSnapshot, UiState, AppSettings, SettingsPatch, UiStatePatch } from '@/types/tauri-contracts';
+import type { AutostartStatus, MonitorInfo, RenderSnapshot, UiState, AppSettings, SettingsPatch, UiStatePatch } from '@/types/tauri-contracts';
 import {
   MARQUEE_SETTINGS_FIELDS,
   KARAOKE_SETTINGS_FIELDS,
@@ -48,8 +49,8 @@ export function useSettings() {
   const [state, setState] = useState<ConsolidatedState | null>(null);
   const stateRef = useRef<ConsolidatedState | null>(null);
   const [section, setSection] = useState<Section>('general');
-  const [autostartEnabled, setAutostartEnabled] = useState(false);
-  const autostartEnabledRef = useRef(false);
+  const [autostartStatus, setAutostartStatusState] = useState<AutostartStatus>('disabled');
+  const autostartStatusRef = useRef<AutostartStatus>('disabled');
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
   const debounceRef = useRef<Record<string, DebouncedTask>>({});
   const [artworkSrc, setArtworkSrc] = useState('');
@@ -62,14 +63,14 @@ export function useSettings() {
       const [ui, app, autostart, monitorList] = await Promise.all([
         getUiState(),
         getSettings(),
-        getAutostartStatus().catch(() => false),
+        getAutostartStatus().catch((): AutostartStatus => 'disabled'),
         getAvailableMonitors().catch(() => [] as MonitorInfo[]),
       ]);
       const nextState = { ui, app };
       stateRef.current = nextState;
       setState(nextState);
-      autostartEnabledRef.current = autostart;
-      setAutostartEnabled(autostart);
+      autostartStatusRef.current = autostart;
+      setAutostartStatusState(autostart);
       setMonitors(monitorList);
       unlisten = await listen<UiState>('ui-settings-changed', (e) => {
         const prev = stateRef.current;
@@ -89,6 +90,21 @@ export function useSettings() {
       }
       debounceRef.current = {};
     };
+  }, []);
+
+  // Launch at login can change in System Settings (allowed, blocked or
+  // removed there), so ask the OS again whenever Settings comes back to front.
+  useEffect(() => {
+    const refresh = () => {
+      getAutostartStatus()
+        .then((next) => {
+          autostartStatusRef.current = next;
+          setAutostartStatusState(next);
+        })
+        .catch(() => undefined);
+    };
+    globalThis.addEventListener('focus', refresh);
+    return () => globalThis.removeEventListener('focus', refresh);
   }, []);
 
   // The app menu's Check for Updates… opens General, where updates live.
@@ -291,16 +307,22 @@ export function useSettings() {
       );
     },
     setAutostart: async (enabled: boolean) => {
-      const previous = autostartEnabledRef.current;
-      autostartEnabledRef.current = enabled;
-      setAutostartEnabled(enabled);
+      const previous = autostartStatusRef.current;
+      const apply = (next: AutostartStatus) => {
+        autostartStatusRef.current = next;
+        setAutostartStatusState(next);
+      };
+      apply(enabled ? 'enabled' : 'disabled');
       try {
-        await setAutostart(enabled);
+        // macOS can answer "requires approval" rather than what was asked.
+        apply(await setAutostart(enabled));
       } catch (error) {
-        autostartEnabledRef.current = previous;
-        setAutostartEnabled(previous);
+        apply(previous);
         throw error;
       }
+    },
+    openLoginItemsSettings: async () => {
+      await openLoginItemsSettings();
     },
     clearCache: async () => {
       await clearLyricsCache();
@@ -314,7 +336,7 @@ export function useSettings() {
     state,
     section,
     setSection,
-    autostartEnabled,
+    autostartStatus,
     monitors,
     artworkSrc,
     actions,

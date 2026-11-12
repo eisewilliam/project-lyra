@@ -280,6 +280,16 @@ export type MarqueeFrame = {
   max_width: number;
 };
 
+/** Where the settings sidebar's Liquid Glass goes, in CSS px from the
+    window's top left corner (`set_settings_sidebar_glass`). */
+export type SidebarGlass = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  radius: number;
+};
+
 export type KaraokeSettingsPatch = Partial<{
   position: string;
   alignment: string;
@@ -323,3 +333,9 @@ export type UpdateInfo = {
   current_version: string;
   status: UpdateStatus;
 };
+
+/** What the OS will do about launching Lyra at the next login.
+    `requires_approval`: registered, but macOS blocks it until the user allows
+    it in System Settings › Login Items. `unavailable`: a development build
+    outside Lyra.app, which leaves the installed app's login item alone. */
+export type AutostartStatus = 'enabled' | 'disabled' | 'requires_approval' | 'unavailable';

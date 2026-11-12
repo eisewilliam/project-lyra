@@ -10,15 +10,58 @@ offered it as an update.
 
 ## [Unreleased]
 
+### Added
+
+- The website has a page for each platform, at lyra.eiselabs.com/macos,
+  /windows and /linux, with what Lyra needs, which installer to choose and how
+  to install it.
+
 ### Changed
 
+- The website's pages arrive ready to read: their text, titles and
+  descriptions are in the page itself rather than added once the page has
+  loaded, so search engines and link previews show each page properly.
+- On macOS 26, the Settings sidebar floats on Liquid Glass, like System
+  Settings. With Reduce Transparency on, or on older macOS, it looks as before.
 - Changes to `main` require a pull request and passing checks for the parts of
   the project they affect. The project owner can merge without another review;
   other contributors need approval. Unchanged parts can skip their builds.
+- On Windows and Linux, opening Lyra while it is already running brings up
+  the running copy instead of starting a second one with its own tray icon and
+  lyrics.
+- On Linux desktops that use Wayland, Lyra runs through XWayland, where the
+  Marquee and Karaoke lyrics can be placed, dragged and kept above other
+  windows. Starting Lyra with `GDK_BACKEND=wayland` turns this off; those
+  surfaces then appear wherever the desktop puts them.
+- On Linux, the Lyra and Settings windows use Lyra's own title bar and window
+  buttons rather than the desktop's title bar on top of them.
 
 ### Fixed
 
+- Settings → Appearance → Theme works: Light and Dark now change Settings
+  and its menus right away. Before, every choice followed the system.
+- In Settings, the explanation under each setting is smaller and quieter
+  than the setting's name, so the two no longer read as equals.
+- On Windows, buttons in Settings use the same typeface as the rest of the
+  window instead of Arial.
 - Website changes can be previewed on their own branch before release.
+- On Linux, Lyra no longer quits as it starts when click-through is turned on
+  for the main window or the Marquee.
+- On macOS 13 and later, Launch at login works reliably. Lyra now appears as
+  "Lyra" under Open at Login in System Settings, rather than under the
+  developer's name in Allow in the Background. If macOS is blocking it, Settings
+  says so and offers a button to Login Items, instead of showing the switch on
+  while Lyra doesn't open. Your existing choice carries over.
+- "Lyric server busy" no longer stays up after the lyric server recovers.
+  Playing a song again, or moving to a song Lyra checked in the background,
+  looks its lyrics up afresh.
+- Lyrics show more often while the lyric server is overloaded: Lyra waits out
+  short spikes for a few seconds longer before reporting it busy.
+- Lyra makes fewer requests for songs whose player reports a blank album.
+- Lyra sends no lyric requests while the lyric server has asked it to wait,
+  and stops checking browser media in the background while the server is busy.
+- A song that started playing while Lyra was checking it in the background
+  keeps retrying its lyrics if that check failed.
 
 ## [0.2.1] - 2026-10-23
 
