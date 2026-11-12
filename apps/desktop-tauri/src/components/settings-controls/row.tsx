@@ -9,7 +9,7 @@ export function Row({
 }: Readonly<{
   label: string;
   /** One line of secondary text under the label, like System Settings. */
-  hint?: string;
+  hint?: string | undefined;
   /** Dims the row and disables its control, e.g. an option that depends on
       another one being on. */
   disabled?: boolean;
