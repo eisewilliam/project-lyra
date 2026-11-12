@@ -43,6 +43,16 @@ offered it as an update.
   developer's name in Allow in the Background. If macOS is blocking it, Settings
   says so and offers a button to Login Items, instead of showing the switch on
   while Lyra doesn't open. Your existing choice carries over.
+- "Lyric server busy" no longer stays up after the lyric server recovers.
+  Playing a song again, or moving to a song Lyra checked in the background,
+  looks its lyrics up afresh.
+- Lyrics show more often while the lyric server is overloaded: Lyra waits out
+  short spikes for a few seconds longer before reporting it busy.
+- Lyra makes fewer requests for songs whose player reports a blank album.
+- Lyra sends no lyric requests while the lyric server has asked it to wait,
+  and stops checking browser media in the background while the server is busy.
+- A song that started playing while Lyra was checking it in the background
+  keeps retrying its lyrics if that check failed.
 
 ## [0.2.1] - 2026-10-23
 

@@ -161,9 +161,15 @@ export function useLyricsPlayback({
       setActiveLineWords(nextWords);
     }
 
-    if (uri && snap.lyrics_status === 'Loading' && refreshedUriRef.current !== uri) {
-      refreshedUriRef.current = uri;
-      refreshLyrics().catch(noop);
+    if (uri && snap.lyrics_status === 'Loading') {
+      if (refreshedUriRef.current !== uri) {
+        refreshedUriRef.current = uri;
+        refreshLyrics().catch(noop);
+      }
+    } else {
+      // A settled status re-arms the request, so a track played again (core
+      // forgets its earlier failure) is looked up instead of left loading.
+      refreshedUriRef.current = '';
     }
 
     const contentKey = `${uri}:${snap.lyrics_status}`;

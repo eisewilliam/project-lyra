@@ -174,7 +174,8 @@ function getPlaceholderLabel(
         case 'NetworkError':
           return "Couldn't reach lyric server";
         case 'RateLimit':
-          return 'Lyric server busy — backing off';
+          // Automatic retries stop after a few minutes, so promise none.
+          return 'Lyric server busy';
         default:
           return 'Lyrics unavailable';
       }

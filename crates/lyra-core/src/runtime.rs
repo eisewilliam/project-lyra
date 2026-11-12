@@ -178,7 +178,8 @@ impl LyraRuntime {
 
     /// Record a transient (network/rate-limit) failure so the UI can render a
     /// distinct message instead of the generic "no lyrics" state. Cleared on
-    /// the next successful fetch or on a manual force-refresh.
+    /// the next successful fetch, on a manual force-refresh, and whenever the
+    /// playing track changes.
     pub fn store_transient_error(&mut self, track_key: &str, reason: NotFoundReason) {
         self.transient_errors.insert(track_key.to_string(), reason);
     }
@@ -282,6 +283,10 @@ impl LyraRuntime {
 
         if track_key != self.last_track_key {
             self.last_track_key = track_key.clone();
+            // Failures are only retried while their track plays, so one left
+            // from an earlier play (or a background probe) would never clear.
+            // Forget them; the track shows `Loading` and is looked up again.
+            self.transient_errors.clear();
             self.current_doc = None;
             if let Some(ref key) = track_key {
                 self.current_doc = self.cache.get(key);
@@ -556,6 +561,52 @@ mod tests {
             ..PlaybackSnapshot::stopped(0)
         });
         assert_eq!(rt.seek_preview().duration_ms(), None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn busy_failure_is_forgotten_when_the_track_changes() {
+        let dir = std::env::temp_dir().join(format!("lyra-busy-forgotten-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut rt = LyraRuntime::new_in(dir.clone());
+        let play = |rt: &mut LyraRuntime, uri: &str| {
+            rt.set_playback_snapshot(PlaybackSnapshot {
+                track: Some(test_track(uri, 180_000)),
+                state: PlaybackState::Playing,
+                ..PlaybackSnapshot::stopped(0)
+            });
+            rt.tick().lyrics_status
+        };
+        let busy = |status: LyricsStatus| {
+            matches!(
+                status,
+                LyricsStatus::NotFound {
+                    reason: NotFoundReason::RateLimit
+                }
+            )
+        };
+
+        play(&mut rt, "spotify:track:a");
+        rt.store_transient_error("spotify:track:a", NotFoundReason::RateLimit);
+        // A background probe of another track failed too.
+        rt.store_transient_error("spotify:track:b", NotFoundReason::RateLimit);
+        assert!(busy(rt.tick().lyrics_status));
+
+        // The probed track starts playing: it is looked up, not shown busy.
+        assert!(matches!(
+            play(&mut rt, "spotify:track:b"),
+            LyricsStatus::Loading
+        ));
+        // Returning to the first track looks it up again too.
+        assert!(matches!(
+            play(&mut rt, "spotify:track:a"),
+            LyricsStatus::Loading
+        ));
+        assert!(!rt.has_transient_error("spotify:track:a"));
+
+        // A failure of the playing track still shows until the track changes.
+        rt.store_transient_error("spotify:track:a", NotFoundReason::RateLimit);
+        assert!(busy(rt.tick().lyrics_status));
         let _ = std::fs::remove_dir_all(dir);
     }
 

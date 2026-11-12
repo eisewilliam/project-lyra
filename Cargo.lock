@@ -2438,6 +2438,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "dbus",
+ "log",
  "lru",
  "objc2",
  "objc2-foundation",
