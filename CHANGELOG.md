@@ -38,6 +38,8 @@ offered it as an update.
 
 ### Fixed
 
+- Settings menus on Windows and Linux are readable again: options that aren't
+  highlighted no longer show light text on a white menu.
 - Lyrics no longer drift out of sync on music videos that add scenes the song
   doesn't have, such as intros, dialogue or credits. When the only lyrics
   found were timed to a different version of the song, Lyra shows the words

@@ -32,11 +32,14 @@
   --group-fill: rgba(255, 255, 255, 0.72);
   --group-edge: rgba(0, 0, 0, 0.045);
   --row-divider: rgba(0, 0, 0, 0.065);
+  /* Opaque fill for native select menus; see `option` below. */
+  --menu-bg: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --shell-bg: #171519;
+    --menu-bg: #2b2a2f;
     --bg-sidebar: rgba(10, 10, 13, 0.66);
     --bg-card: rgba(255, 255, 255, 0.045);
     --text-primary: #f0f0f4;
@@ -787,6 +790,21 @@ select:hover {
   background-color: var(--input-hover);
 }
 
+/* Chromium on Windows and Linux draws the select's pop-up itself: options
+   inherit the select's light-on-dark text, and the translucent --input-bg
+   composites onto a white menu, leaving unhovered options unreadable. Give
+   options an opaque theme fill and text. macOS uses a real NSMenu and
+   ignores these. */
+select option,
+select optgroup {
+  background-color: var(--menu-bg);
+  color: var(--text-primary);
+}
+
+select option:disabled {
+  color: var(--text-quiet);
+}
+
 /* Pop-up menu arrow, drawn as a mask so it takes the secondary text colour
    like every other chevron in Settings. */
 .select-control {
@@ -1114,6 +1132,7 @@ body[data-os="windows"] {
   --nav-icon: rgba(255, 255, 255, 0.62);
   --group-fill: #2c2c2c;
   --group-edge: rgba(255, 255, 255, 0.035);
+  --menu-bg: #2c2c2c;
 }
 
 @media (prefers-color-scheme: light) {
@@ -1134,6 +1153,7 @@ body[data-os="windows"] {
     --nav-icon: rgba(0, 0, 0, 0.6);
     --group-fill: #ffffff;
     --group-edge: rgba(0, 0, 0, 0.06);
+    --menu-bg: #ffffff;
   }
 }
 
