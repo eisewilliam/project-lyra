@@ -74,22 +74,35 @@ impl<S: LyricSource> LyricsRefresh<S> {
             }
             track
         };
-        let mut delays = self.retry_delays.iter();
         let mut forget = force;
-        loop {
-            let Some(generation) = self.lookup(runtime, &track, &mut forget).await? else {
-                return Ok(());
-            };
-            let Some(delay) = delays.next() else {
-                return Ok(());
-            };
+        match self.lookup(runtime, &track, &mut forget).await? {
+            Some(generation) => self.retry(runtime, &track, generation).await,
+            None => Ok(()),
+        }
+    }
+
+    /// Retry the playing track after lookup `generation` failed transiently,
+    /// waiting `retry_delays` between tries, until one settles, the track
+    /// stops playing, or a newer lookup takes over.
+    async fn retry(
+        &self,
+        runtime: &Mutex<LyraRuntime>,
+        track: &TrackRef,
+        mut generation: u64,
+    ) -> Result<(), String> {
+        for delay in &self.retry_delays {
             tokio::time::sleep(*delay).await;
             if self.generation.load(Ordering::SeqCst) != generation
                 || !Self::still_failing(runtime, &track.uri)?
             {
                 return Ok(());
             }
+            match self.lookup(runtime, track, &mut false).await? {
+                Some(next) => generation = next,
+                None => return Ok(()),
+            }
         }
+        Ok(())
     }
 
     /// One lookup of the playing track. Returns its generation when it failed
@@ -128,12 +141,16 @@ impl<S: LyricSource> LyricsRefresh<S> {
     /// Look up a track that is not being followed, to settle whether it is
     /// music. The result goes to the cache only; it becomes the displayed
     /// document if the track is followed later. Consent, negative-cache and
-    /// deduplication rules match `refresh`.
+    /// deduplication rules match `refresh`. Nothing is sent while the source
+    /// is busy; the player hub asks again a minute later.
     pub async fn probe(
         &self,
         runtime: &Mutex<LyraRuntime>,
         track: &TrackRef,
     ) -> Result<(), String> {
+        if self.source.is_busy() {
+            return Ok(());
+        }
         {
             let rt = runtime.lock().map_err(|e| e.to_string())?;
             if rt.lookup_blocked(track).is_some()
@@ -143,10 +160,20 @@ impl<S: LyricSource> LyricsRefresh<S> {
                 return Ok(());
             }
         }
-        let Some(_claim) = FetchClaim::acquire(&self.in_flight, &track.uri)? else {
-            return Ok(());
+        let outcome = {
+            let Some(_claim) = FetchClaim::acquire(&self.in_flight, &track.uri)? else {
+                return Ok(());
+            };
+            self.fetch_and_store(runtime, track).await?
         };
-        self.fetch_and_store(runtime, track).await.map(drop)
+        // The track may have started playing during the lookup. Its own
+        // lookup found this one in flight and left the result to it, so retry
+        // as that lookup would have.
+        if outcome == Outcome::Failed && Self::still_failing(runtime, &track.uri)? {
+            let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+            return self.retry(runtime, track, generation).await;
+        }
+        Ok(())
     }
 
     /// Fetch without holding the runtime lock, then record the result.
@@ -500,5 +527,79 @@ mod tests {
         };
         refresh.probe(&rt, &browser).await.unwrap();
         assert_eq!(refresh.source.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn probe_waits_while_the_source_is_busy() {
+        struct Busy(AtomicUsize);
+        impl LyricSource for Busy {
+            fn name(&self) -> &str {
+                "busy"
+            }
+            fn is_busy(&self) -> bool {
+                true
+            }
+            async fn fetch(&self, _: &TrackRef) -> anyhow::Result<Option<LyricDocument>> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(None)
+            }
+        }
+        let rt = runtime("probe-busy");
+        let refresh = LyricsRefresh::new(Busy(AtomicUsize::new(0)));
+        let other = TrackRef::fixture("meta::other::song::200");
+        refresh.probe(&rt, &other).await.unwrap();
+        assert_eq!(refresh.source.0.load(Ordering::SeqCst), 0);
+        // The playing track is still looked up.
+        refresh.refresh(&rt).await.unwrap();
+        assert_eq!(refresh.source.0.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn failed_probe_of_a_track_that_starts_playing_is_retried() {
+        /// Fails its first lookup after a pause, then finds lyrics.
+        struct Slow(AtomicUsize);
+        impl LyricSource for Slow {
+            fn name(&self) -> &str {
+                "slow"
+            }
+            async fn fetch(&self, track: &TrackRef) -> anyhow::Result<Option<LyricDocument>> {
+                if self.0.fetch_add(1, Ordering::SeqCst) == 0 {
+                    tokio::time::sleep(Duration::from_millis(40)).await;
+                    anyhow::bail!("offline")
+                }
+                Ok(Some(crate::lyrics::parser::parse_lrc(
+                    &track.uri,
+                    "[00:01.00]Found",
+                    crate::domain::LyricSourceKind::Lrclib,
+                )?))
+            }
+        }
+        let rt = runtime("probe-handover");
+        let mut refresh = LyricsRefresh::new(Slow(AtomicUsize::new(0)));
+        refresh.retry_delays = vec![Duration::from_millis(1); 3];
+        let probed = TrackRef {
+            duration_ms: 1000,
+            ..TrackRef::fixture("meta::other::song::200")
+        };
+        let play = async {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            {
+                let mut guard = rt.lock().unwrap();
+                let mut snapshot = guard.last_playback_snapshot.clone().unwrap();
+                snapshot.track = Some(probed.clone());
+                guard.set_playback_snapshot(snapshot);
+                assert!(matches!(guard.tick().lyrics_status, LyricsStatus::Loading));
+            }
+            // Finds the probe in flight and leaves the lookup to it.
+            refresh.refresh(&rt).await
+        };
+        let (probe, play) = tokio::join!(refresh.probe(&rt, &probed), play);
+        probe.unwrap();
+        play.unwrap();
+        assert_eq!(refresh.source.0.load(Ordering::SeqCst), 2);
+        assert!(matches!(
+            rt.lock().unwrap().tick().lyrics_status,
+            LyricsStatus::Ready
+        ));
     }
 }
