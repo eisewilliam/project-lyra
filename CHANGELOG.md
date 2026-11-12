@@ -18,6 +18,8 @@ offered it as an update.
 
 ### Fixed
 
+- Settings menus on Windows and Linux are readable again: options that aren't
+  highlighted no longer show light text on a white menu.
 - Website changes can be previewed on their own branch before release.
 - "Lyric server busy" no longer stays up after the lyric server recovers.
   Playing a song again, or moving to a song Lyra checked in the background,
