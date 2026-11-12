@@ -1,17 +1,33 @@
 use crate::{
     config::ConfigStore,
     domain::{
-        BrowserLyrics, LyricDocument, LyricsStatus, NotFoundReason, PlaybackSnapshot,
-        PlaybackState, RenderSnapshot, SettingsSnapshot, TrackRef,
+        durations_differ, BrowserLyrics, LyricDocument, LyricsStatus, NotFoundReason,
+        PlaybackSnapshot, PlaybackState, RenderSnapshot, SettingsSnapshot, TrackRef,
     },
     lyrics::cache::LyricCache,
     lyrics::offsets::OffsetStore,
+    player::metadata::duration_variant_key,
     sync::compute_render,
 };
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+/// How long a newly seen track may report no duration before lyrics are
+/// shown or looked up without one. Players report 0 for a moment while a
+/// track or music video loads; lyrics chosen in that window could not be
+/// checked against the length actually playing. Players that never report
+/// a duration wait this long, then behave as before.
+pub const DURATION_GRACE: Duration = Duration::from_secs(4);
+
+/// The lyric key last chosen for an adapter's track key at one duration.
+#[derive(Clone, Debug)]
+struct KeyChoice {
+    base: String,
+    duration_ms: u64,
+    key: String,
+}
 
 /// IPC-only projection of a `LyricLine`. The frontend's `get_all_lines`
 /// callers read only the start timestamp + text — sending the full
@@ -70,8 +86,23 @@ pub struct LyraRuntime {
     offsets: OffsetStore,
     config: ConfigStore,
     settings: SettingsSnapshot,
+    /// Lyrics stored under the current track key, as cached.
+    stored_doc: Option<LyricDocument>,
+    /// Lyrics stored under the adapter's own key while the current key is
+    /// a duration variant of it. Shown without timing when the variant has
+    /// none of its own.
+    base_doc: Option<LyricDocument>,
+    /// What surfaces show: `stored_doc`, without timing when its timings were
+    /// made for a recording of another length.
     current_doc: Option<LyricDocument>,
+    /// Playing duration `current_doc` was prepared for.
+    presented_for_ms: u64,
     last_track_key: Option<String>,
+    /// Adapter track key last seen, when it appeared or stopped reporting
+    /// its length, and whether it reported one last time.
+    seen: Option<(String, Instant, bool)>,
+    duration_grace: Duration,
+    key_choice: Option<KeyChoice>,
     /// In-memory map of URIs whose last fetch failed with a *transient* error
     /// (network, rate limit). Not persisted: a restart clears them, which is
     /// the right behaviour — transient by definition.
@@ -92,8 +123,14 @@ impl LyraRuntime {
             offsets,
             config,
             settings,
+            stored_doc: None,
+            base_doc: None,
             current_doc: None,
+            presented_for_ms: 0,
             last_track_key: None,
+            seen: None,
+            duration_grace: DURATION_GRACE,
+            key_choice: None,
             transient_errors: HashMap::new(),
         }
     }
@@ -143,8 +180,91 @@ impl LyraRuntime {
         }
     }
 
-    pub fn set_playback_snapshot(&mut self, snap: PlaybackSnapshot) {
+    /// Record the latest player observation. A track whose key has no
+    /// duration in it (a native ID a player may reuse for a song and its
+    /// music video) is moved to a per-length key when the lyrics or miss
+    /// cached under its own key were made for a recording of another length,
+    /// so the versions keep separate lyrics, misses and offsets.
+    pub fn set_playback_snapshot(&mut self, mut snap: PlaybackSnapshot) {
+        if let Some(track) = snap.track.as_mut() {
+            let base = self.adapter_key(&track.uri);
+            let has_length = track.duration_ms > 0;
+            // A new track, or one that stopped reporting its length (a
+            // player switching the same track to its music video), starts
+            // the wait for a length again.
+            let restart = match &self.seen {
+                Some((seen, _, had_length)) => *seen != base || (*had_length && !has_length),
+                None => true,
+            };
+            match self.seen.as_mut() {
+                Some(seen) if !restart => seen.2 = has_length,
+                _ => self.seen = Some((base.clone(), Instant::now(), has_length)),
+            }
+            track.uri = self.lyric_key(base, track.duration_ms);
+        }
         self.last_playback_snapshot = Some(snap);
+    }
+
+    /// The adapter's key for `uri`, undoing `lyric_key`.
+    fn adapter_key(&self, uri: &str) -> String {
+        match &self.key_choice {
+            Some(choice) if choice.key == uri => choice.base.clone(),
+            _ => uri.to_string(),
+        }
+    }
+
+    fn lyric_key(&mut self, base: String, duration_ms: u64) -> String {
+        if duration_ms == 0 || base.starts_with("meta::") {
+            return base;
+        }
+        if let Some(choice) = self
+            .key_choice
+            .as_ref()
+            .filter(|c| c.base == base && c.duration_ms == duration_ms)
+        {
+            return choice.key.clone();
+        }
+        let key = match self.cache.recorded_duration(&base) {
+            Some(recorded) if durations_differ(recorded, duration_ms) => {
+                duration_variant_key(&base, duration_ms)
+            }
+            _ => base.clone(),
+        };
+        self.key_choice = Some(KeyChoice {
+            base,
+            duration_ms,
+            key: key.clone(),
+        });
+        key
+    }
+
+    /// The track has just appeared and does not report its length yet.
+    /// Lyrics are neither shown nor looked up until it does, or until
+    /// `DURATION_GRACE` passes.
+    pub fn duration_pending(&self, track: &TrackRef) -> bool {
+        track.duration_ms == 0
+            && self.seen.as_ref().is_some_and(|(base, at, _)| {
+                *base == self.adapter_key(&track.uri) && at.elapsed() < self.duration_grace
+            })
+    }
+
+    fn playing_duration_ms(&self) -> u64 {
+        self.last_playback_snapshot
+            .as_ref()
+            .and_then(|s| s.track.as_ref())
+            .map_or(0, |t| t.duration_ms)
+    }
+
+    /// Prepare `current_doc` from `stored_doc` for the playing duration.
+    fn present(&mut self, duration_ms: u64) {
+        self.presented_for_ms = duration_ms;
+        self.current_doc = self.stored_doc.as_ref().map(|doc| {
+            if !doc.lines.is_empty() && doc.timed_for_other_duration(duration_ms) {
+                doc.without_timing()
+            } else {
+                doc.clone()
+            }
+        });
     }
 
     pub fn is_negative(&self, track_key: &str) -> bool {
@@ -163,16 +283,19 @@ impl LyraRuntime {
             let _ = cache.put_document(&cached_doc);
         });
         if self.last_track_key.as_deref() == Some(&doc.track_key) {
-            self.current_doc = Some(doc);
+            self.stored_doc = Some(doc);
+            self.present(self.playing_duration_ms());
         }
     }
 
-    pub fn store_negative(&mut self, track_key: &str) {
+    /// Record a confirmed miss for `track_key`, looked up at `duration_ms`
+    /// (0 when unknown).
+    pub fn store_negative(&mut self, track_key: &str, duration_ms: u64) {
         self.transient_errors.remove(track_key);
         let cache = self.cache.clone();
         let track_key = track_key.to_string();
         spawn_cache_write(move || {
-            let _ = cache.mark_negative(&track_key);
+            let _ = cache.mark_negative_for(&track_key, duration_ms);
         });
     }
 
@@ -202,10 +325,11 @@ impl LyraRuntime {
         });
         self.transient_errors.remove(track_key);
         if self
-            .current_doc
+            .stored_doc
             .as_ref()
             .is_some_and(|d| d.track_key == track_key)
         {
+            self.stored_doc = None;
             self.current_doc = None;
         }
     }
@@ -246,9 +370,14 @@ impl LyraRuntime {
     /// A copy of the current track's lyrics and timing for previewing a seek.
     pub fn seek_preview(&mut self) -> SeekPreview {
         let render = self.tick();
+        let pending = render
+            .playback
+            .track
+            .as_ref()
+            .is_some_and(|track| self.duration_pending(track));
         SeekPreview {
             playback: render.playback,
-            doc: self.current_doc.clone(),
+            doc: self.current_doc.clone().filter(|_| !pending),
             status: render.lyrics_status,
             context_above: self.settings.appearance.context_lines_above as usize,
             context_below: self.settings.appearance.context_lines_below as usize,
@@ -281,25 +410,47 @@ impl LyraRuntime {
 
         let track_key = snapshot.track.as_ref().map(|t| t.uri.clone());
 
+        let duration_ms = snapshot.track.as_ref().map_or(0, |t| t.duration_ms);
         if track_key != self.last_track_key {
             self.last_track_key = track_key.clone();
             // Failures are only retried while their track plays, so one left
             // from an earlier play (or a background probe) would never clear.
             // Forget them; the track shows `Loading` and is looked up again.
             self.transient_errors.clear();
-            self.current_doc = None;
-            if let Some(ref key) = track_key {
-                self.current_doc = self.cache.get(key);
+            self.stored_doc = track_key.as_deref().and_then(|key| self.cache.get(key));
+            self.base_doc = track_key
+                .as_deref()
+                .map(|key| self.adapter_key(key))
+                .filter(|base| Some(base) != track_key.as_ref())
+                .and_then(|base| self.cache.get(&base));
+            self.present(duration_ms);
+        } else if duration_ms != self.presented_for_ms {
+            self.present(duration_ms);
+        }
+        let pending = snapshot
+            .track
+            .as_ref()
+            .is_some_and(|track| self.duration_pending(track));
+        // This length has no lyrics of its own; the other version's words
+        // still help, but not its timing.
+        if self.current_doc.is_none() {
+            if let (Some(key), Some(base)) = (&track_key, &self.base_doc) {
+                let words = base.without_timing();
+                if words.plain_lyrics.is_some() && self.cache.is_negative(key) {
+                    self.current_doc = Some(words);
+                }
             }
         }
 
         let above = self.settings.appearance.context_lines_above as usize;
         let below = self.settings.appearance.context_lines_below as usize;
 
-        let status = match (&track_key, &self.current_doc) {
+        let doc = self.current_doc.as_ref().filter(|_| !pending);
+        let status = match (&track_key, doc) {
             (None, _) => LyricsStatus::NotFound {
                 reason: NotFoundReason::Miss,
             },
+            (Some(_), _) if pending => LyricsStatus::Loading,
             (Some(_), Some(_)) => LyricsStatus::Ready,
             (Some(key), None) => {
                 if self.cache.is_negative(key) {
@@ -325,14 +476,7 @@ impl LyraRuntime {
             .map(|k| self.offsets.get(k))
             .unwrap_or(0);
 
-        compute_render(
-            snapshot,
-            self.current_doc.as_ref(),
-            status,
-            above,
-            below,
-            offset_ms,
-        )
+        compute_render(snapshot, doc, status, above, below, offset_ms)
     }
 
     /// Find the next lyric transition timestamp (in playback time) relative to `current_pos_ms`.
@@ -376,6 +520,13 @@ pub fn scale_by_rate(wall_ms: u64, rate: f64) -> u64 {
         (wall_ms as f64 * rate).round() as u64
     } else {
         wall_ms
+    }
+}
+
+#[cfg(test)]
+impl LyraRuntime {
+    pub(crate) fn set_duration_grace(&mut self, grace: Duration) {
+        self.duration_grace = grace;
     }
 }
 
@@ -427,6 +578,7 @@ mod tests {
             lines,
             raw_lrc: "".to_string(),
             plain_lyrics: None,
+            source_duration_ms: None,
         }
     }
 
@@ -607,6 +759,181 @@ mod tests {
         // A failure of the playing track still shows until the track changes.
         rt.store_transient_error("spotify:track:a", NotFoundReason::RateLimit);
         assert!(busy(rt.tick().lyrics_status));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn timed_doc(key: &str, source_duration_ms: Option<u64>) -> LyricDocument {
+        // Real LRC text, so the document survives a cache round trip.
+        let mut doc = crate::lyrics::parser::parse_lrc(
+            key,
+            "[00:01.00]Line 0\n[00:05.00]Line 1\n[00:10.00]Line 2",
+            LyricSourceKind::Lrclib,
+        )
+        .unwrap();
+        doc.source_duration_ms = source_duration_ms;
+        doc
+    }
+
+    fn playing(rt: &mut LyraRuntime, uri: &str, duration_ms: u64) -> RenderSnapshot {
+        rt.set_playback_snapshot(PlaybackSnapshot {
+            track: Some(test_track(uri, duration_ms)),
+            state: PlaybackState::Paused,
+            position_ms: Some(6_000),
+            ..PlaybackSnapshot::stopped(0)
+        });
+        rt.tick()
+    }
+
+    fn fresh_runtime(name: &str) -> (LyraRuntime, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("lyra-video-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        (LyraRuntime::new_in(dir.clone()), dir)
+    }
+
+    #[test]
+    fn music_video_sharing_a_track_id_gets_its_own_lyrics_and_offset() {
+        let (mut rt, dir) = fresh_runtime("own-key");
+        let song = "spotify:track:song";
+        // The album audio plays first and gets lyrics timed to it.
+        playing(&mut rt, song, 220_000);
+        rt.store_lyrics(timed_doc(song, Some(220_000)));
+        rt.set_current_offset(400);
+        assert!(matches!(rt.tick().lyrics_status, LyricsStatus::Ready));
+
+        // Its music video reports the same ID but runs much longer.
+        let render = playing(&mut rt, song, 571_000);
+        let video = render.playback.track.as_ref().unwrap().uri.clone();
+        assert_eq!(video, "spotify:track:song::571");
+        assert!(matches!(render.lyrics_status, LyricsStatus::Loading));
+        assert_eq!(rt.current_offset(), 0, "the audio's offset stays with it");
+
+        // No lyrics for the video: the song's words show, without timing.
+        rt.store_negative(&video, 571_000);
+        let render = rt.tick();
+        assert!(matches!(render.lyrics_status, LyricsStatus::Unsynced));
+        assert_eq!(
+            rt.all_plain_lyrics().as_deref(),
+            Some("Line 0\nLine 1\nLine 2")
+        );
+        assert_eq!(rt.next_transition_playback_ms(6_000), None);
+
+        // Lyrics timed to the video, and an offset, stay with the video.
+        rt.store_lyrics(timed_doc(&video, Some(571_000)));
+        rt.set_current_offset(-250);
+        assert!(matches!(rt.tick().lyrics_status, LyricsStatus::Ready));
+
+        // Back to the audio: its own key, lyrics and offset.
+        let render = playing(&mut rt, song, 220_000);
+        assert_eq!(render.playback.track.as_ref().unwrap().uri, song);
+        assert!(matches!(render.lyrics_status, LyricsStatus::Ready));
+        assert_eq!(rt.current_offset(), 400);
+        playing(&mut rt, song, 571_000);
+        assert_eq!(rt.current_offset(), -250);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn miss_for_a_video_moves_the_audio_to_its_own_key() {
+        let (mut rt, dir) = fresh_runtime("miss-key");
+        let song = "spotify:track:first-video";
+        playing(&mut rt, song, 571_000);
+        rt.store_negative(song, 571_000);
+        let render = playing(&mut rt, song, 220_000);
+        assert_eq!(
+            render.playback.track.as_ref().unwrap().uri,
+            "spotify:track:first-video::220"
+        );
+        assert!(matches!(render.lyrics_status, LyricsStatus::Loading));
+        // Lengths within the tolerance are the same recording.
+        let render = playing(&mut rt, song, 573_000);
+        assert_eq!(render.playback.track.as_ref().unwrap().uri, song);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn lyrics_timed_for_another_length_are_shown_unsynced() {
+        let (mut rt, dir) = fresh_runtime("mismatch");
+        // Metadata keys carry their duration, so are never re-keyed.
+        let video = "meta::artist::telephone::571";
+        playing(&mut rt, video, 571_000);
+        rt.store_lyrics(timed_doc(video, Some(220_000)));
+        let render = rt.tick();
+        assert!(matches!(render.lyrics_status, LyricsStatus::Unsynced));
+        assert!(render.visible_lines.is_empty());
+        assert!(rt.all_lines_slim().is_empty());
+        assert_eq!(rt.seek_preview().render_at(6_000).active_line_index, None);
+
+        // Within the tolerance, or with either length unknown, timing stays.
+        for (source, playing_ms) in [
+            (Some(566_000), 571_000),
+            (None, 571_000),
+            (Some(220_000), 0),
+        ] {
+            let key = format!("meta::artist::song::{source:?}::{playing_ms}");
+            rt.set_duration_grace(Duration::ZERO);
+            playing(&mut rt, &key, playing_ms);
+            rt.store_lyrics(timed_doc(&key, source));
+            let render = rt.tick();
+            assert!(
+                matches!(render.lyrics_status, LyricsStatus::Ready),
+                "{source:?} vs {playing_ms}"
+            );
+            assert_eq!(render.active_line_index, Some(1));
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn lyrics_wait_while_the_player_reports_no_duration() {
+        let (mut rt, dir) = fresh_runtime("zero-duration");
+        let song = "spotify:track:loading";
+        playing(&mut rt, song, 220_000);
+        rt.store_lyrics(timed_doc(song, Some(220_000)));
+
+        // Another track loads with no length yet: nothing is shown.
+        let other = "spotify:track:loading-video";
+        let render = playing(&mut rt, other, 0);
+        assert!(rt.duration_pending(render.playback.track.as_ref().unwrap()));
+        assert!(matches!(render.lyrics_status, LyricsStatus::Loading));
+
+        // The song again, reporting 0 while its video loads: its album
+        // lyrics are held back until the length is known.
+        let render = playing(&mut rt, song, 0);
+        assert!(matches!(render.lyrics_status, LyricsStatus::Loading));
+        assert!(render.visible_lines.is_empty());
+        assert!(rt.seek_preview().render_at(6_000).visible_lines.is_empty());
+        let render = playing(&mut rt, song, 571_000);
+        assert_eq!(
+            render.playback.track.as_ref().unwrap().uri,
+            "spotify:track:loading::571"
+        );
+
+        // Switching the playing song to its video: the length drops to 0
+        // for a moment, and the song's timing is not shown meanwhile.
+        assert!(matches!(
+            playing(&mut rt, song, 220_000).lyrics_status,
+            LyricsStatus::Ready
+        ));
+        let render = playing(&mut rt, song, 0);
+        assert!(matches!(render.lyrics_status, LyricsStatus::Loading));
+
+        // A player that never reports a length is served after the grace.
+        rt.set_duration_grace(Duration::ZERO);
+        let render = playing(&mut rt, song, 0);
+        assert!(matches!(render.lyrics_status, LyricsStatus::Ready));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn lyrics_cached_before_lengths_were_recorded_keep_their_key() {
+        let (mut rt, dir) = fresh_runtime("legacy");
+        let song = "spotify:track:legacy";
+        rt.cache
+            .put(song, "[00:01.00]Old\n[00:05.00]Cache")
+            .unwrap();
+        let render = playing(&mut rt, song, 571_000);
+        assert_eq!(render.playback.track.as_ref().unwrap().uri, song);
+        assert!(matches!(render.lyrics_status, LyricsStatus::Ready));
         let _ = std::fs::remove_dir_all(dir);
     }
 

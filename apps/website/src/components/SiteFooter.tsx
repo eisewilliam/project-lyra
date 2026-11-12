@@ -9,6 +9,9 @@ export function SiteFooter() {
       <p className="footer-note">A free, open-source lyrics companion. Not affiliated with Spotify, Apple or Google.</p>
       <nav className="footer-nav" aria-label="Footer">
         <Link to="/download">Download</Link>
+        <Link to="/macos">macOS</Link>
+        <Link to="/windows">Windows</Link>
+        <Link to="/linux">Linux</Link>
         <ExternalLink href={siteConfig.repository}>GitHub</ExternalLink>
         <ExternalLink href={siteConfig.repository + '/blob/main/LICENSE'}>MIT license</ExternalLink>
       </nav>

@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::domain::{LyricDocument, LyricSourceKind};
 use crate::lyrics::parser;
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 
 const DAY_SECS: u64 = 24 * 60 * 60;
 /// How long a `.nomatch` sentinel is trusted, by how many lookups in a row
@@ -11,6 +12,14 @@ const DAY_SECS: u64 = 24 * 60 * 60;
 const NEGATIVE_TTL_SECS: [u64; 4] = [DAY_SECS, 3 * DAY_SECS, 7 * DAY_SECS, 14 * DAY_SECS];
 /// Bumped when lookups improve, so earlier misses are looked up again.
 const NEGATIVE_CACHE_VERSION: &str = "v4";
+
+/// Sidecar next to a cached lyric file. Fields are optional so older and
+/// newer builds can read each other's files.
+#[derive(Default, Serialize, Deserialize)]
+struct CacheMeta {
+    #[serde(default)]
+    source_duration_ms: Option<u64>,
+}
 
 #[derive(Clone)]
 pub struct LyricCache {
@@ -47,7 +56,8 @@ impl LyricCache {
         let cache_path = self.cache_dir.join(Self::filename(track_key));
         if cache_path.exists() {
             if let Ok(raw) = std::fs::read_to_string(&cache_path) {
-                if let Ok(doc) = parser::parse_lrc(track_key, &raw, LyricSourceKind::Lrclib) {
+                if let Ok(mut doc) = parser::parse_lrc(track_key, &raw, LyricSourceKind::Lrclib) {
+                    doc.source_duration_ms = self.source_duration(track_key);
                     return Some(doc);
                 }
             }
@@ -66,7 +76,41 @@ impl LyricCache {
             lines: vec![],
             raw_lrc: String::new(),
             plain_lyrics: Some(plain),
+            source_duration_ms: self.source_duration(track_key),
         })
+    }
+
+    /// Duration the cached lyrics were timed for, from their sidecar.
+    fn source_duration(&self, track_key: &str) -> Option<u64> {
+        let raw = std::fs::read_to_string(self.meta_path(track_key)).ok()?;
+        serde_json::from_str::<CacheMeta>(&raw)
+            .ok()?
+            .source_duration_ms
+            .filter(|ms| *ms > 0)
+    }
+
+    /// Length of the recording the track key's cached result was made for:
+    /// the cached lyrics' source duration, or the duration a cached miss was
+    /// looked up with. `None` when nothing is cached, or when the result
+    /// predates recording durations.
+    pub fn recorded_duration(&self, track_key: &str) -> Option<u64> {
+        let has_lyrics = self.cache_dir.join(Self::filename(track_key)).exists()
+            || self
+                .cache_dir
+                .join(format!("{}.txt", Self::stem(track_key)))
+                .exists();
+        if has_lyrics {
+            return self.source_duration(track_key);
+        }
+        let raw = std::fs::read_to_string(self.negative_path(track_key)).ok()?;
+        let mut fields = raw.split_whitespace();
+        if fields.next() != Some(NEGATIVE_CACHE_VERSION) {
+            return None;
+        }
+        fields
+            .nth(1)
+            .and_then(|ms| ms.parse::<u64>().ok())
+            .filter(|ms| *ms > 0)
     }
 
     /// True when synced, plain or user-supplied lyrics exist for the track.
@@ -101,6 +145,17 @@ impl LyricCache {
                 std::fs::remove_file(plain_path)?;
             }
         }
+        let meta_path = self.meta_path(&doc.track_key);
+        match doc.source_duration_ms {
+            Some(ms) => std::fs::write(
+                meta_path,
+                serde_json::to_string(&CacheMeta {
+                    source_duration_ms: Some(ms),
+                })?,
+            )?,
+            None if meta_path.exists() => std::fs::remove_file(meta_path)?,
+            None => {}
+        }
         self.clear_negative(&doc.track_key)?;
         Ok(())
     }
@@ -115,10 +170,19 @@ impl LyricCache {
     /// Sentinel file marking a known-missing track so we skip LRCLIB retries.
     /// Records how many lookups in a row have missed.
     pub fn mark_negative(&self, track_key: &str) -> Result<()> {
+        self.mark_negative_for(track_key, 0)
+    }
+
+    /// `mark_negative`, also recording the duration (ms, 0 when unknown) the
+    /// lookup was made with.
+    pub fn mark_negative_for(&self, track_key: &str, duration_ms: u64) -> Result<()> {
         std::fs::create_dir_all(&self.cache_dir)?;
         let path = self.negative_path(track_key);
         let misses = Self::negative_misses(&path).unwrap_or(0).saturating_add(1);
-        std::fs::write(path, format!("{NEGATIVE_CACHE_VERSION} {misses}"))?;
+        std::fs::write(
+            path,
+            format!("{NEGATIVE_CACHE_VERSION} {misses} {duration_ms}"),
+        )?;
         Ok(())
     }
 
@@ -148,6 +212,11 @@ impl LyricCache {
         }
         let misses = fields.next().and_then(|n| n.parse().ok()).unwrap_or(1);
         Some(u32::max(misses, 1))
+    }
+
+    fn meta_path(&self, track_key: &str) -> PathBuf {
+        self.cache_dir
+            .join(format!("{}.meta.json", Self::stem(track_key)))
     }
 
     fn negative_path(&self, track_key: &str) -> PathBuf {
@@ -205,6 +274,7 @@ mod tests {
             lines: vec![],
             raw_lrc: String::new(),
             plain_lyrics: Some("First\n\nLast".into()),
+            source_duration_ms: None,
         };
         cache.mark_negative(key).unwrap();
         cache.put_document(&doc).unwrap();
@@ -222,6 +292,52 @@ mod tests {
         let read = cache.get(key).unwrap();
         assert_eq!(read.lines[0].text, "Override");
         assert!(read.plain_lyrics.is_none());
+    }
+
+    #[test]
+    fn cached_lyrics_and_misses_keep_the_length_they_were_made_for() {
+        let (cache, _t) = tmp_cache();
+        let timed = "spotify:track:timed";
+        let mut doc = parser::parse_lrc(timed, "[00:01.00]Line", LyricSourceKind::Lrclib).unwrap();
+        doc.source_duration_ms = Some(219_600);
+        cache.put_document(&doc).unwrap();
+        assert_eq!(cache.get(timed).unwrap().source_duration_ms, Some(219_600));
+        assert_eq!(cache.recorded_duration(timed), Some(219_600));
+
+        let plain = "spotify:track:plain-length";
+        cache
+            .put_document(&LyricDocument {
+                track_key: plain.into(),
+                source: LyricSourceKind::Lrclib,
+                lines: vec![],
+                raw_lrc: String::new(),
+                plain_lyrics: Some("Words".into()),
+                source_duration_ms: Some(181_000),
+            })
+            .unwrap();
+        assert_eq!(cache.get(plain).unwrap().source_duration_ms, Some(181_000));
+
+        let missed = "spotify:track:missed";
+        cache.mark_negative_for(missed, 571_000).unwrap();
+        cache.mark_negative_for(missed, 571_000).unwrap();
+        assert!(cache.is_negative(missed));
+        assert_eq!(cache.recorded_duration(missed), Some(571_000));
+
+        // Results cached before lengths were recorded have none.
+        let legacy = "spotify:track:legacy";
+        cache.put(legacy, "[00:01.00]Line").unwrap();
+        assert_eq!(cache.get(legacy).unwrap().source_duration_ms, None);
+        assert_eq!(cache.recorded_duration(legacy), None);
+        cache.mark_negative("spotify:track:legacy-miss").unwrap();
+        assert_eq!(cache.recorded_duration("spotify:track:legacy-miss"), None);
+        std::fs::write(cache.negative_path("spotify:track:v4"), "v4 2").unwrap();
+        assert!(cache.is_negative("spotify:track:v4"));
+        assert_eq!(cache.recorded_duration("spotify:track:v4"), None);
+
+        // Lyrics stored without a length drop the old record.
+        doc.source_duration_ms = None;
+        cache.put_document(&doc).unwrap();
+        assert_eq!(cache.recorded_duration(timed), None);
     }
 
     #[test]

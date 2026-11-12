@@ -1,7 +1,7 @@
 //! Host-independent lyric fetch coordination. No runtime lock crosses an await.
 use super::{lrclib::LrclibClient, LyricSource};
 use crate::{
-    domain::{NotFoundReason, TrackRef},
+    domain::{LyricSourceKind, NotFoundReason, TrackRef},
     runtime::LyraRuntime,
 };
 use std::{
@@ -22,6 +22,10 @@ const RETRY_DELAYS: [Duration; 4] = [
     Duration::from_secs(45),
     Duration::from_secs(120),
 ];
+
+/// How often a lookup waiting for the player to report the track's length
+/// checks again.
+const DURATION_WAIT_POLL: Duration = Duration::from_millis(250);
 
 pub struct LyricsRefresh<S = LrclibClient> {
     source: S,
@@ -57,22 +61,38 @@ impl<S: LyricSource> LyricsRefresh<S> {
     }
 
     async fn refresh_inner(&self, runtime: &Mutex<LyraRuntime>, force: bool) -> Result<(), String> {
-        let track = {
-            let rt = runtime.lock().map_err(|e| e.to_string())?;
-            let Some(track) = rt.current_track() else {
-                return Ok(());
+        let track = loop {
+            let track = {
+                let rt = runtime.lock().map_err(|e| e.to_string())?;
+                let Some(track) = rt.current_track() else {
+                    return Ok(());
+                };
+                // Lyrics found without a length could not be told apart from
+                // another version's; wait for the player to report one. The
+                // wait ends within `DURATION_GRACE`, after which the track is
+                // looked up without one.
+                if rt.duration_pending(&track) {
+                    None
+                } else {
+                    // Browser media needs consent before its metadata leaves
+                    // the machine; manual retry does not bypass it.
+                    if rt.lookup_blocked(&track).is_some() {
+                        return Ok(());
+                    }
+                    // A manual retry bypasses the negative sentinel even if
+                    // its queued deletion has not reached disk yet. Existing
+                    // lyric documents win.
+                    if (!force && rt.is_negative(&track.uri)) || rt.get_cached(&track.uri).is_some()
+                    {
+                        return Ok(());
+                    }
+                    Some(track)
+                }
             };
-            // Browser media needs consent before its metadata leaves the
-            // machine; manual retry does not bypass it.
-            if rt.lookup_blocked(&track).is_some() {
-                return Ok(());
+            match track {
+                Some(track) => break track,
+                None => tokio::time::sleep(DURATION_WAIT_POLL).await,
             }
-            // A manual retry bypasses the negative sentinel even if its queued
-            // deletion has not reached disk yet. Existing lyric documents win.
-            if (!force && rt.is_negative(&track.uri)) || rt.get_cached(&track.uri).is_some() {
-                return Ok(());
-            }
-            track
         };
         let mut forget = force;
         match self.lookup(runtime, &track, &mut forget).await? {
@@ -185,12 +205,20 @@ impl<S: LyricSource> LyricsRefresh<S> {
         let result = self.source.fetch(track).await;
         let mut rt = runtime.lock().map_err(|e| e.to_string())?;
         Ok(match result {
-            Ok(Some(doc)) => {
+            Ok(Some(mut doc)) => {
+                // A provider that does not say what length its timings were
+                // made for matched the length looked up with.
+                if doc.source_duration_ms.is_none()
+                    && track.duration_ms > 0
+                    && matches!(doc.source, LyricSourceKind::Lrclib)
+                {
+                    doc.source_duration_ms = Some(track.duration_ms);
+                }
                 rt.store_lyrics(doc);
                 Outcome::Settled
             }
             Ok(None) => {
-                rt.store_negative(&track.uri);
+                rt.store_negative(&track.uri, track.duration_ms);
                 Outcome::Settled
             }
             Err(error) => {
@@ -317,6 +345,92 @@ mod tests {
         });
         refresh.retry_delays = vec![Duration::from_millis(delay_ms); 3];
         refresh
+    }
+
+    /// Records the length each lookup was made with.
+    struct Lengths(Mutex<Vec<u64>>);
+    impl LyricSource for Lengths {
+        fn name(&self) -> &str {
+            "lengths"
+        }
+        async fn fetch(&self, track: &TrackRef) -> anyhow::Result<Option<LyricDocument>> {
+            self.0.lock().unwrap().push(track.duration_ms);
+            Ok(Some(crate::lyrics::parser::parse_lrc(
+                &track.uri,
+                "[00:01.00]Found",
+                crate::domain::LyricSourceKind::Lrclib,
+            )?))
+        }
+    }
+
+    fn set_duration(rt: &Mutex<LyraRuntime>, duration_ms: u64) {
+        let mut guard = rt.lock().unwrap();
+        let mut snapshot = guard.last_playback_snapshot.clone().unwrap();
+        snapshot.track.as_mut().unwrap().duration_ms = duration_ms;
+        guard.set_playback_snapshot(snapshot);
+        guard.tick();
+    }
+
+    #[tokio::test]
+    async fn lookup_waits_for_the_player_to_report_a_length() {
+        let rt = runtime("await-length");
+        {
+            let mut guard = rt.lock().unwrap();
+            let mut snapshot = guard.last_playback_snapshot.clone().unwrap();
+            snapshot.track = Some(TrackRef {
+                duration_ms: 0,
+                ..TrackRef::fixture("spotify:track:loading")
+            });
+            guard.set_playback_snapshot(snapshot);
+            assert!(matches!(guard.tick().lyrics_status, LyricsStatus::Loading));
+        }
+        let refresh = LyricsRefresh::new(Lengths(Mutex::new(vec![])));
+        let report = async {
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            assert!(refresh.source.0.lock().unwrap().is_empty());
+            set_duration(&rt, 571_000);
+        };
+        let (result, ()) = tokio::join!(refresh.refresh(&rt), report);
+        result.unwrap();
+        assert_eq!(*refresh.source.0.lock().unwrap(), vec![571_000]);
+        // The lyrics record the length they were found for.
+        tokio::task::yield_now().await;
+        let mut guard = rt.lock().unwrap();
+        assert!(matches!(guard.tick().lyrics_status, LyricsStatus::Ready));
+        assert_eq!(
+            guard.seek_preview().track().map(|t| t.duration_ms),
+            Some(571_000)
+        );
+        assert_eq!(
+            guard
+                .get_cached("spotify:track:loading")
+                .unwrap()
+                .source_duration_ms,
+            Some(571_000)
+        );
+    }
+
+    #[tokio::test]
+    async fn track_without_a_length_is_looked_up_after_the_grace() {
+        let rt = runtime("no-length");
+        {
+            let mut guard = rt.lock().unwrap();
+            guard.set_duration_grace(Duration::from_millis(40));
+            let mut snapshot = guard.last_playback_snapshot.clone().unwrap();
+            snapshot.track = Some(TrackRef {
+                duration_ms: 0,
+                ..TrackRef::fixture("spotify:track:live")
+            });
+            guard.set_playback_snapshot(snapshot);
+            guard.tick();
+        }
+        let refresh = LyricsRefresh::new(Lengths(Mutex::new(vec![])));
+        refresh.refresh(&rt).await.unwrap();
+        assert_eq!(*refresh.source.0.lock().unwrap(), vec![0]);
+        assert!(matches!(
+            rt.lock().unwrap().tick().lyrics_status,
+            LyricsStatus::Ready
+        ));
     }
 
     #[tokio::test]

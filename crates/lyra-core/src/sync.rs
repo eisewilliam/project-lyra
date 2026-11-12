@@ -246,6 +246,7 @@ mod tests {
 
         LyricDocument {
             plain_lyrics: None,
+            source_duration_ms: None,
             track_key: "test".into(),
             source: LyricSourceKind::Lrclib,
             lines,

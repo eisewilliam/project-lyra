@@ -1,43 +1,13 @@
-// Serves the built site. Unknown page addresses get the app shell, which
-// routes on the client, and every page gets link-preview tags that crawlers
-// can read without running JavaScript.
+// Serves the built site. TanStack Start prerenders every page to
+// <path>/index.html with its own title, description, canonical link and
+// content, so crawlers read pages without running JavaScript. Unknown page
+// addresses get the SPA shell (_shell.html) with a 404 status, and the
+// not-found page renders in the browser.
 
-// Titles and descriptions for link previews, by path. Other pages share the
-// home page's, which index.html carries.
-export const previews = {
-  "/download": {
-    title: "Download Lyra",
-    description: "Free for macOS, Windows and Linux. Lyra works with Spotify, Apple Music, YouTube Music and most other players.",
-  },
-};
-
-const escapeAttribute = (value) => value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
-
-// Make the preview tags' addresses absolute for this host, point og:url at
-// this page and add its canonical link, and swap in the page's own title and
-// description. (index.html cannot carry a relative canonical link: the build
-// would try to resolve it as a file.)
-export function withPreview(html, url) {
-  const { origin } = url;
-  const path = url.pathname.replace(/\/index\.html$/, "/").replace(/(.)\/$/, "$1");
-  const page = origin + path;
-  const canonical = `<link rel="canonical" href="${escapeAttribute(page)}" />`;
-  let result = (/<link rel="canonical"/.test(html)
-    ? html.replace(/<link rel="canonical"[^>]*>/, canonical)
-    : html.replace("</head>", `  ${canonical}\n  </head>`))
-    .replace(/(<meta property="og:url" content=")[^"]*"/, `$1${escapeAttribute(page)}"`)
-    .replace(/(<meta (?:property|name)="(?:og:image|twitter:image)" content=")\/([^"]*)"/g, `$1${origin}/$2"`);
-  const preview = previews[path];
-  if (preview) {
-    const title = escapeAttribute(preview.title);
-    const description = escapeAttribute(preview.description);
-    result = result
-      .replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`)
-      .replace(/(<meta property="og:title" content=")[^"]*"/, `$1${title}"`)
-      .replace(/(<meta (?:name="description"|property="og:description") content=")[^"]*"/g, `$1${description}"`);
-  }
-  return result;
-}
+// Other hosts (workers.dev, branch previews, local runs) serve copies of the
+// site, which search engines are asked not to index. Their pages keep the
+// production canonical link.
+const productionHost = "lyra.eiselabs.com";
 
 // Page addresses have no file extension; anything else is a file.
 const isPageRequest = (request) => {
@@ -49,27 +19,40 @@ const isPageRequest = (request) => {
   return !accept || accept.includes("text/html") || accept.includes("*/*");
 };
 
+const fetchFile = (env, request, pathname) => {
+  const url = new URL(request.url);
+  url.pathname = pathname;
+  url.search = "";
+  return env.ASSETS.fetch(new Request(url, request));
+};
+
+const pageFile = (pathname) => (pathname === "/" ? "/index.html" : `${pathname}/index.html`);
+
+async function serve(request, env) {
+  const response = await env.ASSETS.fetch(request);
+  if (response.status !== 404 || !isPageRequest(request)) return response;
+
+  const url = new URL(request.url);
+  // One address per page: /download/ moves to /download.
+  if (url.pathname.length > 1 && url.pathname.endsWith("/")) {
+    url.pathname = url.pathname.replace(/\/+$/, "") || "/";
+    return Response.redirect(url.toString(), 301);
+  }
+
+  const page = await fetchFile(env, request, pageFile(url.pathname));
+  if (page.status !== 404) return page;
+
+  const shell = await fetchFile(env, request, "/_shell.html");
+  if (shell.status !== 200) return response;
+  return new Response(shell.body, { status: 404, headers: shell.headers });
+}
+
 export default {
   async fetch(request, env) {
-    let response = await env.ASSETS.fetch(request);
-
-    if (response.status === 404 && isPageRequest(request)) {
-      const indexUrl = new URL(request.url);
-      indexUrl.pathname = "/index.html";
-      indexUrl.search = "";
-      response = await env.ASSETS.fetch(new Request(indexUrl, request));
-    }
-
-    const isHtml = response.headers.get("content-type")?.includes("text/html");
-    if (request.method !== "GET" || response.status !== 200 || !isHtml) return response;
+    const response = await serve(request, env);
+    if (new URL(request.url).hostname === productionHost) return response;
     const headers = new Headers(response.headers);
-    // The body changes per host and page, so the original length and tag no longer apply.
-    headers.delete("content-length");
-    headers.delete("etag");
-    return new Response(withPreview(await response.text(), new URL(request.url)), {
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-    });
+    headers.set("x-robots-tag", "noindex");
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   },
 };

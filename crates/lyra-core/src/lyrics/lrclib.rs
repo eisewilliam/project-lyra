@@ -437,13 +437,20 @@ impl LyricSource for LrclibClient {
 }
 
 fn into_document(uri: &str, record: LrclibRecord) -> Result<Option<LyricDocument>> {
+    // LRCLIB requires a duration on every record it publishes: the length of
+    // the recording its timings were made for.
+    let source_duration_ms = record
+        .duration
+        .filter(|secs| secs.is_finite() && *secs > 0.0)
+        .map(|secs| (secs * 1000.0).round() as u64);
     if let Some(synced) = record
         .synced_lyrics
         .as_deref()
         .filter(|s| !s.trim().is_empty())
     {
-        if let Ok(doc) = parser::parse_lrc(uri, synced, LyricSourceKind::Lrclib) {
+        if let Ok(mut doc) = parser::parse_lrc(uri, synced, LyricSourceKind::Lrclib) {
             if !doc.lines.is_empty() {
+                doc.source_duration_ms = source_duration_ms;
                 return Ok(Some(doc));
             }
         }
@@ -464,6 +471,7 @@ fn into_document(uri: &str, record: LrclibRecord) -> Result<Option<LyricDocument
         lines: vec![],
         raw_lrc: String::new(),
         plain_lyrics: Some(plain),
+        source_duration_ms,
     }))
 }
 
@@ -1073,6 +1081,23 @@ mod tests {
     async fn disconnected_search_is_an_error() {
         let client = server(vec![(404, "{}")]);
         assert!(client.fetch(&track()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn document_records_the_duration_its_timings_were_made_for() {
+        let client = server(vec![(
+            200,
+            r#"{"trackName":"Song","artistName":"Artist","duration":219.6,"syncedLyrics":"[00:01.00]Timed"}"#,
+        )]);
+        let doc = client.fetch(&track()).await.unwrap().unwrap();
+        assert_eq!(doc.source_duration_ms, Some(219_600));
+
+        let client = server(vec![
+            (200, r#"{"duration":181,"plainLyrics":"Untimed"}"#),
+            (200, "[]"),
+        ]);
+        let doc = client.fetch(&track()).await.unwrap().unwrap();
+        assert_eq!(doc.source_duration_ms, Some(181_000));
     }
 
     #[tokio::test]

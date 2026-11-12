@@ -52,3 +52,4 @@ apps/website/design-qa.md
 __pycache__/
 *.pyc
 apps/desktop-swiftui-poc/
+apps/social-video

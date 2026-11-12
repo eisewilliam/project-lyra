@@ -2,127 +2,122 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import worker from "../worker/index.js";
 
-test("serves existing static assets without a fallback", async () => {
+// A prerendered page as TanStack Start writes it, cut down to a few tags.
+const page = (title, path) => [
+  `<title>${title}</title>`,
+  `<link rel="canonical" href="https://lyra.eiselabs.com${path}"/>`,
+  "</head>",
+  `<body><h1>${title}</h1></body>`,
+].join("\n");
+
+const html = { "content-type": "text/html; charset=utf-8", etag: '"abc"', "content-length": "999" };
+
+// The built site: prerendered pages, the SPA shell, and some files.
+// Records every path the worker asks the assets for.
+const site = (files = {}) => {
   const calls = [];
-  const response = await worker.fetch(new Request("https://example.test/assets/app.js"), {
+  const all = {
+    "/index.html": page("Home", "/"),
+    "/download/index.html": page("Download Lyra", "/download"),
+    "/_shell.html": "<title>Page not found — Lyra</title>",
+    ...files,
+  };
+  return {
+    calls,
     ASSETS: {
       fetch: async (request) => {
-        calls.push(new URL(request.url).pathname);
-        return new Response("asset", { status: 200 });
+        const { pathname, search } = new URL(request.url);
+        calls.push(pathname + search);
+        if (!(pathname in all)) return new Response("missing", { status: 404 });
+        const headers = pathname.endsWith(".html") ? html : { "content-type": "text/plain" };
+        return new Response(request.method === "HEAD" ? null : all[pathname], { status: 200, headers });
       },
     },
-  });
+  };
+};
 
+const get = (url, headers = { accept: "text/html" }, method = "GET") => new Request(url, { headers, method });
+
+test("serves existing static assets directly", async () => {
+  const env = site({ "/assets/app.js": "asset" });
+  const response = await worker.fetch(get("https://lyra.eiselabs.com/assets/app.js", { accept: "*/*" }), env);
   assert.equal(response.status, 200);
-  assert.deepEqual(calls, ["/assets/app.js"]);
+  assert.equal(await response.text(), "asset");
+  assert.deepEqual(env.calls, ["/assets/app.js"]);
 });
 
-test("falls back to index.html for an unknown app route", async () => {
-  const calls = [];
-  const response = await worker.fetch(
-    new Request("https://example.test/flow/step-two?source=share", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async (request) => {
-          const url = new URL(request.url);
-          calls.push(url.pathname + url.search);
-          return new Response(url.pathname === "/index.html" ? "app" : "missing", {
-            status: url.pathname === "/index.html" ? 200 : 404,
-          });
-        },
-      },
-    },
-  );
-
+test("serves each page's prerendered file", async () => {
+  const env = site();
+  const response = await worker.fetch(get("https://lyra.eiselabs.com/download?platform=macos"), env);
   assert.equal(response.status, 200);
-  assert.deepEqual(calls, ["/flow/step-two?source=share", "/index.html"]);
+  assert.match(await response.text(), /<h1>Download Lyra<\/h1>/);
+  assert.deepEqual(env.calls, ["/download?platform=macos", "/download/index.html"]);
 });
 
-test("does not turn missing API or write requests into the app shell", async () => {
+test("serves the home page from index.html", async () => {
+  const env = site();
+  const response = await worker.fetch(get("https://lyra.eiselabs.com/"), env);
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /<h1>Home<\/h1>/);
+});
+
+test("answers an unknown page with the SPA shell and a 404 status", async () => {
+  const env = site();
+  const response = await worker.fetch(get("https://lyra.eiselabs.com/flow/step-two?source=share"), env);
+  assert.equal(response.status, 404);
+  assert.match(await response.text(), /Page not found/);
+  assert.match(response.headers.get("content-type"), /text\/html/);
+  assert.deepEqual(env.calls, ["/flow/step-two?source=share", "/flow/step-two/index.html", "/_shell.html"]);
+});
+
+test("moves a page address with a trailing slash to the one without", async () => {
+  const response = await worker.fetch(get("https://lyra.eiselabs.com/download/?platform=linux"), site());
+  assert.equal(response.status, 301);
+  assert.equal(response.headers.get("location"), "https://lyra.eiselabs.com/download?platform=linux");
+});
+
+test("does not turn missing files, API calls or writes into pages", async () => {
   for (const request of [
-    new Request("https://example.test/api/missing", { headers: { accept: "application/json" } }),
-    new Request("https://example.test/flow", { method: "POST", headers: { accept: "text/html" } }),
+    get("https://lyra.eiselabs.com/missing.png", { accept: "*/*" }),
+    get("https://lyra.eiselabs.com/api/missing", { accept: "application/json" }),
+    get("https://lyra.eiselabs.com/flow", { accept: "text/html" }, "POST"),
   ]) {
-    let calls = 0;
-    const response = await worker.fetch(request, {
-      ASSETS: {
-        fetch: async () => {
-          calls += 1;
-          return new Response("missing", { status: 404 });
-        },
-      },
-    });
-
+    const env = site();
+    const response = await worker.fetch(request, env);
     assert.equal(response.status, 404);
-    assert.equal(calls, 1);
+    assert.equal(env.calls.length, 1);
   }
 });
 
-// A served page as the build writes it, cut down to the tags the worker rewrites.
-const shell = [
-  "<title>Lyra — Keep the song in sight</title>",
-  '<meta name="description" content="Home description" />',
-  '<meta property="og:url" content="/" />',
-  '<meta property="og:title" content="Lyra — Keep the song in sight" />',
-  '<meta property="og:description" content="Home description" />',
-  '<meta property="og:image" content="/og-image.png" />',
-  "</head>",
-].join("\n");
-
-const site = (pages = {}) => ({
-  ASSETS: {
-    fetch: async (request) => {
-      const { pathname } = new URL(request.url);
-      if (pathname === "/" || pathname === "/index.html") {
-        return new Response(shell, { status: 200, headers: { "content-type": "text/html; charset=utf-8", etag: '"abc"', "content-length": "999" } });
-      }
-      if (pathname in pages) return new Response(pages[pathname], { status: 200 });
-      return new Response("missing", { status: 404 });
-    },
-  },
-});
-
-test("gives the home page absolute link-preview addresses for the serving host", async () => {
-  const response = await worker.fetch(new Request("https://lyra.example/", { headers: { accept: "text/html" } }), site());
-  const html = await response.text();
-
+test("serves pages on other hosts as built, with the production canonical link", async () => {
+  const response = await worker.fetch(get("https://lyra.example/download?platform=macos", { accept: "*/*" }), site());
   assert.equal(response.status, 200);
-  assert.match(html, /<meta property="og:image" content="https:\/\/lyra\.example\/og-image\.png"/);
-  assert.match(html, /<meta property="og:url" content="https:\/\/lyra\.example\/"/);
-  assert.match(html, /<link rel="canonical" href="https:\/\/lyra\.example\/"/);
-  assert.match(html, /<title>Lyra — Keep the song in sight<\/title>/);
-  assert.equal(response.headers.get("etag"), null);
-  assert.equal(response.headers.get("content-length"), null);
+  assert.equal(await response.text(), page("Download Lyra", "/download"));
+  assert.equal(response.headers.get("etag"), '"abc"');
 });
 
-test("gives the downloads page its own preview, even for crawlers that accept anything", async () => {
-  const response = await worker.fetch(new Request("https://lyra.example/download/?platform=macos", { headers: { accept: "*/*" } }), site());
-  const html = await response.text();
-
-  assert.equal(response.status, 200);
-  assert.match(html, /<title>Download Lyra<\/title>/);
-  assert.match(html, /<meta property="og:title" content="Download Lyra"/);
-  assert.match(html, /<meta property="og:description" content="Free for macOS/);
-  assert.match(html, /<meta name="description" content="Free for macOS/);
-  assert.match(html, /<meta property="og:url" content="https:\/\/lyra\.example\/download"/);
-  assert.match(html, /<link rel="canonical" href="https:\/\/lyra\.example\/download" \/>\n  <\/head>/);
-  assert.match(html, /<meta property="og:image" content="https:\/\/lyra\.example\/og-image\.png"/);
-});
-
-test("answers a crawler without an accept header with the app shell", async () => {
-  const response = await worker.fetch(new Request("https://lyra.example/download"), site());
+test("answers a crawler without an accept header with the page", async () => {
+  const response = await worker.fetch(new Request("https://lyra.eiselabs.com/download"), site());
   assert.equal(response.status, 200);
   assert.match(await response.text(), /<title>Download Lyra<\/title>/);
 });
 
-test("does not turn a missing file into the app shell", async () => {
-  const response = await worker.fetch(new Request("https://lyra.example/missing.png", { headers: { accept: "*/*" } }), site());
-  assert.equal(response.status, 404);
+test("answers HEAD for a page without a body", async () => {
+  const response = await worker.fetch(get("https://lyra.eiselabs.com/download", { accept: "text/html" }, "HEAD"), site());
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "");
+});
+
+test("asks search engines not to index copies on other hosts", async () => {
+  for (const url of ["https://lyra-website.example.workers.dev/", "https://lyra-website.example.workers.dev/missing", "https://lyra-website.example.workers.dev/download/"]) {
+    const response = await worker.fetch(get(url), site());
+    assert.equal(response.headers.get("x-robots-tag"), "noindex", url);
+  }
+  const production = await worker.fetch(get("https://lyra.eiselabs.com/"), site());
+  assert.equal(production.headers.get("x-robots-tag"), null);
 });
 
 test("leaves non-HTML files untouched", async () => {
-  const response = await worker.fetch(new Request("https://lyra.example/robots.txt"), site({ "/robots.txt": "User-agent: *" }));
+  const response = await worker.fetch(new Request("https://lyra.eiselabs.com/robots.txt"), site({ "/robots.txt": "User-agent: *" }));
   assert.equal(await response.text(), "User-agent: *");
 });

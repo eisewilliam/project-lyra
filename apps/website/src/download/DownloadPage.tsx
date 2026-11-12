@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
-import { getRouteApi } from '@tanstack/react-router';
+import { getRouteApi, useHydrated } from '@tanstack/react-router';
 import { motion, type Variants } from 'motion/react';
-import { Check, Copy } from '@phosphor-icons/react';
 import { ExternalLink } from '../components/ExternalLink.tsx';
 import { OsIcon } from '../components/OsIcons.tsx';
 import { StaffLines } from '../components/StaffLines.tsx';
+import { Terminal } from '../components/Terminal.tsx';
+import { useVisitorPlatform } from '../hydration.ts';
 import { platformDetails, platformNames, platforms, playersAndOthers, siteConfig, type Platform } from '../site-config.ts';
 
 const route = getRouteApi('/download');
@@ -42,37 +42,13 @@ const buildSteps = [
   'make build',
 ];
 
-function CopyCommands() {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return undefined;
-    const timer = window.setTimeout(() => setCopied(false), 2000);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(buildSteps.join('\n'));
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
-  };
-  return <div className="terminal">
-    <div className="terminal-bar">
-      <span>Terminal</span>
-      <button type="button" className="terminal-copy" onClick={copy}>
-        {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}<span>{copied ? 'Copied' : 'Copy'}</span>
-      </button>
-    </div>
-    <pre><code>{buildSteps.join('\n')}</code></pre>
-    <p className="visually-hidden" aria-live="polite">{copied ? 'Commands copied' : ''}</p>
-  </div>;
-}
-
 export function DownloadPage() {
-  const { platform: detected } = route.useRouteContext();
+  const hydrated = useHydrated();
+  const detected = useVisitorPlatform();
+  // The page is prerendered without a query string, so `?platform=` applies
+  // once it is hydrated.
   const { platform: requested } = route.useSearch();
-  const highlight = requested ?? detected;
+  const highlight = (hydrated ? requested : undefined) ?? detected;
   const order = highlight ? [highlight, ...platforms.filter(id => id !== highlight)] : platforms;
   return <main id="main-content" className="download-page">
     <section className="download-intro" aria-labelledby="download-title">
@@ -80,7 +56,7 @@ export function DownloadPage() {
         lyrics={[[1, 'carry a little light with you', '14%'], [3, 'and still the melody stays', '52%']]} />
       <h1 id="download-title" tabIndex={-1}>Download Lyra</h1>
       <p className="lead">Free for macOS, Windows and Linux. Lyra works with {playersAndOthers}.</p>
-      {!detected && <p className="device-note">Lyra is a desktop app. Open this page on your Mac, Windows or Linux computer to download it.</p>}
+      {hydrated && !detected && <p className="device-note">Lyra is a desktop app. Open this page on your Mac, Windows or Linux computer to download it.</p>}
     </section>
 
     <motion.section className="platform-list" aria-label="Downloads by platform" initial="hidden" animate="shown"
@@ -99,7 +75,7 @@ export function DownloadPage() {
         </ul>
         <ExternalLink className="text-link" href={siteConfig.repository + '#getting-started'}>Full instructions on GitHub</ExternalLink>
       </div>
-      <CopyCommands />
+      <Terminal lines={buildSteps} copy />
     </section>
 
     <section className="release-notes" aria-labelledby="releases-title">

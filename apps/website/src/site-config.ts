@@ -14,25 +14,50 @@ const releasesPublished = true;
 // always pointing at the newest published release.
 const latest = (file: string) => `${repository}/releases/latest/download/${file}`;
 
+export interface Installer {
+  /** File type, as the download button names it. */
+  label: string;
+  /** Who it is for. */
+  detail: string;
+  file: string;
+}
+
+// Every installer a stable release publishes, by platform
+// (docs/RELEASING.md). The first is the one the download buttons offer.
+export const installers: Record<Platform, readonly [Installer, ...Installer[]]> = {
+  macos: [{ label: '.dmg', detail: 'Apple silicon and Intel Macs', file: 'Lyra-macos-universal.dmg' }],
+  windows: [
+    { label: '.exe', detail: 'Setup program, 64-bit', file: 'Lyra-windows-x64-setup.exe' },
+    { label: '.msi', detail: 'Windows Installer package', file: 'Lyra-windows-x64.msi' },
+  ],
+  linux: [
+    { label: 'AppImage', detail: 'Runs on most distributions', file: 'Lyra-linux-amd64.AppImage' },
+    { label: '.deb', detail: 'Debian and Ubuntu', file: 'Lyra-linux-amd64.deb' },
+    { label: '.rpm', detail: 'Fedora and openSUSE', file: 'Lyra-linux-x86_64.rpm' },
+  ],
+};
+
 interface SiteConfig {
+  /** The production address, for the sitemap and structured data. */
+  origin: string;
   maker: { handle: string; profile: string };
   repository: string;
   releases: string;
+  /** Download address for an installer, or null before releases are public. */
+  download: (file: string) => string | null;
   downloads: Record<Platform, string | null>;
   /** Signed builds open without a security warning on first launch. */
   signed: Record<Platform, boolean>;
 }
 
 export const siteConfig: SiteConfig = {
+  origin: 'https://lyra.eiselabs.com',
   maker: { handle: maker, profile: `https://github.com/${maker}` },
   repository,
   releases: repository + '/releases',
+  download: file => (releasesPublished ? latest(file) : null),
   downloads: releasesPublished
-    ? {
-      macos: latest('Lyra-macos-universal.dmg'),
-      windows: latest('Lyra-windows-x64-setup.exe'),
-      linux: latest('Lyra-linux-amd64.AppImage'),
-    }
+    ? { macos: latest(installers.macos[0].file), windows: latest(installers.windows[0].file), linux: latest(installers.linux[0].file) }
     : { macos: null, windows: null, linux: null },
   // macOS builds are signed and notarized; Windows builds are not signed yet.
   signed: { macos: true, windows: false, linux: false },
