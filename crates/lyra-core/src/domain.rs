@@ -297,6 +297,60 @@ pub struct LyricDocument {
     /// Untimed provider text; never converted into synthetic timestamps.
     #[serde(default)]
     pub plain_lyrics: Option<String>,
+    /// Length of the recording the timings were made for, when known. A
+    /// music video that adds scenes is longer than the album audio its
+    /// lyrics may be timed to; comparing this with the playing duration
+    /// tells the two apart. `None` for user-supplied lyrics and lyrics cached
+    /// before this was recorded.
+    #[serde(default)]
+    pub source_duration_ms: Option<u64>,
+}
+
+impl LyricDocument {
+    /// Largest gap between the playing duration and `source_duration_ms` that
+    /// still counts as the same recording. Wider than LRCLIB's ±2 s and
+    /// Lyra's ±5 s search window (both in whole seconds), so anything a
+    /// lookup accepts matches.
+    pub const DURATION_TOLERANCE_MS: u64 = 6_000;
+
+    /// The timings were made for a recording of a materially different length
+    /// than the one playing. Unknown durations never count as a mismatch.
+    pub fn timed_for_other_duration(&self, playing_duration_ms: u64) -> bool {
+        match self.source_duration_ms {
+            Some(source) if source > 0 && playing_duration_ms > 0 => {
+                durations_differ(source, playing_duration_ms)
+            }
+            _ => false,
+        }
+    }
+
+    /// The same words without timing: provider plain text when there is
+    /// some, otherwise the timed lines' text.
+    pub fn without_timing(&self) -> Self {
+        let plain = self.plain_lyrics.clone().unwrap_or_else(|| {
+            self.lines
+                .iter()
+                .map(|line| line.text.as_str())
+                .collect::<Vec<_>>()
+                .join("\n")
+                .trim()
+                .to_string()
+        });
+        Self {
+            track_key: self.track_key.clone(),
+            source: self.source.clone(),
+            lines: vec![],
+            raw_lrc: String::new(),
+            plain_lyrics: (!plain.is_empty()).then_some(plain),
+            source_duration_ms: self.source_duration_ms,
+        }
+    }
+}
+
+/// Two known durations belong to recordings of materially different length
+/// (see `LyricDocument::DURATION_TOLERANCE_MS`).
+pub fn durations_differ(a_ms: u64, b_ms: u64) -> bool {
+    a_ms.abs_diff(b_ms) > LyricDocument::DURATION_TOLERANCE_MS
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -493,6 +547,52 @@ impl Default for BehaviorSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn doc(source_duration_ms: Option<u64>) -> LyricDocument {
+        LyricDocument {
+            track_key: "k".into(),
+            source: LyricSourceKind::Lrclib,
+            lines: ["One", "", "Two"]
+                .iter()
+                .enumerate()
+                .map(|(i, text)| LyricLine {
+                    start_ms: i as u64 * 1_000,
+                    end_ms: None,
+                    text: (*text).into(),
+                    words: None,
+                })
+                .collect(),
+            raw_lrc: "[00:00.00]One".into(),
+            plain_lyrics: None,
+            source_duration_ms,
+        }
+    }
+
+    #[test]
+    fn timings_for_another_length_are_told_apart() {
+        let album = doc(Some(220_000));
+        assert!(!album.timed_for_other_duration(220_000));
+        assert!(!album.timed_for_other_duration(226_000));
+        assert!(!album.timed_for_other_duration(214_000));
+        assert!(album.timed_for_other_duration(226_001));
+        assert!(album.timed_for_other_duration(571_000));
+        assert!(!album.timed_for_other_duration(0), "unknown playing length");
+        assert!(!doc(None).timed_for_other_duration(571_000));
+    }
+
+    #[test]
+    fn untimed_copy_keeps_the_words() {
+        let plain = doc(Some(220_000)).without_timing();
+        assert!(plain.lines.is_empty());
+        assert_eq!(plain.plain_lyrics.as_deref(), Some("One\n\nTwo"));
+        assert_eq!(plain.source_duration_ms, Some(220_000));
+        let mut provided = doc(None);
+        provided.plain_lyrics = Some("Provider text".into());
+        assert_eq!(
+            provided.without_timing().plain_lyrics.as_deref(),
+            Some("Provider text")
+        );
+    }
 
     #[test]
     fn poll_interval_follows_battery_saver_and_caps_legacy_values() {
