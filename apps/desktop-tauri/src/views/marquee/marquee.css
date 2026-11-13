@@ -43,8 +43,8 @@ html, body {
   transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
-/* The desktop blur behind the island is native glass on macOS
-   (`set_island_glass` in macos.rs): a CSS backdrop-filter in a transparent
+/* The desktop blur behind the marquee is native glass on macOS
+   (`set_marquee_glass` in macos.rs): a CSS backdrop-filter in a transparent
    window only blurs the page, never what is behind the window. Over the
    glass the panel thins its own tint so the glass shows. Battery saver
    removes the glass and reduced motion keeps the opaque look, so both keep
@@ -56,14 +56,14 @@ html, body {
 /* See `app.css` for the rationale. Same flag triggers, same fall-backs. */
 @media (prefers-reduced-motion: reduce) {
   .floating-panel { --panel-tint-rgb: 18 18 22; --panel-tint: 0.86; --panel-wash: 0.2; }
-  .island-bg-img { filter: none; width: 100%; height: 100%; transform: translate(-50%, -50%); }
+  .marquee-bg-img { filter: none; width: 100%; height: 100%; transform: translate(-50%, -50%); }
   .panel-art.is-spinning { animation: none; }
 }
 :root[data-low-power="true"] .floating-panel { --panel-tint-rgb: 18 18 22; --panel-tint: 0.86; }
 :root[data-low-power="true"] .panel-art.is-spinning { animation: none; }
 /* Reduce transparency (an accessibility setting) overrides the slider. */
 :root[data-reduced-transparency="true"] .floating-panel { background: rgb(18, 18, 22); }
-:root[data-reduced-transparency="true"] .island-bg-img { opacity: 0.2; }
+:root[data-reduced-transparency="true"] .marquee-bg-img { opacity: 0.2; }
 
 /* Docked against the top edge of the screen (the user's choice, never the
    default): flush with the edge, so only the bottom corners are rounded. */
@@ -72,12 +72,12 @@ html, body {
   border-top: none;
 }
 
-/* Click opens Lyra; dragging (when unlocked) moves the island. */
+/* Click opens Lyra; dragging (when unlocked) moves the marquee. */
 .floating-panel.is-dragging {
   cursor: grabbing;
 }
 
-.island-background {
+.marquee-background {
   position: absolute;
   inset: 0;
   z-index: 0;
@@ -89,7 +89,7 @@ html, body {
    main window's ambient wash: blur a 10% copy by 4px and scale it 16x. The
    heavy blur then runs over a tiny texture on its own compositor layer, so
    the per-frame meter and lyric updates never re-filter the artwork. */
-.island-bg-img {
+.marquee-bg-img {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -103,18 +103,18 @@ html, body {
   will-change: transform;
 }
 
-.island-bg-dimmer {
+.marquee-bg-dimmer {
   /* Appearance → Background darkness (`--bg-darkness`, 0..1) scales the dim.
      The default 0.6 reproduces the original gradient exactly; 0 lets the
      artwork wash show fully, 1 deepens it (alpha caps at 1). */
-  --island-dim: calc(var(--bg-darkness, 0.6) / 0.6);
+  --marquee-dim: calc(var(--bg-darkness, 0.6) / 0.6);
   position: absolute;
   inset: 0;
   background:
     linear-gradient(
       to bottom,
-      rgba(10, 10, 12, calc(0.2 * var(--island-dim) * var(--marquee-body, 1))),
-      rgba(10, 10, 12, calc(0.7 * var(--island-dim) * var(--marquee-body, 1)))
+      rgba(10, 10, 12, calc(0.2 * var(--marquee-dim) * var(--marquee-body, 1))),
+      rgba(10, 10, 12, calc(0.7 * var(--marquee-dim) * var(--marquee-body, 1)))
     ),
     /* Contrast guard: as the panel clears, a light smoke takes over from
        the dim so the panel never turns into a bright patch. It ignores
@@ -359,11 +359,11 @@ html, body {
   background:
     linear-gradient(90deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08));
   background-size: 220% 100%;
-  animation: island-shimmer 1.6s linear infinite;
+  animation: marquee-shimmer 1.6s linear infinite;
 }
 
 .panel-placeholder.is-loading .panel-placeholder-indicator {
-  animation: island-pulse 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  animation: marquee-pulse 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
 .panel-placeholder.is-error .panel-placeholder-indicator {
@@ -425,12 +425,12 @@ html, body {
   transition: transform 0.2s ease, border-radius 0.2s ease, opacity 0.2s ease;
 }
 
-@keyframes island-shimmer {
+@keyframes marquee-shimmer {
   from { background-position: 200% 0; }
   to { background-position: -20% 0; }
 }
 
-@keyframes island-pulse {
+@keyframes marquee-pulse {
   0%, 100% {
     transform: scale(1);
     opacity: 0.72;
@@ -489,7 +489,7 @@ html, body {
 .floating-panel.is-compact .panel-placeholder-line {
   height: calc(5 * var(--u)) !important;
 }
-.floating-panel.is-compact .island-meter {
+.floating-panel.is-compact .marquee-meter {
   transform: scale(0.8);
   transform-origin: center right;
   margin-left: calc(-4 * var(--u));
@@ -537,7 +537,7 @@ html, body {
    and the glyph rises in their place over a soft disc; leaving reverses it
    just as quickly (every hover transition here is ≤ 250 ms). Pointer-driven
    state only, so it costs nothing until the pointer arrives. */
-.island-meter {
+.marquee-meter {
   position: relative;
   display: flex;
   align-items: center;
@@ -547,7 +547,7 @@ html, body {
   flex-shrink: 0;
 }
 
-.island-meter::before {
+.marquee-meter::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -560,14 +560,14 @@ html, body {
     transform var(--duration-base) var(--ease-standard);
 }
 
-.island-meter .audio-bars {
+.marquee-meter .audio-bars {
   justify-content: center;
   transition:
     opacity var(--duration-fast) var(--ease-standard),
     transform var(--duration-base) var(--ease-standard);
 }
 
-.island-glyph {
+.marquee-glyph {
   --glyph-size: calc(18 * var(--u));
   position: absolute;
   color: #fff;
@@ -580,30 +580,30 @@ html, body {
     padding var(--duration-base) var(--ease-standard);
 }
 
-.floating-panel.is-hovered .island-meter.can-toggle::before {
+.floating-panel.is-hovered .marquee-meter.can-toggle::before {
   opacity: 1;
   transform: scale(1);
 }
 
-.floating-panel.is-hovered .island-meter.can-toggle .audio-bars {
+.floating-panel.is-hovered .marquee-meter.can-toggle .audio-bars {
   opacity: 0;
   transform: scaleY(0.2);
 }
 
-.floating-panel.is-hovered .island-meter.can-toggle .island-glyph {
+.floating-panel.is-hovered .marquee-meter.can-toggle .marquee-glyph {
   opacity: 1;
   transform: scale(1);
 }
 
-.island-meter.can-toggle:active .island-glyph {
+.marquee-meter.can-toggle:active .marquee-glyph {
   transform: scale(0.86);
   transition-duration: 80ms;
 }
 
 
-/* Edge handles (unlocked only): drag to resize the island around its centre.
+/* Edge handles (unlocked only): drag to resize the marquee around its centre.
    Each appears only while the pointer is near its edge. */
-.island-resize-handle {
+.marquee-resize-handle {
   position: absolute;
   top: 50%;
   z-index: 3;
@@ -613,10 +613,10 @@ html, body {
   cursor: ew-resize;
 }
 
-.island-resize-handle.is-left { left: 0; }
-.island-resize-handle.is-right { right: 0; }
+.marquee-resize-handle.is-left { left: 0; }
+.marquee-resize-handle.is-right { right: 0; }
 
-.island-resize-handle::after {
+.marquee-resize-handle::after {
   content: '';
   position: absolute;
   top: 25%;
@@ -630,7 +630,7 @@ html, body {
   transition: opacity var(--duration-base) var(--ease-standard);
 }
 
-.island-resize-handle.is-near::after,
-.floating-panel.is-dragging .island-resize-handle.is-near::after {
+.marquee-resize-handle.is-near::after,
+.floating-panel.is-dragging .marquee-resize-handle.is-near::after {
   opacity: 1;
 }

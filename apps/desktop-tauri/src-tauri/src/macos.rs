@@ -27,19 +27,19 @@ use tauri_nspanel::{ManagerExt, WebviewWindowExt};
 // NSWindowLevel constants (AppKit)
 #[cfg(target_os = "macos")]
 const NS_FLOATING_WINDOW_LEVEL: i64 = 3;
-// kCGUtilityWindowLevel, one below the Dock (20): the island's level
+// kCGUtilityWindowLevel, one below the Dock (20): the marquee's level
 // anywhere below the menu bar. Above every app's windows, including other
 // floating panels, but under the Dock, menu bar and menus, so a Dock or menu
 // bar that slides out over the Marquee is never hidden behind it.
 #[cfg(target_os = "macos")]
 const UTILITY_WINDOW_LEVEL: i64 = 19;
-// One above the status items (NSStatusWindowLevel, 25): the island's level
+// One above the status items (NSStatusWindowLevel, 25): the marquee's level
 // while it overlaps the menu bar, docked against the top edge or being
 // dragged there. Above the menu bar and its status items, still under menus.
 #[cfg(target_os = "macos")]
 const ABOVE_MENU_BAR_LEVEL: i64 = 26;
 
-/// The NSPanel subclass the island and karaoke windows become. The macro
+/// The NSPanel subclass the marquee and karaoke windows become. The macro
 /// brings its own imports, so it lives in a module of its own.
 #[cfg(target_os = "macos")]
 mod overlay_panel {
@@ -71,8 +71,8 @@ fn overlay_collection_behavior(show_on_fullscreen: bool) -> NSWindowCollectionBe
 #[cfg(target_os = "macos")]
 fn overlay_level(label: &str) -> i64 {
     match label {
-        "island" if ISLAND_OVER_MENU_BAR.load(Ordering::Acquire) => ABOVE_MENU_BAR_LEVEL,
-        "island" => UTILITY_WINDOW_LEVEL,
+        "marquee" if MARQUEE_OVER_MENU_BAR.load(Ordering::Acquire) => ABOVE_MENU_BAR_LEVEL,
+        "marquee" => UTILITY_WINDOW_LEVEL,
         _ => NS_FLOATING_WINDOW_LEVEL,
     }
 }
@@ -86,14 +86,14 @@ fn ns_window(window: &tauri::WebviewWindow) -> Option<Retained<NSWindow>> {
 }
 
 #[cfg(target_os = "macos")]
-pub fn init_overlay_panels(app: &AppHandle, island_glass: bool) -> tauri::Result<()> {
-    if let Some(window) = app.get_webview_window("island") {
+pub fn init_overlay_panels(app: &AppHandle, marquee_glass: bool) -> tauri::Result<()> {
+    if let Some(window) = app.get_webview_window("marquee") {
         let _ = window.to_panel::<LyraOverlayPanel>()?;
         unconstrain_from_screen(&window);
         keep_glass_active(&window);
-        track_island_hover(app, &window);
+        track_marquee_hover(app, &window);
         set_dark_appearance(&window);
-        set_island_glass(app, island_glass);
+        set_marquee_glass(app, marquee_glass);
     }
     if let Some(window) = app.get_webview_window("karaoke") {
         let _ = window.to_panel::<LyraOverlayPanel>()?;
@@ -159,7 +159,7 @@ fn unconstrain_from_screen(window: &tauri::WebviewWindow) {
 }
 
 /// Liquid Glass in a window that isn't key draws a grey, frosted "inactive"
-/// veil, and the island is a non-activating panel that is almost never key.
+/// veil, and the marquee is a non-activating panel that is almost never key.
 /// AppKit asks these two private methods whether a window draws the active
 /// look; its own menu windows answer YES the same way. They are installed on
 /// the overlay panel class, so the karaoke panel (which has no glass) gets
@@ -212,7 +212,7 @@ fn keep_glass_active(window: &tauri::WebviewWindow) {
 
 #[cfg(target_os = "macos")]
 pub fn set_overlay_position(app: &AppHandle, label: &str, x: i32, y: i32) -> tauri::Result<()> {
-    if !matches!(label, "island" | "karaoke") {
+    if !matches!(label, "marquee" | "karaoke") {
         return Ok(());
     }
 
@@ -249,20 +249,20 @@ pub fn set_overlay_position(app: &AppHandle, label: &str, x: i32, y: i32) -> tau
             let new_y = screen_top - top_offset_points - window_frame.size.height;
             ns_window.setFrameOrigin(NSPoint::new(window_frame.origin.x, new_y));
 
-            if window_clone.label() == "island" {
+            if window_clone.label() == "marquee" {
                 let docked = top_offset_points.abs() < 0.5;
-                if ISLAND_DOCKED.swap(docked, Ordering::AcqRel) != docked {
-                    fit_island_glass(&ns_window, docked);
+                if MARQUEE_DOCKED.swap(docked, Ordering::AcqRel) != docked {
+                    fit_marquee_glass(&ns_window, docked);
                 }
                 // Over the menu bar (or, with it hidden, docked under the
-                // notch) the island rises above it; anywhere else it sits
+                // notch) the marquee rises above it; anywhere else it sits
                 // under the Dock and menu bar again.
                 let visible = screen.visibleFrame();
                 let menu_bar = screen_top - (visible.origin.y + visible.size.height);
                 let over_menu_bar = top_offset_points < menu_bar.max(0.5);
-                if ISLAND_OVER_MENU_BAR.swap(over_menu_bar, Ordering::AcqRel) != over_menu_bar {
-                    if let Ok(panel) = window_clone.app_handle().get_webview_panel("island") {
-                        panel.set_level(overlay_level("island"));
+                if MARQUEE_OVER_MENU_BAR.swap(over_menu_bar, Ordering::AcqRel) != over_menu_bar {
+                    if let Ok(panel) = window_clone.app_handle().get_webview_panel("marquee") {
+                        panel.set_level(overlay_level("marquee"));
                     }
                 }
             }
@@ -279,7 +279,7 @@ pub fn apply_overlay_visibility(
     visible: bool,
     show_on_fullscreen: bool,
 ) -> bool {
-    if !matches!(label, "island" | "karaoke") {
+    if !matches!(label, "marquee" | "karaoke") {
         return false;
     }
 
@@ -299,7 +299,7 @@ pub fn apply_overlay_visibility(
     panel.set_has_shadow(false);
     panel.set_ignores_mouse_events(label == "karaoke");
 
-    if label == "island" {
+    if label == "marquee" {
         panel.set_becomes_key_only_if_needed(true);
     }
 
@@ -312,20 +312,20 @@ pub fn apply_overlay_visibility(
     true
 }
 
-// ── Island hover ───────────────────────────────────────────────────────────────
+// ── Marquee hover ───────────────────────────────────────────────────────────────
 //
-// The island is a non-activating panel, so while another app is active WebKit
+// The marquee is a non-activating panel, so while another app is active WebKit
 // may not deliver mouse-moved events to its page and CSS :hover never fires.
 // An NSTrackingArea with NSTrackingActiveAlways reports enter/exit/move
-// regardless of which app is active; the owner forwards them to the island
-// page as `island-hover` and `island-edge` (edge changes only). Nothing fires
+// regardless of which app is active; the owner forwards them to the marquee
+// page as `marquee-hover` and `marquee-edge` (edge changes only). Nothing fires
 // while the pointer is elsewhere. With click-through on, the panel ignores the
 // mouse and the area stays silent.
 
 #[cfg(target_os = "macos")]
 static HOVER_APP: std::sync::OnceLock<AppHandle> = std::sync::OnceLock::new();
 
-/// Edge the pointer is near (-1 left, 1 right, 0 neither), so the island's
+/// Edge the pointer is near (-1 left, 1 right, 0 neither), so the marquee's
 /// resize handles appear only there. Emitted on change only.
 #[cfg(target_os = "macos")]
 static HOVER_EDGE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(0);
@@ -335,7 +335,7 @@ static HOVER_EDGE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::ne
 const EDGE_ZONE_PT: f64 = 20.0;
 
 #[cfg(target_os = "macos")]
-fn emit_island_edge(edge: i8) {
+fn emit_marquee_edge(edge: i8) {
     use std::sync::atomic::Ordering;
     use tauri::Emitter;
     if HOVER_EDGE.swap(edge, Ordering::AcqRel) == edge {
@@ -343,20 +343,20 @@ fn emit_island_edge(edge: i8) {
     }
     if let Some(app) = HOVER_APP.get() {
         let _ = app.emit_to(
-            tauri::EventTarget::webview_window("island"),
-            "island-edge",
+            tauri::EventTarget::webview_window("marquee"),
+            "marquee-edge",
             edge,
         );
     }
 }
 
 #[cfg(target_os = "macos")]
-fn emit_island_hover(hovered: bool) {
+fn emit_marquee_hover(hovered: bool) {
     use tauri::Emitter;
     if let Some(app) = HOVER_APP.get() {
         let _ = app.emit_to(
-            tauri::EventTarget::webview_window("island"),
-            "island-hover",
+            tauri::EventTarget::webview_window("marquee"),
+            "marquee-hover",
             hovered,
         );
     }
@@ -383,7 +383,7 @@ define_class!(
     /// it without replacing Tauri's window delegate.
     #[unsafe(super(NSObject))]
     #[thread_kind = MainThreadOnly]
-    #[name = "LyraIslandHoverOwner"]
+    #[name = "LyraMarqueeHoverOwner"]
     struct HoverOwner;
 
     unsafe impl NSObjectProtocol for HoverOwner {}
@@ -391,19 +391,19 @@ define_class!(
     impl HoverOwner {
         #[unsafe(method(mouseEntered:))]
         fn mouse_entered(&self, _event: &NSEvent) {
-            emit_island_hover(true);
+            emit_marquee_hover(true);
         }
 
         #[unsafe(method(mouseExited:))]
         fn mouse_exited(&self, _event: &NSEvent) {
-            emit_island_edge(0);
-            emit_island_hover(false);
+            emit_marquee_edge(0);
+            emit_marquee_hover(false);
         }
 
         #[unsafe(method(mouseMoved:))]
         fn mouse_moved(&self, event: &NSEvent) {
             if let Some(edge) = edge_of(event, self.mtm()) {
-                emit_island_edge(edge);
+                emit_marquee_edge(edge);
             }
         }
 
@@ -413,18 +413,18 @@ define_class!(
                 let battery_saver = app.state::<crate::AppState>().runtime.lock()
                     .map(|rt| rt.settings().behavior.battery_saver)
                     .unwrap_or(false);
-                set_island_glass(app, !battery_saver);
+                set_marquee_glass(app, !battery_saver);
             }
         }
     }
 );
 
-/// Whether the pointer is over the island right now. The island page asks
+/// Whether the pointer is over the marquee right now. The marquee page asks
 /// this a few times a second while it believes it is hovered, so its hover
 /// effects reverse even if an exit event never arrives.
 #[cfg(target_os = "macos")]
-pub fn island_pointer_inside(app: &AppHandle) -> bool {
-    let Some(window) = app.get_webview_window("island") else {
+pub fn marquee_pointer_inside(app: &AppHandle) -> bool {
+    let Some(window) = app.get_webview_window("marquee") else {
         return false;
     };
     // Called from a synchronous command, which Tauri runs on the main thread.
@@ -440,7 +440,7 @@ pub fn island_pointer_inside(app: &AppHandle) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn track_island_hover(app: &AppHandle, window: &tauri::WebviewWindow) {
+fn track_marquee_hover(app: &AppHandle, window: &tauri::WebviewWindow) {
     // tauri-nspanel's hover handler replaces the window delegate instead of
     // forwarding to Tao. Keep this tracking owner so onMoved/onResized (and
     // docking/position persistence) continue to reach Tauri.
@@ -463,7 +463,7 @@ fn track_island_hover(app: &AppHandle, window: &tauri::WebviewWindow) {
         }
         // SAFETY: `init` is NSObject's designated initialiser.
         let owner: Retained<HoverOwner> = unsafe { msg_send![HoverOwner::alloc(mtm), init] };
-        // Moves are delivered only while the pointer is over the island and
+        // Moves are delivered only while the pointer is over the marquee and
         // only emit on edge changes.
         let options = NSTrackingAreaOptions::MouseEnteredAndExited
             | NSTrackingAreaOptions::MouseMoved
@@ -502,28 +502,28 @@ fn track_island_hover(app: &AppHandle, window: &tauri::WebviewWindow) {
     });
 }
 
-// ── Island glass ───────────────────────────────────────────────────────────────
+// ── Marquee glass ───────────────────────────────────────────────────────────────
 //
-// The island's backdrop is native: Liquid Glass on macOS 26+, the HUD material
+// The marquee's backdrop is native: Liquid Glass on macOS 26+, the HUD material
 // before that (Tauri falls back by itself). A CSS backdrop-filter can't do
 // this: in a transparent webview it blurs only the page, never the desktop
 // behind the window.
 
-/// Corner radius of the glass; matches `.floating-panel` in island.css.
+/// Corner radius of the glass; matches `.floating-panel` in marquee.css.
 #[cfg(target_os = "macos")]
-const ISLAND_GLASS_RADIUS: f64 = 20.0;
+const MARQUEE_GLASS_RADIUS: f64 = 20.0;
 
-/// Whether the island sits flush with the top of its screen. Docked, it has
+/// Whether the marquee sits flush with the top of its screen. Docked, it has
 /// square top corners, so its glass reaches one corner radius above the window
 /// and the window edge cuts those corners off.
 #[cfg(target_os = "macos")]
-static ISLAND_DOCKED: AtomicBool = AtomicBool::new(false);
+static MARQUEE_DOCKED: AtomicBool = AtomicBool::new(false);
 
-/// Whether the island overlaps the menu bar, and so sits above it.
+/// Whether the marquee overlaps the menu bar, and so sits above it.
 #[cfg(target_os = "macos")]
-static ISLAND_OVER_MENU_BAR: AtomicBool = AtomicBool::new(false);
+static MARQUEE_OVER_MENU_BAR: AtomicBool = AtomicBool::new(false);
 
-/// The island is always styled dark, so its glass should be too. Set on this
+/// The marquee is always styled dark, so its glass should be too. Set on this
 /// window only: Tauri's `set_theme` changes the appearance of the whole app.
 #[cfg(target_os = "macos")]
 fn set_dark_appearance(window: &tauri::WebviewWindow) {
@@ -538,11 +538,11 @@ fn set_dark_appearance(window: &tauri::WebviewWindow) {
     });
 }
 
-/// Put the glass behind the island, or take it away (battery saver).
+/// Put the glass behind the marquee, or take it away (battery saver).
 #[cfg(target_os = "macos")]
-pub fn set_island_glass(app: &AppHandle, enabled: bool) {
+pub fn set_marquee_glass(app: &AppHandle, enabled: bool) {
     use tauri::window::{Effect, EffectState, EffectsBuilder};
-    let Some(window) = app.get_webview_window("island") else {
+    let Some(window) = app.get_webview_window("marquee") else {
         return;
     };
     let reduced_transparency =
@@ -552,7 +552,7 @@ pub fn set_island_glass(app: &AppHandle, enabled: bool) {
             .effects([Effect::LiquidGlassRegular, Effect::HudWindow])
             // The panel never becomes key; keep the material lit regardless.
             .state(EffectState::Active)
-            .radius(ISLAND_GLASS_RADIUS)
+            .radius(MARQUEE_GLASS_RADIUS)
             .build()
     });
     // Both run in order on the main thread, so the glass exists by the fit.
@@ -562,15 +562,15 @@ pub fn set_island_glass(app: &AppHandle, enabled: bool) {
     let window_clone = window.clone();
     let _ = window.run_on_main_thread(move || {
         if let Some(ns_window) = ns_window(&window_clone) {
-            fit_island_glass(&ns_window, ISLAND_DOCKED.load(Ordering::Acquire));
-            sync_island_glass_state(&window_clone);
+            fit_marquee_glass(&ns_window, MARQUEE_DOCKED.load(Ordering::Acquire));
+            sync_marquee_glass_state(&window_clone);
         }
     });
 }
 
 /// Publish the actual native effect state after setup and window readiness.
 #[cfg(target_os = "macos")]
-pub fn sync_island_glass_state(window: &tauri::WebviewWindow) {
+pub fn sync_marquee_glass_state(window: &tauri::WebviewWindow) {
     let has_glass = ns_window(window)
         .and_then(|w| w.contentView())
         .is_some_and(|view| {
@@ -588,10 +588,10 @@ pub fn sync_island_glass_state(window: &tauri::WebviewWindow) {
     ));
 }
 
-/// Size the glass view to the island, reaching above it while docked. Call on
+/// Size the glass view to the marquee, reaching above it while docked. Call on
 /// the main thread.
 #[cfg(target_os = "macos")]
-fn fit_island_glass(ns_window: &NSWindow, docked: bool) {
+fn fit_marquee_glass(ns_window: &NSWindow, docked: bool) {
     let Some(content_view) = ns_window.contentView() else {
         return;
     };
@@ -599,7 +599,7 @@ fn fit_island_glass(ns_window: &NSWindow, docked: bool) {
         .into_iter()
         .filter_map(AnyClass::get)
         .collect();
-    let lift = if docked { ISLAND_GLASS_RADIUS } else { 0.0 };
+    let lift = if docked { MARQUEE_GLASS_RADIUS } else { 0.0 };
     let mut frame = content_view.bounds();
     frame.size.height += lift;
     if content_view.isFlipped() {
@@ -717,15 +717,15 @@ pub fn set_settings_sidebar_glass(
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn init_overlay_panels(_app: &AppHandle, _island_glass: bool) -> tauri::Result<()> {
+pub fn init_overlay_panels(_app: &AppHandle, _marquee_glass: bool) -> tauri::Result<()> {
     Ok(())
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn set_island_glass(_app: &AppHandle, _enabled: bool) {}
+pub fn set_marquee_glass(_app: &AppHandle, _enabled: bool) {}
 
 #[cfg(not(target_os = "macos"))]
-pub fn sync_island_glass_state(_window: &tauri::WebviewWindow) {}
+pub fn sync_marquee_glass_state(_window: &tauri::WebviewWindow) {}
 
 #[cfg(not(target_os = "macos"))]
 pub fn set_overlay_position(app: &AppHandle, label: &str, x: i32, y: i32) -> tauri::Result<()> {
@@ -747,12 +747,12 @@ pub fn apply_overlay_visibility(
     false
 }
 
-// ── Island geometry ────────────────────────────────────────────────────────────
+// ── Marquee geometry ────────────────────────────────────────────────────────────
 
 /// The notch of the display `window` is on, if it has one. Call on the main
 /// thread.
 #[cfg(target_os = "macos")]
-pub fn display_notch(window: &tauri::WebviewWindow) -> Option<crate::island_size::Notch> {
+pub fn display_notch(window: &tauri::WebviewWindow) -> Option<crate::marquee_size::Notch> {
     let screen = ns_window(window)?.screen()?;
     // The safe area and the areas beside the notch arrived in macOS 12.
     if !screen.respondsToSelector(sel!(safeAreaInsets)) {
@@ -761,7 +761,7 @@ pub fn display_notch(window: &tauri::WebviewWindow) -> Option<crate::island_size
     let height = screen.safeAreaInsets().top;
     let beside_left = screen.auxiliaryTopLeftArea().size.width;
     let beside_right = screen.auxiliaryTopRightArea().size.width;
-    let notch = crate::island_size::Notch {
+    let notch = crate::marquee_size::Notch {
         left: beside_left,
         right: screen.frame().size.width - beside_right,
         height,
@@ -770,13 +770,13 @@ pub fn display_notch(window: &tauri::WebviewWindow) -> Option<crate::island_size
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn display_notch(_window: &tauri::WebviewWindow) -> Option<crate::island_size::Notch> {
+pub fn display_notch(_window: &tauri::WebviewWindow) -> Option<crate::marquee_size::Notch> {
     None
 }
 
 #[cfg(target_os = "macos")]
-pub fn set_island_size(app: &AppHandle, width: u32, height: u32) -> tauri::Result<()> {
-    if let Some(window) = app.get_webview_window("island") {
+pub fn set_marquee_size(app: &AppHandle, width: u32, height: u32) -> tauri::Result<()> {
+    if let Some(window) = app.get_webview_window("marquee") {
         window.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
             width as f64,
             height as f64,
@@ -786,8 +786,8 @@ pub fn set_island_size(app: &AppHandle, width: u32, height: u32) -> tauri::Resul
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn set_island_size(app: &AppHandle, width: u32, height: u32) -> tauri::Result<()> {
-    if let Some(window) = app.get_webview_window("island") {
+pub fn set_marquee_size(app: &AppHandle, width: u32, height: u32) -> tauri::Result<()> {
+    if let Some(window) = app.get_webview_window("marquee") {
         let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
             width as f64,
             height as f64,

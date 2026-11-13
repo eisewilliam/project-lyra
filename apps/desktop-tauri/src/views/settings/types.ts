@@ -6,19 +6,19 @@ import type {
   UiState,
 } from '@/types/tauri-contracts';
 
-export type Surface = 'main' | 'island' | 'karaoke';
-export type FloatingSurface = 'main' | 'island';
-export type Section = 'general' | 'appearance' | 'players' | 'main' | 'island' | 'karaoke' | 'touchbar';
+export type Surface = 'main' | 'marquee' | 'karaoke';
+export type FloatingSurface = 'main' | 'marquee';
+export type Section = 'general' | 'appearance' | 'players' | 'main' | 'marquee' | 'karaoke' | 'touchbar';
 export type ConsolidatedState = { ui: UiState; app: AppSettings };
 
 export type Actions = {
   toggleVisible: (surface: Surface) => Promise<void>;
   setFullscreen: (surface: Surface, value: boolean) => Promise<void>;
   setLock: (locked: boolean) => Promise<void>;
-  setIslandClickThrough: (enabled: boolean) => Promise<void>;
-  /** A size from `ISLAND_SCALE_STEPS`, or null to match the display. */
-  setIslandSize: (scale: number | null) => Promise<void>;
-  resetIslandPosition: () => Promise<void>;
+  setMarqueeClickThrough: (enabled: boolean) => Promise<void>;
+  /** A size from `MARQUEE_SCALE_STEPS`, or null to match the display. */
+  setMarqueeSize: (scale: number | null) => Promise<void>;
+  resetMarqueePosition: () => Promise<void>;
   setFont: (surface: Surface, scale: number) => Promise<void>;
   setTheme: (theme: string) => Promise<void>;
   updateAppSetting: (
@@ -27,7 +27,7 @@ export type Actions = {
     value: unknown,
     dbKey?: string,
   ) => Promise<void>;
-  island: (key: keyof UiState, value: unknown, dbKey?: string) => Promise<void>;
+  marquee: (key: keyof UiState, value: unknown, dbKey?: string) => Promise<void>;
   karaoke: (key: keyof UiState, value: unknown, dbKey?: string) => Promise<void>;
   setAutostart: (enabled: boolean) => Promise<void>;
   openLoginItemsSettings: () => Promise<void>;

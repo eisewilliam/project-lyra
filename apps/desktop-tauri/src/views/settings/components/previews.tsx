@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { islandBaseHeight } from '@/constants/island-size';
+import { marqueeBaseHeight } from '@/constants/marquee-size';
 import type { AppearanceSettings, UiState } from '@/types/tauri-contracts';
 import { resolveFontFamily } from '@/utils/app-settings';
 
@@ -15,7 +15,7 @@ const SAMPLE = {
 
 /** Fraction of the current line already sung, for the static wipe. */
 const SAMPLE_PROGRESS = 0.55;
-const ISLAND_PREVIEW_SCALE = 0.6;
+const MARQUEE_PREVIEW_SCALE = 0.6;
 
 /** Wash of the current track's artwork, strongest here and only faint
     under the settings. Purely visual; each control names its own effect. */
@@ -85,54 +85,54 @@ export function AppearancePreview({
   );
 }
 
-export function IslandPreview({
+export function MarqueePreview({
   ui,
   appearance,
   artworkSrc,
 }: Readonly<{ ui: UiState; appearance: AppearanceSettings; artworkSrc: string }>) {
   // At Medium: Size changes how big the Marquee is on screen, not its look.
-  const width = ui.island_base_width ?? 600;
-  const lines = ui.island_lines ?? 2;
-  const height = islandBaseHeight(lines);
+  const width = ui.marquee_base_width ?? 600;
+  const lines = ui.marquee_lines ?? 2;
+  const height = marqueeBaseHeight(lines);
   const compact = lines <= 1;
-  const transparency = ui.island_transparency ?? 0.5;
+  const transparency = ui.marquee_transparency ?? 0.5;
   return (
-    <PreviewFrame className="preview-island" artworkSrc={artworkSrc}>
-      {/* Real island markup at its real size, scaled down: widths and heights
+    <PreviewFrame className="preview-marquee" artworkSrc={artworkSrc}>
+      {/* Real marquee markup at its real size, scaled down: widths and heights
           stay comparable as the sliders move. */}
       <div
-        className="preview-island-frame"
+        className="preview-marquee-frame"
         style={{
           width: `${width}px`,
           height: `${height}px`,
-          '--font-scale': String(ui.island_font_scale),
-          '--preview-scale': String(ISLAND_PREVIEW_SCALE),
-          // The island reads these from its own root; mirror them here.
+          '--font-scale': String(ui.marquee_font_scale),
+          '--preview-scale': String(MARQUEE_PREVIEW_SCALE),
+          // The marquee reads these from its own root; mirror them here.
           '--bg-darkness': String(appearance.background_opacity),
           '--lyric-color': appearance.text_color || '#ffffff',
           '--marquee-transparency': String(transparency),
         } as CSSProperties}
       >
         <div className={`floating-panel ${compact ? 'is-compact' : ''} ${transparency > 0.5 ? 'is-clear' : ''}`}>
-          <div className="island-background">
-            <img src={artworkSrc} alt="" className="island-bg-img" />
-            <div className="island-bg-dimmer" />
+          <div className="marquee-background">
+            <img src={artworkSrc} alt="" className="marquee-bg-img" />
+            <div className="marquee-bg-dimmer" />
           </div>
           <div className="panel-content">
-            {ui.island_show_cover && (
+            {ui.marquee_show_cover && (
               <div className="panel-art-container" style={{ position: 'relative', flexShrink: 0 }}>
-                <div className={`panel-art ${ui.island_cover_circle ? 'is-circle' : ''} ${ui.island_cover_spin ? 'is-spinning' : ''}`}>
+                <div className={`panel-art ${ui.marquee_cover_circle ? 'is-circle' : ''} ${ui.marquee_cover_spin ? 'is-spinning' : ''}`}>
                   <img src={artworkSrc} className="panel-cover" alt="" draggable={false} />
                 </div>
               </div>
             )}
             <div className="panel-lyrics-stack">
               <div className="panel-lyric-active">
-                <WipedLine text={SAMPLE.current} className="preview-island-wipe" />
+                <WipedLine text={SAMPLE.current} className="preview-marquee-wipe" />
               </div>
               <div className="panel-lyric-next">{SAMPLE.next}</div>
             </div>
-            <div className="island-meter">
+            <div className="marquee-meter">
               <div className="audio-bars is-playing">
                 {[9, 15, 11, 6].map((h, i) => (
                   <span key={i} className="bar" style={{ '--meter-scale': String(h / 18), '--meter-opacity': '0.85' } as CSSProperties} />

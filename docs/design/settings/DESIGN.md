@@ -101,7 +101,7 @@ Keep interface sizes in stable logical pixels. Changing lyric text size must not
 
 Use weight, space, and contrast together; do not make every row bold. Do not use all-caps section labels, expansive tracking, marketing taglines, or a separate display face. Helpers should describe an effect or constraint, not repeat the label.
 
-Keep the existing surface names and capitalization in navigation. Use Marquee in user-visible content; identifiers and persisted `island_*` keys remain unchanged. Use precise labels such as Background darkness, Text scale, and Click-through rather than inventing vague names.
+Keep the existing surface names and capitalization in navigation. Use Marquee in user-visible content. Use precise labels such as Background darkness, Text scale, and Click-through rather than inventing vague names.
 
 ## Color and materials
 
@@ -237,19 +237,19 @@ Keep a compact pinned preview above the scrollable groups: Visibility, Window, L
 
 | Setting or action | Control and choices | State field or action |
 | --- | --- | --- |
-| Show Marquee | Switch | `ui.island_visible` through existing visibility action |
-| Show over full-screen apps | Switch | `ui.island_show_on_fullscreen` |
-| Lock position | Switch | `ui.island_locked` |
-| Click-through | Switch | `ui.island_click_through`; turns panel controls off |
+| Show Marquee | Switch | `ui.marquee_visible` through existing visibility action |
+| Show over full-screen apps | Switch | `ui.marquee_show_on_fullscreen` |
+| Lock position | Switch | `ui.marquee_locked` |
+| Click-through | Switch | `ui.marquee_click_through`; turns panel controls off |
 | Position | Reset position action | Existing reset action |
-| Size | Select: Match screen, Small, Medium, Large, Extra large | `ui.island_scale`; null means Match screen |
-| Width | Slider: Narrow, Standard, Wide, Widest | `ui.island_base_width`; 450, 600, 750, 900 |
-| Lines | Segmented: Current only, Current and next | `ui.island_lines`; 1 or 2 |
-| Text scale | Shared five-step scale slider | `ui.island_font_scale` |
-| Transparency | Slider: Solid, Low, Standard, High, Clear | `ui.island_transparency`; 0, .25, .5, .75, 1 |
-| Show cover art | Switch | `ui.island_show_cover` |
-| Circular | Switch, disabled without cover art | `ui.island_cover_circle` |
-| Spin while playing | Switch, disabled without cover art | `ui.island_cover_spin` |
+| Size | Select: Match screen, Small, Medium, Large, Extra large | `ui.marquee_scale`; null means Match screen |
+| Width | Slider: Narrow, Standard, Wide, Widest | `ui.marquee_base_width`; 450, 600, 750, 900 |
+| Lines | Segmented: Current only, Current and next | `ui.marquee_lines`; 1 or 2 |
+| Text scale | Shared five-step scale slider | `ui.marquee_font_scale` |
+| Transparency | Slider: Solid, Low, Standard, High, Clear | `ui.marquee_transparency`; 0, .25, .5, .75, 1 |
+| Show cover art | Switch | `ui.marquee_show_cover` |
+| Circular | Switch, disabled without cover art | `ui.marquee_cover_circle` |
+| Spin while playing | Switch, disabled without cover art | `ui.marquee_cover_spin` |
 
 Size retains the existing scales: Small .85, Medium 1, Large 1.2, Extra large 1.4. Match screen may show the size currently selected by the host. Do not compute display-fitting, notch geometry, width limits, or cross-monitor scaling in this settings UI.
 
@@ -315,7 +315,7 @@ Reuse the current settings architecture. The design package duplicates assets on
 | `components/previews.tsx` | Reuse existing appearance state and real surface markup; preserve effect accuracy |
 | `hooks/use-settings.ts` and command utilities | Preserve persistence, debounce keys, event updates, and command ownership |
 
-Implement the shared shell and controls first, then Appearance, then apply the same system to the remaining pages. Keep changes surgical and preserve unrelated workspace work. Do not rename commands, migrate `island_*` keys, alter player policy, add a new backend, or change polling to achieve the visual redesign.
+Implement the shared shell and controls first, then Appearance, then apply the same system to the remaining pages. Keep changes surgical and preserve unrelated workspace work. Do not rename commands or saved `marquee_*` keys, alter player policy, add a new backend, or change polling to achieve the visual redesign.
 
 When production UI is implemented, add a user-facing Unreleased changelog entry in the same change. Run the appropriate frontend, contract, and browser checks and host checks if host behavior changes. No changelog or player-support update is required merely to publish this design document.
 

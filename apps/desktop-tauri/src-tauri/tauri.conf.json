@@ -31,9 +31,9 @@
         "backgroundThrottling": "throttle"
       },
       {
-        "label": "island",
+        "label": "marquee",
         "title": "Marquee",
-        "url": "/island",
+        "url": "/marquee",
         "width": 400,
         "height": 48,
         "y": 0,

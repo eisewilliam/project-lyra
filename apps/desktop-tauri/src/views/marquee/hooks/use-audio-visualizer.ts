@@ -11,7 +11,7 @@ function hashString(value: string) {
   return hash >>> 0;
 }
 
-/** Bar height at full level, in px (`.audio-bars .bar` in island.css). */
+/** Bar height at full level, in px (`.audio-bars .bar` in marquee.css). */
 const METER_MAX_PX = 18;
 const METER_REST_PX = 3;
 /** Bars are drawn at full height and scaled down to their level. */

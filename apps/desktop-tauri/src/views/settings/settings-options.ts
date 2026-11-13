@@ -114,14 +114,14 @@ export const KARAOKE_BACKGROUND_STEPS: SliderStep[] = [
 
 /** Width at Medium size; the Size setting scales it. Dragging the Marquee's
     edges sets any width in between. */
-export const ISLAND_WIDTH_STEPS: SliderStep[] = [
+export const MARQUEE_WIDTH_STEPS: SliderStep[] = [
   { value: 450, label: 'Narrow' },
   { value: 600, label: 'Standard' },
   { value: 750, label: 'Wide' },
   { value: 900, label: 'Widest' },
 ];
 
-export const ISLAND_TRANSPARENCY_STEPS: SliderStep[] = [
+export const MARQUEE_TRANSPARENCY_STEPS: SliderStep[] = [
   { value: 0, label: 'Solid' },
   { value: 0.25, label: 'Low' },
   { value: 0.5, label: 'Standard' },

@@ -18,9 +18,9 @@
 //! the menu bar; under a MacBook notch the window grows by the notch height
 //! and its content sits below the notch.
 //!
-//! [`island_frame`], [`default_origin`], [`settle_origin`] and
-//! [`refit_origin`] are the pure calculations. [`fit_island`],
-//! [`place_island`] and [`settle_island`] measure the window's display, apply
+//! [`marquee_frame`], [`default_origin`], [`settle_origin`] and
+//! [`refit_origin`] are the pure calculations. [`fit_marquee`],
+//! [`place_marquee`] and [`settle_marquee`] measure the window's display, apply
 //! the result and tell the frontend.
 
 use crate::ui_state::UiState;
@@ -68,7 +68,7 @@ pub struct Notch {
     pub height: f64,
 }
 
-/// What [`island_frame`] needs to know about the display.
+/// What [`marquee_frame`] needs to know about the display.
 #[derive(Clone, Copy, Debug)]
 pub struct Display {
     /// Usable width (without the Dock or taskbar), in points.
@@ -97,9 +97,9 @@ pub struct SizePrefs {
 impl SizePrefs {
     pub fn from_ui(ui: &UiState) -> Self {
         Self {
-            scale: ui.island_scale,
-            base_width: ui.island_base_width,
-            lines: ui.island_lines,
+            scale: ui.marquee_scale,
+            base_width: ui.marquee_base_width,
+            lines: ui.marquee_lines,
         }
     }
 }
@@ -108,7 +108,7 @@ impl SizePrefs {
 /// by `scale`, pads its content by `notch_inset` and squares its top corners
 /// while `docked`.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
-pub struct IslandFrame {
+pub struct MarqueeFrame {
     pub scale: f32,
     /// `scale` was matched to the display rather than chosen.
     pub auto_scale: bool,
@@ -145,7 +145,7 @@ fn base_height(lines: u8) -> f64 {
     }
 }
 
-pub fn island_frame(prefs: SizePrefs, display: Display, placement: Placement) -> IslandFrame {
+pub fn marquee_frame(prefs: SizePrefs, display: Display, placement: Placement) -> MarqueeFrame {
     let scale = match prefs.scale {
         Some(scale) if scale.is_finite() => nearest_step(scale),
         _ => auto_scale(display.work_area_width),
@@ -168,7 +168,7 @@ pub fn island_frame(prefs: SizePrefs, display: Display, placement: Placement) ->
         }
     }
 
-    IslandFrame {
+    MarqueeFrame {
         scale,
         auto_scale: prefs.scale.is_none(),
         width: width.round() as u32,
@@ -335,17 +335,17 @@ fn snap(value: f64, targets: &[f64]) -> f64 {
 
 /// The frame last applied to the Marquee window.
 #[derive(Default)]
-pub struct IslandFit {
-    frame: Mutex<Option<IslandFrame>>,
+pub struct MarqueeFit {
+    frame: Mutex<Option<MarqueeFrame>>,
 }
 
-impl IslandFit {
-    pub fn current(&self) -> Option<IslandFrame> {
+impl MarqueeFit {
+    pub fn current(&self) -> Option<MarqueeFrame> {
         *self.frame.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Store `frame`, returning whether it differs from the last one.
-    fn replace(&self, frame: IslandFrame) -> bool {
+    fn replace(&self, frame: MarqueeFrame) -> bool {
         let mut slot = self.frame.lock().unwrap_or_else(|e| e.into_inner());
         let changed = *slot != Some(frame);
         *slot = Some(frame);
@@ -357,7 +357,7 @@ impl IslandFit {
 const UNMEASURED_WORK_AREA_WIDTH: f64 = 1920.0;
 
 /// The display the Marquee is on, or the primary display when it is on none.
-fn island_monitor(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
+fn marquee_monitor(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
     window
         .current_monitor()
         .ok()
@@ -446,11 +446,11 @@ fn origin_on(window: &tauri::WebviewWindow, monitor: &tauri::Monitor) -> Option<
 
 /// Move the Marquee's top-left corner to `origin` (points on `monitor`),
 /// returning the position in physical pixels, as saved.
-fn move_island(app: &AppHandle, monitor: &tauri::Monitor, origin: (f64, f64)) -> (i32, i32) {
+fn move_marquee(app: &AppHandle, monitor: &tauri::Monitor, origin: (f64, f64)) -> (i32, i32) {
     let sf = monitor.scale_factor();
     let x = monitor.position().x + (origin.0 * sf).round() as i32;
     let y = monitor.position().y + (origin.1 * sf).round() as i32;
-    let _ = crate::macos::set_overlay_position(app, "island", x, y);
+    let _ = crate::macos::set_overlay_position(app, "marquee", x, y);
     (x, y)
 }
 
@@ -459,7 +459,7 @@ fn remember_position(app: &AppHandle, position: (i32, i32)) {
     let new_state = app
         .state::<AppState>()
         .ui
-        .mutate(|s| s.island_pos = Some(position));
+        .mutate(|s| s.marquee_pos = Some(position));
     let _ = app.emit("ui-settings-changed", new_state);
 }
 
@@ -472,21 +472,21 @@ fn remember_position(app: &AppHandle, position: (i32, i32)) {
 /// leaving it — so moves during a drag resize leave the dragged width alone.
 /// A resized Marquee keeps its centre and the edge nearer the top or bottom of
 /// its display.
-pub fn fit_island(app: &AppHandle, resize: bool) {
+pub fn fit_marquee(app: &AppHandle, resize: bool) {
     let handle = app.clone();
     // Window and screen geometry are AppKit calls on macOS.
-    let _ = app.run_on_main_thread(move || fit_island_now(&handle, resize));
+    let _ = app.run_on_main_thread(move || fit_marquee_now(&handle, resize));
 }
 
-/// [`fit_island`], for callers already on the main thread.
-pub fn fit_island_now(app: &AppHandle, resize: bool) {
-    let Some(window) = app.get_webview_window("island") else {
+/// [`fit_marquee`], for callers already on the main thread.
+pub fn fit_marquee_now(app: &AppHandle, resize: bool) {
+    let Some(window) = app.get_webview_window("marquee") else {
         return;
     };
     let Some(current) = window_points(&window) else {
         return;
     };
-    let monitor = island_monitor(&window);
+    let monitor = marquee_monitor(&window);
     let display = Display {
         work_area_width: monitor.as_ref().map_or(UNMEASURED_WORK_AREA_WIDTH, |m| {
             f64::from(m.work_area().size.width) / m.scale_factor()
@@ -511,8 +511,8 @@ pub fn fit_island_now(app: &AppHandle, resize: bool) {
 
     let state = app.state::<AppState>();
     let ui = state.ui.snapshot();
-    let frame = island_frame(SizePrefs::from_ui(&ui), display, placement);
-    let changed = state.island_fit.replace(frame);
+    let frame = marquee_frame(SizePrefs::from_ui(&ui), display, placement);
+    let changed = state.marquee_fit.replace(frame);
     if !changed && !resize {
         return;
     }
@@ -525,21 +525,21 @@ pub fn fit_island_now(app: &AppHandle, resize: bool) {
         // Only a window at its saved place moves the saved place with it; at
         // startup the window is sized before it is restored there.
         let at_saved_place = window_position(&window).is_some_and(|position| {
-            ui.island_pos
+            ui.marquee_pos
                 .is_some_and(|(x, y)| (position.x - x).abs() <= 1 && (position.y - y).abs() <= 1)
         });
-        let _ = crate::macos::set_island_size(app, frame.width, frame.height);
+        let _ = crate::macos::set_marquee_size(app, frame.width, frame.height);
         // Without a position (Wayland) the window is resized in place.
         if let Some((monitor, (x, y))) = origin {
             let area = safe_area(app, &window, monitor);
-            let moved = move_island(app, monitor, refit_origin(area, x, y, current, new));
-            if at_saved_place && ui.island_pos != Some(moved) {
+            let moved = move_marquee(app, monitor, refit_origin(area, x, y, current, new));
+            if at_saved_place && ui.marquee_pos != Some(moved) {
                 remember_position(app, moved);
             }
         }
     }
     if changed {
-        let _ = app.emit("island-frame", frame);
+        let _ = app.emit("marquee-frame", frame);
     }
 }
 
@@ -547,32 +547,32 @@ pub fn fit_island_now(app: &AppHandle, resize: bool) {
 /// safe area of the display it is on, or else the default place on `monitor`
 /// (the display it is on when `None`). Runs again when Karaoke is turned on
 /// or off or its lyrics move, so the Marquee moves out of their way and back.
-pub fn place_island(app: &AppHandle, monitor: Option<tauri::Monitor>) {
+pub fn place_marquee(app: &AppHandle, monitor: Option<tauri::Monitor>) {
     let handle = app.clone();
-    let _ = app.run_on_main_thread(move || place_island_now(&handle, monitor));
+    let _ = app.run_on_main_thread(move || place_marquee_now(&handle, monitor));
 }
 
-fn place_island_now(app: &AppHandle, monitor: Option<tauri::Monitor>) {
-    let Some(window) = app.get_webview_window("island") else {
+fn place_marquee_now(app: &AppHandle, monitor: Option<tauri::Monitor>) {
+    let Some(window) = app.get_webview_window("marquee") else {
         return;
     };
     forget_old_default_place(app, &window);
-    if let Some(saved) = app.state::<AppState>().ui.snapshot().island_pos {
-        let _ = crate::macos::set_overlay_position(app, "island", saved.0, saved.1);
+    if let Some(saved) = app.state::<AppState>().ui.snapshot().marquee_pos {
+        let _ = crate::macos::set_overlay_position(app, "marquee", saved.0, saved.1);
         // A place saved on a display that is gone, or now behind the Karaoke
         // lyrics, moves into a safe area; a docked one stays docked. The saved
         // place stays, so it comes back when that changes.
-        settle_island_now(app);
+        settle_marquee_now(app);
         return;
     }
-    let Some(monitor) = monitor.or_else(|| island_monitor(&window)) else {
+    let Some(monitor) = monitor.or_else(|| marquee_monitor(&window)) else {
         return;
     };
     let Some((width, height)) = window_points(&window) else {
         return;
     };
     let area = safe_area(app, &window, &monitor);
-    move_island(app, &monitor, default_origin(area, width, height));
+    move_marquee(app, &monitor, default_origin(area, width, height));
 }
 
 /// Earlier versions saved the Marquee's starting place, centred against the
@@ -582,12 +582,12 @@ fn place_island_now(app: &AppHandle, monitor: Option<tauri::Monitor>) {
 fn forget_old_default_place(app: &AppHandle, window: &tauri::WebviewWindow) {
     let state = app.state::<AppState>();
     let ui = state.ui.snapshot();
-    if ui.island_pos_checked {
+    if ui.marquee_pos_checked {
         return;
     }
     let width = window.outer_size().map_or(0, |size| size.width as i32);
     let monitors = window.available_monitors().unwrap_or_default();
-    let old_default = ui.island_pos.is_some_and(|(x, y)| {
+    let old_default = ui.marquee_pos.is_some_and(|(x, y)| {
         monitors.iter().any(|monitor| {
             let monitor_width = monitor.size().width as i32;
             let center = monitor.position().x + monitor_width / 2;
@@ -595,9 +595,9 @@ fn forget_old_default_place(app: &AppHandle, window: &tauri::WebviewWindow) {
         })
     });
     let new_state = state.ui.mutate(|s| {
-        s.island_pos_checked = true;
+        s.marquee_pos_checked = true;
         if old_default {
-            s.island_pos = None;
+            s.marquee_pos = None;
         }
     });
     if old_default {
@@ -606,10 +606,10 @@ fn forget_old_default_place(app: &AppHandle, window: &tauri::WebviewWindow) {
 }
 
 /// Settle the Marquee after the user drags it, and save where it ends up.
-pub fn settle_island(app: &AppHandle) {
+pub fn settle_marquee(app: &AppHandle) {
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
-        if let Some(settled) = settle_island_now(&handle) {
+        if let Some(settled) = settle_marquee_now(&handle) {
             remember_position(&handle, settled);
         }
     });
@@ -617,13 +617,13 @@ pub fn settle_island(app: &AppHandle) {
 
 /// Move the Marquee to where it settles on the display it is on, returning
 /// its position in physical pixels. Call on the main thread.
-fn settle_island_now(app: &AppHandle) -> Option<(i32, i32)> {
-    let window = app.get_webview_window("island")?;
-    let monitor = island_monitor(&window)?;
+fn settle_marquee_now(app: &AppHandle) -> Option<(i32, i32)> {
+    let window = app.get_webview_window("marquee")?;
+    let monitor = marquee_monitor(&window)?;
     let (width, height) = window_points(&window)?;
     let (x, y) = origin_on(&window, &monitor)?;
     let area = safe_area(app, &window, &monitor);
-    Some(move_island(
+    Some(move_marquee(
         app,
         &monitor,
         settle_origin(area, x, y, width, height),
@@ -688,7 +688,7 @@ mod tests {
 
     #[test]
     fn a_chosen_size_scales_width_and_height_together() {
-        let frame = island_frame(prefs(Some(1.2)), DESKTOP_1440P, FLOATING);
+        let frame = marquee_frame(prefs(Some(1.2)), DESKTOP_1440P, FLOATING);
         assert_eq!((frame.width, frame.height), (720, 86));
         assert_eq!(frame.scale, 1.2);
         assert!(!frame.auto_scale);
@@ -696,7 +696,7 @@ mod tests {
 
     #[test]
     fn match_screen_is_reported_as_automatic() {
-        let frame = island_frame(prefs(None), LAPTOP, FLOATING);
+        let frame = marquee_frame(prefs(None), LAPTOP, FLOATING);
         assert!(frame.auto_scale);
         assert_eq!(frame.scale, 0.85);
         assert_eq!((frame.width, frame.height), (510, 61));
@@ -704,7 +704,7 @@ mod tests {
 
     #[test]
     fn width_never_exceeds_its_share_of_the_display() {
-        let frame = island_frame(prefs(Some(1.4)), LAPTOP, FLOATING);
+        let frame = marquee_frame(prefs(Some(1.4)), LAPTOP, FLOATING);
         assert_eq!(frame.max_width, 680);
         assert_eq!(frame.width, 680);
         // Height keeps the chosen size; only the width gives way.
@@ -715,17 +715,17 @@ mod tests {
     fn one_line_is_shorter() {
         let mut one_line = prefs(Some(1.0));
         one_line.lines = 1;
-        assert_eq!(island_frame(one_line, LAPTOP, FLOATING).height, 56);
+        assert_eq!(marquee_frame(one_line, LAPTOP, FLOATING).height, 56);
     }
 
     #[test]
     fn content_moves_below_the_notch_only_when_docked_under_it() {
-        let under = island_frame(prefs(Some(1.0)), NOTCHED, DOCKED);
+        let under = marquee_frame(prefs(Some(1.0)), NOTCHED, DOCKED);
         assert_eq!(under.notch_inset, 32);
         assert_eq!(under.height, 104);
         assert!(under.docked);
 
-        let floating = island_frame(prefs(Some(1.0)), NOTCHED, FLOATING);
+        let floating = marquee_frame(prefs(Some(1.0)), NOTCHED, FLOATING);
         assert_eq!(floating.notch_inset, 0);
         assert!(!floating.docked);
 
@@ -733,7 +733,7 @@ mod tests {
             center_x: 200.0,
             docked: true,
         };
-        let frame = island_frame(prefs(Some(1.0)), NOTCHED, beside);
+        let frame = marquee_frame(prefs(Some(1.0)), NOTCHED, beside);
         assert_eq!(frame.notch_inset, 0);
         assert!(frame.docked);
     }
@@ -753,7 +753,7 @@ mod tests {
                 height: 38.0,
             }),
         };
-        assert_eq!(island_frame(narrow, wide_notch, DOCKED).width, 496);
+        assert_eq!(marquee_frame(narrow, wide_notch, DOCKED).width, 496);
     }
 
     #[test]
