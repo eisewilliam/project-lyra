@@ -7,7 +7,7 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 const BASE_URL: &str = "https://lrclib.net/api";
-const USER_AGENT: &str = concat!(
+pub(crate) const USER_AGENT: &str = concat!(
     "Lyra/",
     env!("CARGO_PKG_VERSION"),
     " (https://github.com/EiseWilliam/project-lyra)",
@@ -639,7 +639,7 @@ fn score_candidate(
 
 // ─── Title normalization ────────────────────────────────────────────────────
 
-fn normalize_for_compare(s: &str) -> String {
+pub(crate) fn normalize_for_compare(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut prev_space = true;
     for c in s.chars().flat_map(char::to_lowercase) {
@@ -658,7 +658,7 @@ fn normalize_for_compare(s: &str) -> String {
 /// Strip the trailing parenthetical/dash variant suffix to produce a "base"
 /// title for fuzzy comparison only. Used during scoring, NOT during lookup
 /// — we never want to look up a remix as if it were the base track.
-fn base_title(normalized: &str) -> String {
+pub(crate) fn base_title(normalized: &str) -> String {
     let lower = normalized;
     let cut_markers = [
         " remix",
@@ -693,7 +693,7 @@ fn base_title(normalized: &str) -> String {
 
 /// Remove " (feat. X)", " [ft. Y]", " feat. Z" suffixes. Returns Some(new)
 /// when a strip happened, None otherwise.
-fn strip_feature_annotations(title: &str) -> Option<String> {
+pub(crate) fn strip_feature_annotations(title: &str) -> Option<String> {
     let trimmed = title.trim();
     let without_inline = strip_inline_feature_suffix(trimmed);
     let without_group = strip_trailing_feature_group(without_inline).trim();
@@ -748,7 +748,7 @@ fn is_feature_annotation(group: &str) -> bool {
 
 /// The first credited artist when `artist` lists several, e.g. "Ayra Starr"
 /// from "Ayra Starr, Danny Ocean". None for a single artist.
-fn lead_artist(artist: &str) -> Option<&str> {
+pub(crate) fn lead_artist(artist: &str) -> Option<&str> {
     let lower = artist.to_ascii_lowercase();
     let cut = [
         ", ",

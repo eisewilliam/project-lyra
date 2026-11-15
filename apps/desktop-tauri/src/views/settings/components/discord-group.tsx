@@ -17,7 +17,7 @@ export function DiscordGroup({ enabled, includeSpotify, onEnabledChange, onInclu
   const hint =
     enabled && !status.connected
       ? 'Waiting for Discord. Open the Discord app on this computer.'
-      : 'Shows the song you are listening to on your Discord profile.';
+      : 'Shows the song you are listening to on your Discord profile. To show its cover, Lyra may look the song up in Apple’s music catalogue.';
 
   return (
     <Group title="Discord">

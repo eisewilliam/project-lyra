@@ -581,6 +581,7 @@ pub fn set_browser_lyrics(choice: BrowserLyrics, state: State<'_, AppState>, app
     state
         .players
         .set_lookups_allowed(choice == BrowserLyrics::Allow);
+    crate::apply_presence_settings(&state.presence, &settings.behavior);
     let _ = app.emit("app-settings-changed", settings);
     crate::refresh_playback_now(&app);
 }

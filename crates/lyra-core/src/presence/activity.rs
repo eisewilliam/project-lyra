@@ -118,6 +118,23 @@ impl Activity {
         })
     }
 
+    /// Whether the player supplied artwork Discord can fetch.
+    pub(crate) fn has_cover(&self) -> bool {
+        self.assets
+            .as_ref()
+            .is_some_and(|assets| assets.large_image.is_some())
+    }
+
+    /// Use `url`, a public `https` image, as the cover.
+    pub(crate) fn set_cover(&mut self, url: String) {
+        self.assets
+            .get_or_insert(Assets {
+                large_image: None,
+                large_text: None,
+            })
+            .large_image = Some(url);
+    }
+
     /// True when Discord would show the same thing for both: equal apart
     /// from a start time within the seek tolerance.
     pub(crate) fn same_display(&self, other: &Self) -> bool {
@@ -291,6 +308,41 @@ mod tests {
         snapshot.position_quality = PositionQuality::Exact;
         snapshot.rate = 1.5;
         assert!(json(&snapshot).get("timestamps").is_none());
+    }
+
+    #[test]
+    fn a_looked_up_cover_fills_in_for_local_artwork() {
+        let track = TrackRef {
+            artwork_url: Some("lyra-art://localhost/abc".into()),
+            ..music_app_track()
+        };
+        let mut activity = Activity::for_snapshot(&playing(track, 0), NOW, &all()).unwrap();
+        assert!(!activity.has_cover());
+        let without = activity.clone();
+
+        activity.set_cover("https://example.com/found.jpg".into());
+        assert!(activity.has_cover());
+        assert!(!activity.same_display(&without), "the cover is a change");
+        assert_eq!(
+            serde_json::to_value(&activity).unwrap()["assets"],
+            serde_json::json!({ "large_image": "https://example.com/found.jpg", "large_text": "Album" })
+        );
+
+        let mut no_album = Activity::for_snapshot(
+            &playing(
+                TrackRef {
+                    album: None,
+                    artwork_url: None,
+                    ..music_app_track()
+                },
+                0,
+            ),
+            NOW,
+            &all(),
+        )
+        .unwrap();
+        no_album.set_cover("https://example.com/found.jpg".into());
+        assert!(no_album.has_cover());
     }
 
     #[test]

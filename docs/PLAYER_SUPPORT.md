@@ -182,13 +182,20 @@ paused, stopped, or for media Lyra does not follow.
 | | macOS | Windows | Linux |
 |---|---|---|---|
 | Connection | Unix socket in `$TMPDIR` | Named pipe `discord-ipc-N` | Unix socket in `$XDG_RUNTIME_DIR`, including Flatpak and Snap Discord and Vesktop |
-| Status | 🧪 Handshake verified against Discord; a published activity not yet seen | 🧪 Type-checked only | 🧪 Not yet built or run |
+| Status | ✅ Activity seen on a Discord profile (Apple Music) | 🧪 Type-checked only | 🧪 Not yet built or run |
 
 - Title, artist, album and progress bar come from any followed player. The
   progress bar needs a reported position and normal playback speed.
-- Cover art appears only when the player gives a public `https` URL
-  (Spotify). Players that expose artwork as bytes (Music.app, Now Playing
-  apps, SMTC, local MPRIS files) show no cover art.
+- Cover art comes from the player when it gives a public `https` URL
+  (Spotify). For players that expose artwork as bytes (Music.app, Now Playing
+  apps, SMTC, local MPRIS files) Lyra looks the cover up in Apple's music
+  catalogue (the iTunes Search API) by artist and title, and uses it only
+  when a result's title and lead artist match. Until a cover is found, and
+  for songs the catalogue lacks, Discord shows the Lyra application icon.
+- The lookup uses the catalogue's default (United States) storefront, so a
+  song sold only elsewhere gets no cover. Browser media is looked up only
+  when browser lyric lookups are allowed. 🧪 Not yet seen on a Discord
+  profile: whether Discord loads the catalogue's image URLs is unconfirmed.
 - Spotify, in its app or a browser, is skipped unless "Include Spotify" is
   on: Discord shows Spotify itself for linked accounts.
 - Needs `DISCORD_APPLICATION_ID` in the host; without it the setting is
@@ -214,3 +221,6 @@ paused, stopped, or for media Lyra does not follow.
 | 2026-11-13 | macOS | Discord presence: activity mapping, framing, reconnect, rate-limit and settings logic | 16 `lyra-core` unit tests against a stand-in Discord on a socket pair |
 | 2026-11-13 | macOS | Discord presence transport reaches the running Discord app: socket found, handshake framed and answered (refused with "4000 Invalid Client ID" for a made-up ID). No activity published yet: no application ID | Live `Connection::open` probe |
 | 2026-11-13 | Windows | Discord presence named-pipe transport type-checks | `cargo check -p lyra-core --target x86_64-pc-windows-msvc` |
+| 2026-11-15 | macOS | Discord presence shows on a Discord profile with Apple Music (Music.app) playing: "Listening to Lyra", title, artist, album and progress bar with elapsed and total time. With no cover URL from the player, Discord shows the Lyra application icon | Screenshot of the profile's activity card, 0.3.0-beta.1 |
+| 2026-11-15 | macOS | Discord cover lookup: result matching, album reuse, one cover per album for a repeated title, misses and failures kept apart, consent for browser media, one extra update when a cover arrives | 13 `lyra-core` unit tests against a stand-in catalogue and Discord |
+| 2026-11-15 | macOS | Discord cover lookup reaches Apple's catalogue and returns a 512-pixel `https` cover. Not yet seen on a Discord profile | Live lookups through `CoverArt`: two known songs found in 1.4 s and (after the 3 s spacing) 3.3 s, a made-up song a miss; the returned image URL loads |

@@ -10,6 +10,15 @@ offered it as an update.
 
 ## [Unreleased]
 
+### Added
+
+- Discord presence shows cover art for players that share artwork only as an
+  image, such as Apple Music, where the Lyra icon showed before. Lyra finds
+  the cover by sending the song's artist and title to Apple's music
+  catalogue, only while Discord presence is on. Media playing in a browser is
+  looked up only after you have allowed lookups for it. A song the catalogue
+  doesn't have keeps the Lyra icon.
+
 ## [0.3.0-beta.1] - 2026-11-15
 
 A pre-release for testing ahead of 0.3.0: Discord presence, the Liquid Glass

@@ -506,7 +506,7 @@ function LinerNotes() {
 const faqs: [question: string, answer: string][] = [
   ['What do I need to use Lyra?', `A Mac, a Windows PC or a Linux computer, and a music player: ${playersOrOthers}. Start a song and Lyra follows along.`],
   ['Does it work with every song?', 'Lyrics come from LRCLIB, a community database, so coverage varies. Songs with synced lyrics move with the music. If only plain lyrics exist, Lyra shows them without timing. If there are none, Lyra tells you, and you can retry or add your own .lrc file.'],
-  ['What does Lyra send over the internet?', 'Only lyric lookups. To find lyrics, Lyra sends LRCLIB the song’s title, artist, album and length. For something playing in a browser, Lyra asks you first. Playback is read on your computer, and there is no account, telemetry or analytics.'],
+  ['What does Lyra send over the internet?', 'Lyric lookups, and nothing else unless you turn on Discord presence. To find lyrics, Lyra sends LRCLIB the song’s title, artist, album and length. If you choose to show your song on Discord, Lyra also sends its artist and title to Apple’s music catalogue to find the cover. For something playing in a browser, Lyra asks you first. Playback is read on your computer, and there is no account, telemetry or analytics.'],
   ['The lyrics are a little early or late. Can I fix that?', 'Yes. Nudge the timing earlier or later from the Lyra window. The adjustment is remembered for that song.'],
   ['Is Lyra free?', 'Yes. Lyra is an independent, open-source project under the MIT license.'],
   ['Which music players does it work with?', `${playersAndOthers}, including music playing in a browser. If several are playing, Lyra follows the one you started last, or only the player you choose in settings.`],

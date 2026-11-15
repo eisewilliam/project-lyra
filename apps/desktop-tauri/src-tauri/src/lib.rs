@@ -329,6 +329,8 @@ pub(crate) fn apply_presence_settings(
     behavior: &lyra_core::domain::BehaviorSettings,
 ) {
     presence.configure(behavior.discord_presence, behavior.discord_presence_spotify);
+    // Cover lookups for browser media follow the lyric-lookup consent.
+    presence.set_browser_lookups(behavior.browser_lyrics == BrowserLyrics::Allow);
 }
 
 fn app_support_dir() -> std::path::PathBuf {
@@ -1112,6 +1114,14 @@ pub fn run() {
                         state.poll.request_poll();
                     }
                 });
+            // A cover found for the playing track is shown by publishing
+            // the track again, which the next poll does.
+            let cover_app = app.handle().clone();
+            app.state::<AppState>().presence.on_cover_found(move || {
+                if let Some(state) = cover_app.try_state::<AppState>() {
+                    state.poll.request_poll();
+                }
+            });
 
             // Windows start hidden (tauri.conf.json visible:false). Each
             // surface's frontend calls `window_ready` once its WebView has

@@ -26,7 +26,7 @@ export const BROWSER_LYRICS_OPTIONS: SelectOption[] = [
 /** What the chosen browser-lyrics option does, shown under the row. */
 export const BROWSER_LYRICS_HINTS: Record<BrowserLyrics, string> = {
   Ask: 'Asks before using a browser title and artist to find lyrics.',
-  Allow: 'Uses the title and artist a browser reports to find lyrics.',
+  Allow: 'Uses the title and artist a browser reports to find lyrics, and cover art while Discord presence is on.',
   Deny: 'Media playing in a browser shows no lyrics.',
 };
 

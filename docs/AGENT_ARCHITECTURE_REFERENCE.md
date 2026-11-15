@@ -141,6 +141,7 @@ Cache filenames are percent-encoded track URIs:
 | `player/mpris_linux.rs` | Linux MPRIS: every player on the user's D-Bus session bus |
 | `presence/mod.rs` | `DiscordPresence`: change detection in `publish`, worker thread with reconnect, idle check and rate limit |
 | `presence/activity.rs` | Pure `PlaybackSnapshot` → Discord Listening activity mapping, text limits, Spotify exclusion |
+| `presence/cover.rs` | `CoverArt`: cover URL for tracks whose player gives none Discord can fetch. iTunes Search lookup on its own thread, strict title and lead-artist matching, in-memory cache of covers and confirmed misses |
 | `presence/ipc.rs` | Discord local RPC: socket/pipe discovery, framing, handshake, `SET_ACTIVITY`; every read has a deadline |
 | `lyrics/lrclib.rs` | LRCLIB HTTP client; prefers synced lyrics, falls back to plain lyrics; returns `Ok(None)` only for confirmed misses |
 | `lyrics/cache.rs` | Flat-file cache + negative cache + manual override resolution |
