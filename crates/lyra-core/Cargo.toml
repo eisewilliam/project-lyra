@@ -24,6 +24,8 @@ windows = { version = "0.58", features = [
     "Foundation_Collections",
     "Win32_System_Com",
     "Storage_Streams",
+    "Win32_Foundation",
+    "Win32_System_Pipes",
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

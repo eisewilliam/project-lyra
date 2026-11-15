@@ -3,8 +3,8 @@ use crate::tray;
 use crate::ui_state::UiState;
 use crate::AppState;
 use lyra_core::domain::{
-    BrowserLyrics, FollowRule, KnownPlayerInfo, MediaPolicyView, PlayerSessionInfo, RenderSnapshot,
-    SettingsSnapshot,
+    BrowserLyrics, DiscordPresenceStatus, FollowRule, KnownPlayerInfo, MediaPolicyView,
+    PlayerSessionInfo, RenderSnapshot, SettingsSnapshot,
 };
 use lyra_core::player::PlayerCommand;
 use serde::{Deserialize, Serialize};
@@ -558,6 +558,7 @@ pub fn update_settings(patch: SettingsPatch, state: State<'_, AppState>, app: Ap
     state
         .players
         .set_lookups_allowed(s.behavior.browser_lyrics == BrowserLyrics::Allow);
+    crate::apply_presence_settings(&state.presence, &s.behavior);
     let _ = app.emit("app-settings-changed", s);
     // Behaviour settings (e.g. browser lyric consent) change what is
     // followed and the lyric status.
@@ -582,6 +583,13 @@ pub fn set_browser_lyrics(choice: BrowserLyrics, state: State<'_, AppState>, app
         .set_lookups_allowed(choice == BrowserLyrics::Allow);
     let _ = app.emit("app-settings-changed", settings);
     crate::refresh_playback_now(&app);
+}
+
+/// Whether this build can show playback on Discord and whether Discord is
+/// connected. Changes arrive as `discord-presence-status` events.
+#[tauri::command]
+pub fn get_discord_presence_status(state: State<'_, AppState>) -> DiscordPresenceStatus {
+    state.presence.status()
 }
 
 // ── Media following rules ─────────────────────────────────────────────────────

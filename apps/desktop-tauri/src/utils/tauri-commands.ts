@@ -3,6 +3,7 @@ import type {
   AppSettings,
   AutostartStatus,
   BrowserLyrics,
+  DiscordPresenceStatus,
   FollowRule,
   KnownPlayerInfo,
   MediaPolicyView,
@@ -147,6 +148,10 @@ export function getPlayerSessions(): Promise<PlayerSessionInfo[]> {
 
 export function setBrowserLyrics(choice: BrowserLyrics): Promise<void> {
   return invoke('set_browser_lyrics', { choice });
+}
+
+export function getDiscordPresenceStatus(): Promise<DiscordPresenceStatus> {
+  return invoke('get_discord_presence_status');
 }
 
 export function getMediaPolicy(): Promise<MediaPolicyView> {

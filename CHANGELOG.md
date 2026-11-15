@@ -12,6 +12,12 @@ offered it as an update.
 
 ### Added
 
+- Lyra can show the song you are listening to on your Discord profile, with
+  the artist, cover art where the player shares it, and a progress bar. Turn
+  it on in Settings → General → Discord; it is off until you do. It works with
+  the Discord app on the same computer and clears when you pause. Spotify is
+  left out unless you include it, because Discord already shows Spotify for
+  linked accounts.
 - The website has a page for each platform, at lyra.eiselabs.com/macos,
   /windows and /linux, with what Lyra needs, which installer to choose and how
   to install it.

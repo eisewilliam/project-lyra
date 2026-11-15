@@ -234,6 +234,19 @@ export type BehaviorSettings = {
   hide_when_paused: boolean;
   browser_lyrics: BrowserLyrics;
   battery_saver: boolean;
+  /** Show the followed track on the user's Discord profile. */
+  discord_presence: boolean;
+  /** Publish Spotify playback to Discord too. */
+  discord_presence_spotify: boolean;
+};
+
+/** Payload of `get_discord_presence_status` and the
+    `discord-presence-status` event. */
+export type DiscordPresenceStatus = {
+  /** This build can publish to Discord. */
+  available: boolean;
+  /** The feature is on and the Discord app on this computer is connected. */
+  connected: boolean;
 };
 
 export type AppSettings = {

@@ -173,6 +173,27 @@ Notes:
 - Type-checked with `cargo clippy --target x86_64-unknown-linux-gnu` (native
   library probes stubbed, nothing linked); not yet run on Linux.
 
+## Discord presence
+
+Off by default (Settings → General → Discord). Publishes the followed track
+to the Discord desktop app on the same computer; nothing is sent while
+paused, stopped, or for media Lyra does not follow.
+
+| | macOS | Windows | Linux |
+|---|---|---|---|
+| Connection | Unix socket in `$TMPDIR` | Named pipe `discord-ipc-N` | Unix socket in `$XDG_RUNTIME_DIR`, including Flatpak and Snap Discord and Vesktop |
+| Status | 🧪 Handshake verified against Discord; a published activity not yet seen | 🧪 Type-checked only | 🧪 Not yet built or run |
+
+- Title, artist, album and progress bar come from any followed player. The
+  progress bar needs a reported position and normal playback speed.
+- Cover art appears only when the player gives a public `https` URL
+  (Spotify). Players that expose artwork as bytes (Music.app, Now Playing
+  apps, SMTC, local MPRIS files) show no cover art.
+- Spotify, in its app or a browser, is skipped unless "Include Spotify" is
+  on: Discord shows Spotify itself for linked accounts.
+- Needs `DISCORD_APPLICATION_ID` in the host; without it the setting is
+  hidden.
+
 ## Verification log
 
 | Date | OS | What was verified | How |
@@ -190,3 +211,6 @@ Notes:
 | 2026-10-23 | macOS | Spotify, YouTube Music, YouTube and Apple Music confirmed working; browser playback tested in Chrome, including seeking; YouTube skipping works within playlists | User-reported manual testing |
 | 2026-10-23 | Windows | Spotify, YouTube Music and YouTube confirmed working; browser playback tested in Chrome, including seeking; YouTube skipping works within playlists | User-reported manual testing |
 | 2026-11-10 | Linux, Windows | Tauri host type-checks with single-instance handling, the XWayland preference and deferred click-through; no warnings from that code. Not run on either OS | `cargo clippy --all-targets` for `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc` with stubbed `pkg-config`, C compiler and resource compiler |
+| 2026-11-13 | macOS | Discord presence: activity mapping, framing, reconnect, rate-limit and settings logic | 16 `lyra-core` unit tests against a stand-in Discord on a socket pair |
+| 2026-11-13 | macOS | Discord presence transport reaches the running Discord app: socket found, handshake framed and answered (refused with "4000 Invalid Client ID" for a made-up ID). No activity published yet: no application ID | Live `Connection::open` probe |
+| 2026-11-13 | Windows | Discord presence named-pipe transport type-checks | `cargo check -p lyra-core --target x86_64-pc-windows-msvc` |
