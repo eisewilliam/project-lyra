@@ -14,6 +14,7 @@ use lyra_core::domain::{BrowserLyrics, PlaybackState};
 use lyra_core::lyrics::refresh::LyricsRefresh;
 use lyra_core::player::hub::PlayerHub;
 use lyra_core::player::PlayerAdapter;
+use lyra_core::presence::{ActivityButton, DiscordPresence};
 use lyra_core::runtime::LyraRuntime;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -26,6 +27,19 @@ const ARTWORK_SCHEME: &str = "lyra-art";
 /// Re-poll interval while a track change waits for stable metadata.
 const SETTLE_REPOLL_MS: u64 = 100;
 
+/// The Discord application Lyra's activity appears under: its name and icon
+/// come from the Discord developer portal. The ID is public, not a secret.
+/// While empty, Discord presence is unavailable and Settings hides it.
+const DISCORD_APPLICATION_ID: &str = "1571634580354502817";
+
+/// Link shown as a button on the Discord activity.
+const DISCORD_BUTTON_LABEL: &str = "Get Lyra";
+const DISCORD_BUTTON_URL: &str = "https://lyra.eiselabs.com";
+
+/// Player poll interval while Discord is the only thing showing playback.
+/// Discord needs track changes, pauses and seeks, not line timing.
+const PRESENCE_POLL_MS: u64 = 5_000;
+
 pub struct AppState {
     pub runtime: Mutex<LyraRuntime>,
     /// Core provider coordinator; network requests run outside the runtime lock.
@@ -33,6 +47,9 @@ pub struct AppState {
     /// Platform player adapters and session selection. Polled and controlled
     /// outside the runtime lock.
     pub players: Arc<PlayerHub>,
+    /// Shows the followed track on Discord; its socket work runs on its own
+    /// thread.
+    pub presence: DiscordPresence,
     pub ui: UiStateStore,
     /// Transient, non-persisted visibility. Windows start hidden in
     /// tauri.conf.json, and auto-hide can hide a surface without changing the
@@ -294,6 +311,26 @@ fn player_poll_due(handle: &tauri::AppHandle, elapsed_ms: u64, interval_ms: u64)
                 .is_some_and(|state| state.players.is_settling()))
 }
 
+fn discord_presence() -> DiscordPresence {
+    if DISCORD_APPLICATION_ID.is_empty() {
+        return DiscordPresence::unavailable();
+    }
+    DiscordPresence::new(
+        DISCORD_APPLICATION_ID,
+        Some(ActivityButton {
+            label: DISCORD_BUTTON_LABEL.into(),
+            url: DISCORD_BUTTON_URL.into(),
+        }),
+    )
+}
+
+pub(crate) fn apply_presence_settings(
+    presence: &DiscordPresence,
+    behavior: &lyra_core::domain::BehaviorSettings,
+) {
+    presence.configure(behavior.discord_presence, behavior.discord_presence_spotify);
+}
+
 fn app_support_dir() -> std::path::PathBuf {
     // One host-owned path is injected into every persistence store.
     dirs_next::data_dir()
@@ -482,15 +519,16 @@ impl PollContext {
 /// Shared by the macOS dispatch_source-driven loop and the Windows
 /// std::thread::sleep-driven loop so the emit/coalesce logic stays
 /// identical across platforms.
-/// True if at least one of the three lyric surfaces is currently visible.
-/// Used as a fast pre-check to skip the player-poll roundtrip entirely when
-/// nothing on screen would consume the result.
+/// True if something is showing playback: one of the three lyric surfaces,
+/// the Touch Bar, or Discord. Used as a fast pre-check to skip the
+/// player-poll roundtrip entirely when nothing would consume the result.
 fn any_surface_visible(handle: &tauri::AppHandle) -> bool {
     let Some(app_state) = handle.try_state::<AppState>() else {
         return true; // fail open — better to poll than to stall
     };
     let (floating_cfg, marquee_cfg, karaoke_cfg) = app_state.ui.visibility_triple();
     touch_bar::is_visible()
+        || app_state.presence.wants_playback()
         || app_state
             .surface_visibility
             .is_visible("marquee", marquee_cfg)
@@ -530,6 +568,8 @@ fn process_tick(
     // The Touch Bar takes no events; it only keeps the poll loop awake.
     let touch_bar_vis = touch_bar::is_visible();
     let any_visible = any_window_visible || touch_bar_vis;
+    // Discord takes no events either, and is content with slow polls.
+    let presence_on = app_state.presence.wants_playback();
 
     let (render_opt, base_interval_ms, next_transition_playback, appearance) = {
         let mut rt = match app_state.runtime.lock() {
@@ -561,6 +601,12 @@ fn process_tick(
 
     if let (Some(render), Some(appearance)) = (render_opt.as_ref(), appearance.as_ref()) {
         touch_bar::sync(handle, render, appearance);
+    }
+
+    // Only on freshly polled ticks: between polls the snapshot can be from
+    // before the windows were hidden, and would publish an old track.
+    if let (Some(render), false) = (render_opt.as_ref(), is_fast_tick) {
+        app_state.presence.publish(&render.playback);
     }
 
     if let Some(render) = render_opt.as_ref() {
@@ -647,6 +693,7 @@ fn process_tick(
     // since nothing on screen is animating, but never poll *faster* than the
     // user asked for.
     let base_sleep = match (any_visible, current_state.as_ref(), lyrics_ready) {
+        (false, _, _) if presence_on => PRESENCE_POLL_MS,
         (false, _, _) => 10_000,
         (true, Some(PlaybackState::Playing), true) => base_interval_ms,
         (true, Some(PlaybackState::Playing), false) => base_interval_ms.max(1_000),
@@ -670,7 +717,7 @@ fn process_tick(
             }
         }
     }
-    if any_visible && app_state.players.is_settling() {
+    if (any_visible || presence_on) && app_state.players.is_settling() {
         sleep_ms = sleep_ms.min(SETTLE_REPOLL_MS);
     }
     sleep_ms
@@ -968,10 +1015,13 @@ pub fn run() {
             .with_lyric_cache(runtime.cache.clone()),
     );
     players.set_lookups_allowed(runtime.settings().behavior.browser_lyrics == BrowserLyrics::Allow);
+    let presence = discord_presence();
+    apply_presence_settings(&presence, &runtime.settings().behavior);
     let state = AppState {
         runtime: Mutex::new(runtime),
         lyrics: LyricsRefresh::default(),
         players: Arc::clone(&players),
+        presence,
         ui,
         surface_visibility: RuntimeSurfaceVisibility::new_all_hidden(),
         poll: PollTrigger::default(),
@@ -1049,6 +1099,19 @@ pub fn run() {
 
             // Background update checks (release builds with a signing key).
             updater::init(app.handle());
+
+            // When Discord connects or quits, tell Settings and poll now:
+            // with every window hidden the next poll could be 10 s away.
+            let presence_app = app.handle().clone();
+            app.state::<AppState>()
+                .presence
+                .on_connection_change(move |_connected| {
+                    if let Some(state) = presence_app.try_state::<AppState>() {
+                        let _ =
+                            presence_app.emit("discord-presence-status", state.presence.status());
+                        state.poll.request_poll();
+                    }
+                });
 
             // Windows start hidden (tauri.conf.json visible:false). Each
             // surface's frontend calls `window_ready` once its WebView has
@@ -1207,6 +1270,7 @@ pub fn run() {
             commands::playback_raise,
             commands::get_player_sessions,
             commands::set_browser_lyrics,
+            commands::get_discord_presence_status,
             commands::get_media_policy,
             commands::set_pinned_app,
             commands::get_known_players,

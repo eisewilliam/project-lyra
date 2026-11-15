@@ -156,6 +156,8 @@ if (!isTauri) {
       hide_when_paused: false,
       browser_lyrics: 'Ask',
       battery_saver: false,
+      discord_presence: false,
+      discord_presence_spotify: false,
     },
   };
 
@@ -440,6 +442,9 @@ if (!isTauri) {
 
       case 'get_update_status':
         return mockUpdateInfo;
+
+      case 'get_discord_presence_status':
+        return { available: true, connected: false };
 
       case 'get_touch_bar_support':
         return { present: true, control_strip: true };

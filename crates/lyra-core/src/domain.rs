@@ -442,6 +442,14 @@ pub struct BehaviorSettings {
     /// Check the player less often and let surfaces drop GPU-heavy effects.
     #[serde(default)]
     pub battery_saver: bool,
+    /// Show the followed track on the user's Discord profile. Off until the
+    /// user turns it on: it tells other people what they are listening to.
+    #[serde(default)]
+    pub discord_presence: bool,
+    /// Publish Spotify playback to Discord too. Discord already shows
+    /// Spotify for linked accounts, so this is off by default.
+    #[serde(default)]
+    pub discord_presence_spotify: bool,
 }
 
 impl BehaviorSettings {
@@ -473,6 +481,15 @@ pub enum BrowserLyrics {
     Ask,
     Allow,
     Deny,
+}
+
+/// Whether Lyra can show playback on Discord, and whether it is doing so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiscordPresenceStatus {
+    /// This build can publish to Discord.
+    pub available: bool,
+    /// The feature is on and the Discord app on this computer is connected.
+    pub connected: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -540,6 +557,8 @@ impl Default for BehaviorSettings {
             hide_when_paused: false,
             browser_lyrics: BrowserLyrics::Ask,
             battery_saver: false,
+            discord_presence: false,
+            discord_presence_spotify: false,
         }
     }
 }
@@ -622,6 +641,14 @@ mod tests {
         let behavior: BehaviorSettings = serde_json::from_str(json).unwrap();
         assert!(!behavior.battery_saver);
         assert_eq!(behavior.effective_poll_interval_ms(), 250);
+    }
+
+    #[test]
+    fn settings_saved_before_discord_presence_keep_it_off() {
+        let json = r#"{"karaoke_mode":false,"poll_interval_ms":300,"battery_saver":true}"#;
+        let behavior: BehaviorSettings = serde_json::from_str(json).unwrap();
+        assert!(!behavior.discord_presence);
+        assert!(!behavior.discord_presence_spotify);
     }
 
     #[test]

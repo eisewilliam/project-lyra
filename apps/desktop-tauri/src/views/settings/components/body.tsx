@@ -33,6 +33,7 @@ import type { ConsolidatedState, FloatingSurface, Section, SettingsBodyProps } f
 import { PlayersSection } from './players-section';
 import { AppearancePreview, MarqueePreview, KaraokePreview } from './previews';
 import { TouchBarSection } from './touch-bar-section';
+import { DiscordGroup } from './discord-group';
 import { UpdatesGroup } from './updates-group';
 
 const MATCH_SCREEN = 'match-screen';
@@ -167,6 +168,13 @@ export function Body({
             </Row>
           )}
         </Group>
+
+        <DiscordGroup
+          enabled={app.behavior.discord_presence}
+          includeSpotify={app.behavior.discord_presence_spotify}
+          onEnabledChange={(v) => actions.updateAppSetting('behavior', 'discord_presence', v)}
+          onIncludeSpotifyChange={(v) => actions.updateAppSetting('behavior', 'discord_presence_spotify', v)}
+        />
 
         <Group title="Storage">
           <Row label="Lyrics cache" hint="Cleared lyrics download again the next time each song plays.">
