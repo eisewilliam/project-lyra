@@ -1,10 +1,10 @@
 import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
 import { emit } from '@tauri-apps/api/event';
-import { islandBaseHeight } from '@/constants/island-size';
+import { marqueeBaseHeight } from '@/constants/marquee-size';
 import type {
   AppSettings,
-  IslandFrame,
-  IslandSettingsPatch,
+  MarqueeFrame,
+  MarqueeSettingsPatch,
   KaraokeSettingsPatch,
   UiState,
   UpdateInfo,
@@ -160,24 +160,24 @@ if (!isTauri) {
   };
 
   const defaultUiState: UiState = {
-    island_visible: false,
+    marquee_visible: false,
     floating_visible: true,
     karaoke_visible: false,
-    island_locked: false,
-    island_click_through: false,
-    island_pos: null,
-    island_hide_when_idle: true,
-    island_scale: null,
-    island_base_width: 600,
-    island_lines: 2,
-    island_font_scale: 1.0,
+    marquee_locked: false,
+    marquee_click_through: false,
+    marquee_pos: null,
+    marquee_hide_when_idle: true,
+    marquee_scale: null,
+    marquee_base_width: 600,
+    marquee_lines: 2,
+    marquee_font_scale: 1.0,
     karaoke_font_scale: 1.0,
     floating_font_scale: 1.0,
-    island_show_cover: true,
-    island_cover_circle: true,
-    island_cover_spin: true,
-    island_transparency: 0.5,
-    island_show_on_fullscreen: false,
+    marquee_show_cover: true,
+    marquee_cover_circle: true,
+    marquee_cover_spin: true,
+    marquee_transparency: 0.5,
+    marquee_show_on_fullscreen: false,
     karaoke_show_on_fullscreen: false,
     floating_show_on_fullscreen: false,
     theme: 'dark',
@@ -200,8 +200,10 @@ if (!isTauri) {
   // --- Local States ---
   let settings: AppSettings =
     JSON.parse(localStorage.getItem(LOCAL_STORAGE_SETTINGS_KEY) || 'null') || defaultSettings;
-  let uiState: UiState =
-    JSON.parse(localStorage.getItem(LOCAL_STORAGE_UI_KEY) || 'null') || defaultUiState;
+  let uiState: UiState = {
+    ...defaultUiState,
+    ...(JSON.parse(localStorage.getItem(LOCAL_STORAGE_UI_KEY) || 'null') || {}),
+  };
   uiState.floating_visible = true;
 
   let currentTrackIdx = Number(localStorage.getItem('lyra-mock-current-track') || '0');
@@ -222,15 +224,15 @@ if (!isTauri) {
   const saveUiState = () => {
     localStorage.setItem(LOCAL_STORAGE_UI_KEY, JSON.stringify(uiState));
   };
-  /** The host's fit (`island_size.rs`) for a 1512-point laptop display. */
-  const mockIslandFrame = (): IslandFrame => {
-    const scale = uiState.island_scale ?? 0.85;
+  /** The host's fit (`marquee_size.rs`) for a 1512-point laptop display. */
+  const mockMarqueeFrame = (): MarqueeFrame => {
+    const scale = uiState.marquee_scale ?? 0.85;
     const maxWidth = 680;
     return {
       scale,
-      auto_scale: uiState.island_scale == null,
-      width: Math.round(Math.min((uiState.island_base_width ?? 600) * scale, maxWidth)),
-      height: Math.round(islandBaseHeight(uiState.island_lines ?? 2) * scale),
+      auto_scale: uiState.marquee_scale == null,
+      width: Math.round(Math.min((uiState.marquee_base_width ?? 600) * scale, maxWidth)),
+      height: Math.round(marqueeBaseHeight(uiState.marquee_lines ?? 2) * scale),
       notch_inset: 0,
       docked: false,
       max_width: maxWidth,
@@ -378,11 +380,11 @@ if (!isTauri) {
   // --- Initialize Mocks ---
   const path = window.location.pathname;
   let surface = 'main';
-  if (path === '/island') surface = 'island';
+  if (path === '/marquee') surface = 'marquee';
   else if (path === '/karaoke') surface = 'karaoke';
   else if (path === '/settings') surface = 'settings';
 
-  mockWindows(surface, 'main', 'island', 'karaoke', 'settings');
+  mockWindows(surface, 'main', 'marquee', 'karaoke', 'settings');
 
   let mockUpdateInfo: UpdateInfo = {
     current_version: '0.1.0',
@@ -396,7 +398,7 @@ if (!isTauri) {
 
       case 'toggle_surface': {
         const { label } = args as { label: string };
-        if (label === 'island') uiState.island_visible = !uiState.island_visible;
+        if (label === 'marquee') uiState.marquee_visible = !uiState.marquee_visible;
         else if (label === 'karaoke') uiState.karaoke_visible = !uiState.karaoke_visible;
         else if (label === 'floating') uiState.floating_visible = !uiState.floating_visible;
         saveUiState();
@@ -406,7 +408,7 @@ if (!isTauri) {
 
       case 'set_show_on_fullscreen': {
         const { surface: surf, value } = args as { surface: string; value: boolean };
-        if (surf === 'island') uiState.island_show_on_fullscreen = value;
+        if (surf === 'marquee') uiState.marquee_show_on_fullscreen = value;
         else if (surf === 'karaoke') uiState.karaoke_show_on_fullscreen = value;
         else if (surf === 'floating') uiState.floating_show_on_fullscreen = value;
         saveUiState();
@@ -414,17 +416,17 @@ if (!isTauri) {
         return;
       }
 
-      case 'set_island_locked': {
+      case 'set_marquee_locked': {
         const { locked } = args as { locked: boolean };
-        uiState.island_locked = locked;
+        uiState.marquee_locked = locked;
         saveUiState();
         void emit('ui-settings-changed', uiState);
         return;
       }
 
-      case 'set_island_click_through': {
+      case 'set_marquee_click_through': {
         const { enabled } = args as { enabled: boolean };
-        uiState.island_click_through = enabled;
+        uiState.marquee_click_through = enabled;
         saveUiState();
         void emit('ui-settings-changed', uiState);
         return;
@@ -483,7 +485,7 @@ if (!isTauri) {
 
       case 'set_font_scale': {
         const { surface: surf, scale } = args as { surface: string; scale: number };
-        if (surf === 'island') uiState.island_font_scale = scale;
+        if (surf === 'marquee') uiState.marquee_font_scale = scale;
         else if (surf === 'karaoke') uiState.karaoke_font_scale = scale;
         else if (surf === 'floating') uiState.floating_font_scale = scale;
         saveUiState();
@@ -499,21 +501,21 @@ if (!isTauri) {
         return;
       }
 
-      case 'update_island_settings': {
+      case 'update_marquee_settings': {
         // The host takes the patch's short field names (see surface-maps).
-        const { patch } = args as { patch: IslandSettingsPatch };
-        if (patch.show_cover !== undefined) uiState.island_show_cover = patch.show_cover;
-        if (patch.cover_circle !== undefined) uiState.island_cover_circle = patch.cover_circle;
-        if (patch.cover_spin !== undefined) uiState.island_cover_spin = patch.cover_spin;
-        if (patch.transparency !== undefined) uiState.island_transparency = patch.transparency;
-        if (patch.scale !== undefined) uiState.island_scale = patch.scale;
-        if (patch.match_screen) uiState.island_scale = null;
-        if (patch.base_width !== undefined) uiState.island_base_width = patch.base_width;
-        if (patch.lines !== undefined) uiState.island_lines = patch.lines;
-        if (patch.hide_when_idle !== undefined) uiState.island_hide_when_idle = patch.hide_when_idle;
+        const { patch } = args as { patch: MarqueeSettingsPatch };
+        if (patch.show_cover !== undefined) uiState.marquee_show_cover = patch.show_cover;
+        if (patch.cover_circle !== undefined) uiState.marquee_cover_circle = patch.cover_circle;
+        if (patch.cover_spin !== undefined) uiState.marquee_cover_spin = patch.cover_spin;
+        if (patch.transparency !== undefined) uiState.marquee_transparency = patch.transparency;
+        if (patch.scale !== undefined) uiState.marquee_scale = patch.scale;
+        if (patch.match_screen) uiState.marquee_scale = null;
+        if (patch.base_width !== undefined) uiState.marquee_base_width = patch.base_width;
+        if (patch.lines !== undefined) uiState.marquee_lines = patch.lines;
+        if (patch.hide_when_idle !== undefined) uiState.marquee_hide_when_idle = patch.hide_when_idle;
         saveUiState();
         void emit('ui-settings-changed', uiState);
-        void emit('island-frame', mockIslandFrame());
+        void emit('marquee-frame', mockMarqueeFrame());
         return;
       }
 
@@ -533,24 +535,24 @@ if (!isTauri) {
 
       case 'set_overlay_position': {
         const { label, x, y } = args as { label: string; x: number; y: number };
-        if (label === 'island') uiState.island_pos = [x, y];
+        if (label === 'marquee') uiState.marquee_pos = [x, y];
         saveUiState();
         void emit('ui-settings-changed', uiState);
         return;
       }
 
-      case 'settle_island_position':
+      case 'settle_marquee_position':
         return;
 
-      case 'reset_island_position': {
-        uiState.island_pos = null;
+      case 'reset_marquee_position': {
+        uiState.marquee_pos = null;
         saveUiState();
         void emit('ui-settings-changed', uiState);
         return;
       }
 
-      case 'get_island_frame':
-        return mockIslandFrame();
+      case 'get_marquee_frame':
+        return mockMarqueeFrame();
 
       case 'get_render_snapshot':
         return computeRenderSnapshot();

@@ -2,11 +2,11 @@ import { useRef, type RefObject, type Dispatch, type SetStateAction } from 'reac
 import { useSurfaceSettings } from '@/hooks/use-surface-settings';
 import type { UiState } from '@/types/tauri-contracts';
 
-function applyIslandFont(scale: number) {
+function applyMarqueeFont(scale: number) {
   document.documentElement.style.setProperty('--font-scale', String(Number.isFinite(scale) ? scale : 1));
 }
 
-export function useIslandSettings({
+export function useMarqueeSettings({
   ensureWindowReady,
   desiredVisibleRef,
   autoHiddenRef,
@@ -17,7 +17,7 @@ export function useIslandSettings({
   setShowCover,
   setCoverCircle,
   setCoverSpin,
-  setIslandLines,
+  setMarqueeLines,
   setBatterySaver,
   setTransparency,
 }: {
@@ -31,25 +31,25 @@ export function useIslandSettings({
   setShowCover: Dispatch<SetStateAction<boolean>>;
   setCoverCircle: Dispatch<SetStateAction<boolean>>;
   setCoverSpin: Dispatch<SetStateAction<boolean>>;
-  setIslandLines: Dispatch<SetStateAction<number>>;
+  setMarqueeLines: Dispatch<SetStateAction<number>>;
   setBatterySaver: Dispatch<SetStateAction<boolean>>;
   setTransparency: Dispatch<SetStateAction<number>>;
 }) {
-  // The island's own idle setting, not the main window's; read when app
+  // The marquee's own idle setting, not the main window's; read when app
   // settings change to decide whether auto-hide can be released.
   const hideWhenIdleRef = useRef(true);
-  // The host places the island (see `island_size.rs`); this only mirrors
+  // The host places the marquee (see `marquee_size.rs`); this only mirrors
   // its settings.
   const applyUiState = (state: UiState) => {
-    setLocked(state.island_locked);
-    setShowCover(state.island_show_cover ?? true);
-    setCoverCircle(state.island_cover_circle ?? false);
-    setCoverSpin(state.island_cover_spin ?? false);
-    setIslandLines(state.island_lines ?? 2);
-    setTransparency(state.island_transparency ?? 0.5);
-    hideWhenIdleRef.current = state.island_hide_when_idle ?? true;
+    setLocked(state.marquee_locked);
+    setShowCover(state.marquee_show_cover ?? true);
+    setCoverCircle(state.marquee_cover_circle ?? false);
+    setCoverSpin(state.marquee_cover_spin ?? false);
+    setMarqueeLines(state.marquee_lines ?? 2);
+    setTransparency(state.marquee_transparency ?? 0.5);
+    hideWhenIdleRef.current = state.marquee_hide_when_idle ?? true;
     setHideWhenIdle(hideWhenIdleRef.current);
-    applyIslandFont(state.island_font_scale);
+    applyMarqueeFont(state.marquee_font_scale);
   };
 
   useSurfaceSettings({
@@ -58,7 +58,7 @@ export function useIslandSettings({
     autoHiddenRef,
     setSurfaceVisible,
     setHideWhenPaused,
-    getSurfaceVisible: (state) => state.island_visible,
+    getSurfaceVisible: (state) => state.marquee_visible,
     onInitialUiState: applyUiState,
     onUiStateChange: applyUiState,
     onAppSettings: (settings) => setBatterySaver(settings.behavior.battery_saver),
@@ -67,4 +67,4 @@ export function useIslandSettings({
     ),
   });
 }
-export { applyIslandFont };
+export { applyMarqueeFont };

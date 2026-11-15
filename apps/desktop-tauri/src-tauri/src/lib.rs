@@ -1,8 +1,8 @@
 mod autostart;
 mod commands;
-mod island_size;
 mod linux;
 mod macos;
+mod marquee_size;
 mod menu;
 mod native_menu;
 mod touch_bar;
@@ -41,7 +41,7 @@ pub struct AppState {
     /// Wakes the poll loop for an immediate adapter poll.
     pub poll: PollTrigger,
     /// The Marquee's size on its current display.
-    pub island_fit: island_size::IslandFit,
+    pub marquee_fit: marquee_size::MarqueeFit,
 }
 
 /// Lets commands request an immediate adapter poll — after a transport
@@ -80,7 +80,7 @@ impl RuntimeSurfaceVisibility {
     fn new_all_hidden() -> Self {
         Self {
             hidden_surfaces: Mutex::new(
-                ["main", "island", "karaoke"]
+                ["main", "marquee", "karaoke"]
                     .into_iter()
                     .map(String::from)
                     .collect(),
@@ -318,9 +318,9 @@ fn migrate_app_support_dir() {
 /// `preferred_monitor` setting changes.
 ///
 /// Positioning rules:
-/// - **Island**: where the user left it (`island_pos`), settled into the safe
+/// - **Marquee**: where the user left it (`marquee_pos`), settled into the safe
 ///   area of the display it is on; otherwise centred above the bottom of the
-///   target monitor's safe area (see `island_size`).
+///   target monitor's safe area (see `marquee_size`).
 /// - **Main window**: centred on the target monitor.
 /// - **Karaoke**: positioned at the configured screen-edge (top or bottom) of
 ///   the target monitor, respecting `karaoke_offset_px`.
@@ -328,7 +328,7 @@ pub(crate) fn apply_preferred_monitor_positioning(app: &tauri::AppHandle, ui: &U
     // We need a window handle to query the system monitor list.
     let Some(ref_win) = app
         .get_webview_window("main")
-        .or_else(|| app.get_webview_window("island"))
+        .or_else(|| app.get_webview_window("marquee"))
         .or_else(|| app.get_webview_window("settings"))
     else {
         return;
@@ -373,7 +373,7 @@ pub(crate) fn apply_preferred_monitor_positioning(app: &tauri::AppHandle, ui: &U
     let mon_w = monitor.size().width as i32;
     let mon_h = monitor.size().height as i32;
 
-    island_size::place_island(app, Some(monitor.clone()));
+    marquee_size::place_marquee(app, Some(monitor.clone()));
 
     // Main window: centred on the target monitor.
     if let Some(main_win) = app.get_webview_window("main") {
@@ -405,7 +405,7 @@ pub(crate) fn apply_preferred_monitor_positioning(app: &tauri::AppHandle, ui: &U
 
 /// Apply OS-level window flags from `WindowSettings` to the regular `main`
 /// window. Called from the `update_settings` command and once at startup so
-/// the persisted preferences take effect. Island/karaoke are NSPanels with
+/// the persisted preferences take effect. Marquee/karaoke are NSPanels with
 /// their own native level/click-through handling and are intentionally
 /// unaffected here.
 pub(crate) fn apply_main_window_settings(
@@ -489,11 +489,11 @@ fn any_surface_visible(handle: &tauri::AppHandle) -> bool {
     let Some(app_state) = handle.try_state::<AppState>() else {
         return true; // fail open — better to poll than to stall
     };
-    let (floating_cfg, island_cfg, karaoke_cfg) = app_state.ui.visibility_triple();
+    let (floating_cfg, marquee_cfg, karaoke_cfg) = app_state.ui.visibility_triple();
     touch_bar::is_visible()
         || app_state
             .surface_visibility
-            .is_visible("island", island_cfg)
+            .is_visible("marquee", marquee_cfg)
         || app_state
             .surface_visibility
             .is_visible("main", floating_cfg)
@@ -516,17 +516,17 @@ fn process_tick(
 
     // visibility_triple is a cheap lock-and-read of 3 bools; the previous
     // snapshot() cloned all 25 UiState fields per tick (4×/sec while playing).
-    let (floating_cfg, island_cfg, karaoke_cfg) = app_state.ui.visibility_triple();
-    let island_vis = app_state
+    let (floating_cfg, marquee_cfg, karaoke_cfg) = app_state.ui.visibility_triple();
+    let marquee_vis = app_state
         .surface_visibility
-        .is_visible("island", island_cfg);
+        .is_visible("marquee", marquee_cfg);
     let floating_vis = app_state
         .surface_visibility
         .is_visible("main", floating_cfg);
     let karaoke_vis = app_state
         .surface_visibility
         .is_visible("karaoke", karaoke_cfg);
-    let any_window_visible = island_vis || floating_vis || karaoke_vis;
+    let any_window_visible = marquee_vis || floating_vis || karaoke_vis;
     // The Touch Bar takes no events; it only keeps the poll loop awake.
     let touch_bar_vis = touch_bar::is_visible();
     let any_visible = any_window_visible || touch_bar_vis;
@@ -617,12 +617,12 @@ fn process_tick(
             // visible windows. The previous per-window loop cloned + JSON-
             // serialized the snapshot once per target.
             let send_main = floating_vis;
-            let send_island = island_vis;
+            let send_marquee = marquee_vis;
             let send_karaoke = karaoke_vis;
             let _ = handle.emit_filter("playback-tick", &render, |target| match target {
                 EventTarget::WebviewWindow { label } => match label.as_str() {
                     "main" => send_main,
-                    "island" => send_island,
+                    "marquee" => send_marquee,
                     "karaoke" => send_karaoke,
                     _ => false,
                 },
@@ -975,7 +975,7 @@ pub fn run() {
         ui,
         surface_visibility: RuntimeSurfaceVisibility::new_all_hidden(),
         poll: PollTrigger::default(),
-        island_fit: island_size::IslandFit::default(),
+        marquee_fit: marquee_size::MarqueeFit::default(),
     };
 
     let context = tauri::generate_context!();
@@ -1027,7 +1027,7 @@ pub fn run() {
             }
 
             // Convert overlay windows to NSPanel so they can float above other
-            // apps. Battery saver keeps the island off the glass.
+            // apps. Battery saver keeps the marquee off the glass.
             let battery_saver = app
                 .state::<AppState>()
                 .runtime
@@ -1056,13 +1056,13 @@ pub fn run() {
             // visibility. This prevents the empty-window flash that occurs
             // when the native frame becomes visible before React renders.
 
-            // Size the island before placing it: the saved position is the
+            // Size the marquee before placing it: the saved position is the
             // top-left corner of the sized window. Moves below refit it if
             // they take it to a display of another width.
-            island_size::fit_island_now(app.handle(), true);
+            marquee_size::fit_marquee_now(app.handle(), true);
 
             // Position all surfaces on the preferred monitor (or primary as
-            // fallback), the island where the user left it or in its default
+            // fallback), the marquee where the user left it or in its default
             // place, before any of them is shown.
             apply_preferred_monitor_positioning(app.handle(), &initial);
 
@@ -1082,7 +1082,7 @@ pub fn run() {
             // Light or dark, as the Theme setting says, before anything shows.
             commands::apply_theme(app.handle(), &initial.theme);
 
-            // Click-through for karaoke (always) and the island (when the user
+            // Click-through for karaoke (always) and the marquee (when the user
             // turned it on) is applied in `window_ready`, once each window is
             // realized.
 
@@ -1167,10 +1167,10 @@ pub fn run() {
             commands::get_ui_state,
             commands::toggle_surface,
             commands::set_show_on_fullscreen,
-            commands::set_island_locked,
-            commands::set_island_click_through,
+            commands::set_marquee_locked,
+            commands::set_marquee_click_through,
             commands::open_main_window,
-            commands::island_pointer_inside,
+            commands::marquee_pointer_inside,
             commands::set_settings_sidebar_glass,
             commands::get_touch_bar_support,
             commands::customize_touch_bar,
@@ -1183,11 +1183,11 @@ pub fn run() {
             commands::set_font_scale,
             commands::set_theme,
             commands::update_karaoke_settings,
-            commands::update_island_settings,
+            commands::update_marquee_settings,
             commands::set_overlay_position,
-            commands::settle_island_position,
-            commands::reset_island_position,
-            commands::get_island_frame,
+            commands::settle_marquee_position,
+            commands::reset_marquee_position,
+            commands::get_marquee_frame,
             commands::get_render_snapshot,
             commands::get_all_lyrics,
             commands::get_all_lines,
@@ -1226,17 +1226,17 @@ pub fn run() {
             updater::install_update,
         ])
         .on_window_event(|window, event| {
-            // A move can take the island to a display of another width,
+            // A move can take the marquee to a display of another width,
             // which can change its size.
-            if window.label() == "island"
+            if window.label() == "marquee"
                 && matches!(
                     event,
                     tauri::WindowEvent::Moved(_) | tauri::WindowEvent::ScaleFactorChanged { .. }
                 )
             {
-                island_size::fit_island(window.app_handle(), false);
+                marquee_size::fit_marquee(window.app_handle(), false);
             }
-            // The island keeps clear of the Karaoke lyrics, which move when
+            // The marquee keeps clear of the Karaoke lyrics, which move when
             // Karaoke's layout settings change.
             if window.label() == "karaoke"
                 && matches!(
@@ -1244,7 +1244,7 @@ pub fn run() {
                     tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)
                 )
             {
-                island_size::place_island(window.app_handle(), None);
+                marquee_size::place_marquee(window.app_handle(), None);
             }
             // Maximizing, going full screen, or restoring changes whether
             // "Keep window on top" applies.
@@ -1262,7 +1262,7 @@ pub fn run() {
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let label = window.label();
-                if label == "main" || label == "island" || label == "karaoke" {
+                if label == "main" || label == "marquee" || label == "karaoke" {
                     api.prevent_close();
                     let app = window.app_handle();
                     let currently_visible = {
@@ -1270,7 +1270,7 @@ pub fn run() {
                         let ui = state.ui.snapshot();
                         match label {
                             "main" => ui.floating_visible,
-                            "island" => ui.island_visible,
+                            "marquee" => ui.marquee_visible,
                             "karaoke" => ui.karaoke_visible,
                             _ => false,
                         }
@@ -1334,25 +1334,25 @@ mod tests {
     #[test]
     fn reloaded_page_does_not_inherit_hidden_report_from_unloaded_page() {
         let visibility = RuntimeSurfaceVisibility::new_all_hidden();
-        visibility.set_ready("island");
-        visibility.set_visible("island", true);
+        visibility.set_ready("marquee");
+        visibility.set_visible("marquee", true);
 
         // The unloading page reports hidden; its replacement starts visible
         // and only reports when that changes.
-        visibility.set_occluded("island", true);
-        visibility.set_ready("island");
+        visibility.set_occluded("marquee", true);
+        visibility.set_ready("marquee");
 
-        assert!(visibility.is_visible("island", true));
+        assert!(visibility.is_visible("marquee", true));
     }
 
     #[test]
     fn persisted_hidden_surface_stays_hidden_even_if_runtime_visible() {
         let visibility = RuntimeSurfaceVisibility::new_all_hidden();
-        visibility.set_ready("island");
+        visibility.set_ready("marquee");
 
-        visibility.set_visible("island", true);
+        visibility.set_visible("marquee", true);
 
-        assert!(!visibility.is_visible("island", false));
+        assert!(!visibility.is_visible("marquee", false));
     }
 
     #[test]

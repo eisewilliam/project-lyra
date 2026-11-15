@@ -12,7 +12,7 @@ import { playersAndOthers, playersOrOthers, siteConfig, type Platform } from '..
 import { LyricLightField } from '../hero/LyricLightField.tsx';
 import { PHRASE_LENGTH, STILL_TIME } from '../hero/phrases.ts';
 import { useSongClock, type SongPosition } from '../demo/useSongClock.ts';
-import { DemoArtwork, FloatingIsland, KaraokeOverlay, LyraWindow, type IgnoredMedia } from '../demo/surfaces.tsx';
+import { DemoArtwork, FloatingMarquee, KaraokeOverlay, LyraWindow, type IgnoredMedia } from '../demo/surfaces.tsx';
 import { paletteStyle, songById, songs, type Song, type SongId } from '../demo/song.ts';
 
 const route = getRouteApi('/');
@@ -100,7 +100,7 @@ function Hero({ platform }: { platform: Platform | null }) {
   </section>;
 }
 
-type SurfaceId = 'window' | 'island' | 'overlay';
+type SurfaceId = 'window' | 'marquee' | 'overlay';
 
 interface Surface {
   id: SurfaceId;
@@ -111,12 +111,12 @@ interface Surface {
 
 const surfaces: Surface[] = [
   { id: 'window', name: 'Lyra window', text: 'The whole song: artwork, playback controls and the full lyric sheet, with the current line in focus. Click any line to jump there.', detail: 'The window gets its theme from the artwork of your music.' },
-  { id: 'island', name: 'Marquee', text: 'A dynamic panel you can place anywhere on your screen. It displays the current and the next line in your song’s lyrics.', detail: 'You can resize to your preference, and set it to get out of the way when you hit pause.' },
+  { id: 'marquee', name: 'Marquee', text: 'A dynamic panel you can place anywhere on your screen. It displays the current and the next line in your song’s lyrics.', detail: 'You can resize to your preference, and set it to get out of the way when you hit pause.' },
   { id: 'overlay', name: 'Karaoke overlay', text: 'Follow the lyrics as they fill in, word by word.', detail: 'Add a background so the words stay readable over whatever’s on your screen.' },
 ];
 const sceneLabels: Record<SurfaceId, string> = {
   window: 'The Lyra window showing the demo song’s lyric sheet',
-  island: 'The Marquee docked above an open document',
+  marquee: 'The Marquee docked above an open document',
   overlay: 'The karaoke overlay over a bright desktop',
 };
 
@@ -140,7 +140,7 @@ function SongPicker({ song, onChange, name }: { song: Song; onChange: (id: SongI
   </fieldset>;
 }
 
-// Desk content for the island scene: an abstract document, not a real app.
+// Desk content for the marquee scene: an abstract document, not a real app.
 function WorkSheet() {
   return <span className="scene-work" aria-hidden="true">
     <i className="work-title" /><i /><i /><i className="is-short" /><i /><i /><i className="is-short" />
@@ -165,7 +165,7 @@ interface SceneProps {
 
 function SceneContent({ surface, song, demo }: SceneProps) {
   if (surface === 'window') return <LyraWindow song={song} position={demo.position} playing={demo.playing} />;
-  if (surface === 'island') return <><WorkSheet /><FloatingIsland song={song} position={demo.position} /></>;
+  if (surface === 'marquee') return <><WorkSheet /><FloatingMarquee song={song} position={demo.position} /></>;
   return <KaraokeOverlay song={song} position={demo.position} className="is-bottom" style={{ '--overlay-bg': 0.5 }} />;
 }
 

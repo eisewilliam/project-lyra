@@ -17,18 +17,18 @@ import { usePageVisible } from '@/utils/use-page-visible';
 import { useArtworkFallback } from '@/hooks/use-artwork-fallback';
 import { useSurfaceAutoHide } from '@/hooks/use-surface-auto-hide';
 import { useWordColouring } from '@/hooks/use-word-colouring';
-import { useIslandFrame } from '@/hooks/use-island-frame';
+import { useMarqueeFrame } from '@/hooks/use-marquee-frame';
 import { makeWindowReady, applySurfaceVisible } from '@/utils/playback-sync';
-import { useIslandInteraction } from './hooks/use-interaction';
+import { useMarqueeInteraction } from './hooks/use-interaction';
 import { METER_REST_SCALE, useAudioVisualizer } from './hooks/use-audio-visualizer';
 import { useProgressRing } from './hooks/use-progress-ring';
-import { useIslandPlayback } from './hooks/use-playback';
-import { useIslandSettings } from './hooks/use-settings';
+import { useMarqueePlayback } from './hooks/use-playback';
+import { useMarqueeSettings } from './hooks/use-settings';
 import { TRANSPARENT_FALLBACK_ART } from '@/utils/artwork';
-import './island.css';
+import './marquee.css';
 
-const SURFACE_LABEL = 'island';
-const ensureIslandWindowReady = makeWindowReady(SURFACE_LABEL);
+const SURFACE_LABEL = 'marquee';
+const ensureMarqueeWindowReady = makeWindowReady(SURFACE_LABEL);
 const BAR_KEYS = ['bar-left-outer', 'bar-left-inner', 'bar-right-inner', 'bar-right-outer'] as const;
 
 applySurfaceVisible(false);
@@ -90,13 +90,13 @@ function renderPanelContent({
   return <PanelPlaceholder state={panelState} />;
 }
 
-export default function Island() {
+export default function Marquee() {
   const [locked, setLocked] = useState(true);
   const [showCover, setShowCover] = useState(true);
   const [coverCircle, setCoverCircle] = useState(false);
   const [coverSpin, setCoverSpin] = useState(false);
   const [surfaceVisible, setSurfaceVisible] = useState(false);
-  const [islandLines, setIslandLines] = useState(2);
+  const [marqueeLines, setMarqueeLines] = useState(2);
   const [hideWhenPaused, setHideWhenPaused] = useState(false);
   const [hideWhenIdle, setHideWhenIdle] = useState(true);
   const [batterySaver, setBatterySaver] = useState(false);
@@ -122,7 +122,7 @@ export default function Island() {
     trackKey,
     baselineRef,
     wordRefs,
-  } = useIslandPlayback({ ensureWindowReady: ensureIslandWindowReady });
+  } = useMarqueePlayback({ ensureWindowReady: ensureMarqueeWindowReady });
 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const visualizerRefs = useRef<(HTMLSpanElement | null)[]>([]);
@@ -133,8 +133,8 @@ export default function Island() {
   const artUrl = artworkUrl ?? '';
   const { artworkError, setArtworkError } = useArtworkFallback(artUrl);
 
-  useIslandSettings({
-    ensureWindowReady: ensureIslandWindowReady,
+  useMarqueeSettings({
+    ensureWindowReady: ensureMarqueeWindowReady,
     desiredVisibleRef,
     autoHiddenRef,
     setSurfaceVisible,
@@ -144,7 +144,7 @@ export default function Island() {
     setShowCover,
     setCoverCircle,
     setCoverSpin,
-    setIslandLines,
+    setMarqueeLines,
     setBatterySaver,
     setTransparency,
   });
@@ -182,10 +182,10 @@ export default function Island() {
     baselineRef,
   });
 
-  const frame = useIslandFrame(ensureIslandWindowReady);
+  const frame = useMarqueeFrame(ensureMarqueeWindowReady);
 
-  const { hovered, edge, dragging, handlers } = useIslandInteraction({
-    ensureWindowReady: ensureIslandWindowReady,
+  const { hovered, edge, dragging, handlers } = useMarqueeInteraction({
+    ensureWindowReady: ensureMarqueeWindowReady,
     frame,
     locked,
     caps,
@@ -220,7 +220,7 @@ export default function Island() {
   const barsActive = (panelState === 'ready' || showTrackIntro) && isPlaying;
 
   const activeContentKey = getActiveContentKey(activeLineWords, activeLine);
-  const isCompactLayout = islandLines <= 1;
+  const isCompactLayout = marqueeLines <= 1;
   const currentLineFallback = getCurrentLineFallback(activeLine, nextLine);
   const lineContent = renderLyricContent(activeLineWords, wordRefs, currentLineFallback);
   const panelContent = renderPanelContent({
@@ -254,9 +254,9 @@ export default function Island() {
       aria-label="Marquee"
       {...handlers}
     >
-      <div className="island-background">
-        <img src={artSrc} alt="" className="island-bg-img" decoding="async" onError={() => setArtworkError(true)} />
-        <div className="island-bg-dimmer"></div>
+      <div className="marquee-background">
+        <img src={artSrc} alt="" className="marquee-bg-img" decoding="async" onError={() => setArtworkError(true)} />
+        <div className="marquee-bg-dimmer"></div>
       </div>
 
       <div className="panel-content">
@@ -264,7 +264,7 @@ export default function Island() {
           <div
             className="panel-art-container"
             style={{ position: 'relative', flexShrink: 0 }}
-            data-island-action={caps.raise ? 'raise' : undefined}
+            data-marquee-action={caps.raise ? 'raise' : undefined}
           >
             <div className={`panel-art ${coverCircle ? 'is-circle' : ''} ${coverSpin ? 'is-spinning' : ''} ${isPlaying ? '' : 'is-paused'}`}>
               <img
@@ -301,8 +301,8 @@ export default function Island() {
         {/* The meter doubles as the play/pause control: on hover its bars
             fold away and the transport glyph takes their place. */}
         <div
-          className={`island-meter ${canToggle ? 'can-toggle' : ''}`}
-          data-island-action={canToggle ? 'toggle' : undefined}
+          className={`marquee-meter ${canToggle ? 'can-toggle' : ''}`}
+          data-marquee-action={canToggle ? 'toggle' : undefined}
         >
           <div
             className={`audio-bars ${barsActive ? 'is-playing' : 'is-paused'}`}
@@ -322,20 +322,20 @@ export default function Island() {
               );
             })}
           </div>
-          {canToggle && <TransportGlyph playing={isPlaying} className="island-glyph" />}
+          {canToggle && <TransportGlyph playing={isPlaying} className="marquee-glyph" />}
         </div>
       </div>
 
       {!locked && (
         <>
           <span
-            className={`island-resize-handle is-left ${edge === -1 ? 'is-near' : ''}`}
-            data-island-resize="left"
+            className={`marquee-resize-handle is-left ${edge === -1 ? 'is-near' : ''}`}
+            data-marquee-resize="left"
             aria-hidden="true"
           />
           <span
-            className={`island-resize-handle is-right ${edge === 1 ? 'is-near' : ''}`}
-            data-island-resize="right"
+            className={`marquee-resize-handle is-right ${edge === 1 ? 'is-near' : ''}`}
+            data-marquee-resize="right"
             aria-hidden="true"
           />
         </>

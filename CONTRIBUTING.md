@@ -17,7 +17,7 @@ participating you are expected to uphold it.
 ```text
 apps/
   desktop-tauri/        Tauri 2 desktop host and React/Vite UI
-    src/                Four SPA surfaces: main, island, karaoke, settings
+    src/                Four SPA surfaces: main, marquee, karaoke, settings
     src-tauri/          Rust Tauri bridge, tray integration, window state
 crates/
   lyra-core/            Shared Rust playback, lyrics, sync, cache, config logic

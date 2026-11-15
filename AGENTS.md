@@ -45,11 +45,8 @@ cd apps/desktop-tauri && pnpm lint
 - Record every user-visible change in `CHANGELOG.md` under **Unreleased** in
   the same change, written for users (what changed for them, not how).
   Releases move those entries under the new version; see `docs/RELEASING.md`.
-- The `island` surface is called the **Marquee** in everything users see
-  (described as a "dynamic panel"). Code identifiers, commands, events and
-  saved `island_*` settings keep the `island` name until the code rename in
-  issue #10, which migrates the saved keys with serde aliases. Never call it a
-  "Dynamic Island".
+- The top-of-screen lyric panel is the **Marquee** (`marquee` in code); in
+  copy it is described as a "dynamic panel".
 
 ## Read relevant reference sections before changing behavior
 

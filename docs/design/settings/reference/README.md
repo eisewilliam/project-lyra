@@ -4,7 +4,7 @@ This folder renders static design references for the accompanying specification.
 
 Serve this directory with any local static server and open `index.html`. Supported query parameters:
 
-- `section=general|appearance|players|main|island|karaoke`
+- `section=general|appearance|players|main|marquee|karaoke`
 - `scale=1|2` for the fixed 860 x 640 logical content frame
 - `scroll=layout|end` for continuation views
 - `hardware=1` on General for the conditional monitor and Touch Bar example

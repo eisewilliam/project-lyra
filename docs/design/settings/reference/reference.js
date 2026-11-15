@@ -7,7 +7,7 @@ const pages = [
   ['appearance', 'Appearance', 'swatches'],
   ['players', 'Players', 'headphones'],
   ['main', 'Main Window', 'app-window'],
-  ['island', 'Marquee', 'picture-in-picture'],
+  ['marquee', 'Marquee', 'picture-in-picture'],
   ['karaoke', 'Karaoke', 'subtitles'],
 ];
 const section = pages.some(([id]) => id === params.get('section')) ? params.get('section') : 'appearance';
@@ -28,7 +28,7 @@ const row = (label, control, hint = '', disabled = false) => `<div class="row ${
 const group = (label, content) => `<section class="group"><h2>${label}</h2>${content}</section>`;
 const preview = (kind = 'main') => {
   const line = '<div class="preview-line active">Every word lands <span class="unsung">right on time</span></div>';
-  if (kind === 'island') return `<div class="preview-label">Live preview</div><div class="preview marquee-preview"><div class="marquee-panel"><img src="assets/cover.jpg" alt=""><div>${line}<div class="preview-line">And the next line waits in view</div></div></div></div>`;
+  if (kind === 'marquee') return `<div class="preview-label">Live preview</div><div class="preview marquee-preview"><div class="marquee-panel"><img src="assets/cover.jpg" alt=""><div>${line}<div class="preview-line">And the next line waits in view</div></div></div></div>`;
   if (kind === 'karaoke') return `<div class="preview-label">Live preview</div><div class="preview karaoke-preview"><div class="karaoke-band">${line}<div class="preview-line">And the next line waits in view</div></div></div>`;
   return `<div class="appearance-preview"><div class="preview-label">Live preview</div><div class="preview"><div class="preview-line">City lights are humming low</div>${line}<div class="preview-line">And the next line waits in view</div></div></div>`;
 };
@@ -71,8 +71,8 @@ if (section === 'main') {
     + group('Lyrics', row('Focus on current line', toggle('Focus on current line', false), 'Shows only the current and next line, centered.')
       + row('Text scale', slider('Text scale',['75%','Normal','125%','150%','200%'],1), 'Relative to Text size in Appearance.'));
 }
-if (section === 'island') {
-  document.getElementById('pinned-preview').innerHTML = preview('island');
+if (section === 'marquee') {
+  document.getElementById('pinned-preview').innerHTML = preview('marquee');
   body = group('Visibility', row('Show Marquee', toggle('Show Marquee', true), 'A dynamic panel above your other windows.')
     + row('Show over full-screen apps', toggle('Show over full-screen apps', false)))
     + group('Window', row('Lock position', toggle('Lock position', false), 'Unlock to drag the Marquee anywhere.')

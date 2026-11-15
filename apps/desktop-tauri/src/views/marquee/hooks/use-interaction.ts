@@ -2,23 +2,23 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent, type Wheel
 import { listen } from '@tauri-apps/api/event';
 import { LogicalSize } from '@tauri-apps/api/dpi';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { ISLAND_MAX_BASE_WIDTH, ISLAND_MIN_BASE_WIDTH } from '@/constants/island-size';
-import type { IslandFrame, PlaybackCaps } from '@/types/tauri-contracts';
+import { MARQUEE_MAX_BASE_WIDTH, MARQUEE_MIN_BASE_WIDTH } from '@/constants/marquee-size';
+import type { MarqueeFrame, PlaybackCaps } from '@/types/tauri-contracts';
 import { detectHostOs } from '@/utils/os';
 import {
-  islandPointerInside,
+  marqueePointerInside,
   openMainWindow,
   playbackNext,
   playbackPlayPause,
   playbackPrevious,
   playbackRaise,
   setOverlayPosition,
-  settleIslandPosition,
-  updateIslandSettings,
+  settleMarqueePosition,
+  updateMarqueeSettings,
 } from '@/utils/tauri-commands';
 
-/** What a click does, by the island region pressed (`data-island-action`). */
-export type IslandAction = 'open' | 'toggle' | 'raise';
+/** What a click does, by the marquee region pressed (`data-marquee-action`). */
+export type MarqueeAction = 'open' | 'toggle' | 'raise';
 
 /** A press that moves farther than this is a drag, not a click. */
 const DRAG_THRESHOLD_PX = 4;
@@ -35,21 +35,21 @@ const EDGE_ZONE_PX = 20;
 const HOVER_CHECK_MS = 400;
 
 /**
- * On macOS the island is a non-activating panel: WebKit may deliver an enter
+ * On macOS the marquee is a non-activating panel: WebKit may deliver an enter
  * but never the matching leave while another app is active, which left hover
  * effects stuck on. There, hover and edge proximity come only from the host's
- * native tracking area (`island-hover`, `island-edge`); DOM events are used
+ * native tracking area (`marquee-hover`, `marquee-edge`); DOM events are used
  * on the other platforms.
  */
 const NATIVE_HOVER = detectHostOs() === 'macos';
 
-export type IslandEdge = -1 | 0 | 1;
+export type MarqueeEdge = -1 | 0 | 1;
 
 const noop = (...args: unknown[]) => { if (args) return; };
 
 type Press = {
   pointerId: number;
-  action: IslandAction;
+  action: MarqueeAction;
   /** Pressed on an edge handle: resize from that side instead of moving. */
   resizeEdge: -1 | 1 | null;
   startX: number;
@@ -61,35 +61,35 @@ type Press = {
 };
 
 function resizeEdgeFor(target: EventTarget | null): -1 | 1 | null {
-  const el = target instanceof Element ? target.closest('[data-island-resize]') : null;
-  const edge = el?.getAttribute('data-island-resize');
+  const el = target instanceof Element ? target.closest('[data-marquee-resize]') : null;
+  const edge = el?.getAttribute('data-marquee-resize');
   if (edge === 'left') return -1;
   if (edge === 'right') return 1;
   return null;
 }
 
-function actionFor(target: EventTarget | null): IslandAction {
-  const el = target instanceof Element ? target.closest('[data-island-action]') : null;
-  const action = el?.getAttribute('data-island-action');
+function actionFor(target: EventTarget | null): MarqueeAction {
+  const el = target instanceof Element ? target.closest('[data-marquee-action]') : null;
+  const action = el?.getAttribute('data-marquee-action');
   return action === 'toggle' || action === 'raise' ? action : 'open';
 }
 
 /**
- * Island pointer model:
+ * Marquee pointer model:
  * - hover (native tracking area on macOS, DOM events elsewhere) reveals the
  *   transport control; nearing a side edge reveals that edge's resize handle
  *   (unlocked only);
  * - a click runs the pressed region's action — cover raises the player, the
  *   meter toggles playback; a double-click anywhere else opens the main
  *   window;
- * - a press that travels past a few pixels drags the island instead, unless
+ * - a press that travels past a few pixels drags the marquee instead, unless
  *   its position is locked, and the host settles it where it is let go;
  *   pressing an edge handle resizes it around its centre, within the widths
  *   its size allows on this display;
  * - a horizontal two-finger swipe skips tracks.
  * With click-through on, the window receives no mouse input at all.
  */
-export function useIslandInteraction({
+export function useMarqueeInteraction({
   ensureWindowReady,
   frame,
   locked,
@@ -98,15 +98,15 @@ export function useIslandInteraction({
 }: {
   ensureWindowReady: () => Promise<void>;
   /** The fitted size; null until the host has sized the window. */
-  frame: IslandFrame | null;
+  frame: MarqueeFrame | null;
   locked: boolean;
   caps: PlaybackCaps;
   onTogglePlaying: () => void;
 }) {
   const [nativeHover, setNativeHover] = useState(false);
   const [domHover, setDomHover] = useState(false);
-  const [nativeEdge, setNativeEdge] = useState<IslandEdge>(0);
-  const [domEdge, setDomEdge] = useState<IslandEdge>(0);
+  const [nativeEdge, setNativeEdge] = useState<MarqueeEdge>(0);
+  const [domEdge, setDomEdge] = useState<MarqueeEdge>(0);
   const [dragging, setDragging] = useState(false);
   const pressRef = useRef<Press | null>(null);
   const moveRafRef = useRef(0);
@@ -114,8 +114,8 @@ export function useIslandInteraction({
   const swipeRef = useRef({ accumulated: 0, lockedUntil: 0 });
   const lastOpenClickRef = useRef<{ at: number; x: number; y: number } | null>(null);
   const sizeScale = frame?.scale ?? 1;
-  const minWidth = ISLAND_MIN_BASE_WIDTH * sizeScale;
-  const maxWidth = Math.max(minWidth, Math.min(ISLAND_MAX_BASE_WIDTH * sizeScale, frame?.max_width ?? Infinity));
+  const minWidth = MARQUEE_MIN_BASE_WIDTH * sizeScale;
+  const maxWidth = Math.max(minWidth, Math.min(MARQUEE_MAX_BASE_WIDTH * sizeScale, frame?.max_width ?? Infinity));
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -123,11 +123,11 @@ export function useIslandInteraction({
     void (async () => {
       await ensureWindowReady();
       if (cancelled) return;
-      const unlistenHover = await listen<boolean>('island-hover', (event) => {
+      const unlistenHover = await listen<boolean>('marquee-hover', (event) => {
         setNativeHover(event.payload);
         if (!event.payload) setNativeEdge(0);
       });
-      const unlistenEdge = await listen<IslandEdge>('island-edge', (event) => setNativeEdge(event.payload));
+      const unlistenEdge = await listen<MarqueeEdge>('marquee-edge', (event) => setNativeEdge(event.payload));
       unlisten = () => {
         unlistenHover();
         unlistenEdge();
@@ -141,11 +141,11 @@ export function useIslandInteraction({
   }, [ensureWindowReady]);
 
   // Safety net for a lost exit event: while hovered, confirm the pointer is
-  // still over the island; if not, reverse the hover effects at once.
+  // still over the marquee; if not, reverse the hover effects at once.
   useEffect(() => {
     if (!NATIVE_HOVER || !nativeHover) return;
     const timer = globalThis.setInterval(() => {
-      islandPointerInside()
+      marqueePointerInside()
         .then((inside) => {
           if (inside) return;
           setNativeHover(false);
@@ -156,7 +156,7 @@ export function useIslandInteraction({
     return () => globalThis.clearInterval(timer);
   }, [nativeHover]);
 
-  const runAction = useCallback((action: IslandAction, x: number, y: number) => {
+  const runAction = useCallback((action: MarqueeAction, x: number, y: number) => {
     if (action === 'toggle' && caps.play_pause) {
       onTogglePlaying();
       playbackPlayPause().catch(noop);
@@ -188,7 +188,7 @@ export function useIslandInteraction({
     if (next.width !== undefined && next.height !== undefined) {
       getCurrentWindow().setSize(new LogicalSize(next.width, next.height)).catch(noop);
     }
-    return setOverlayPosition('island', next.x, next.y).catch(noop);
+    return setOverlayPosition('marquee', next.x, next.y).catch(noop);
   }, []);
 
   const onPointerDown = useCallback((event: PointerEvent<HTMLElement>) => {
@@ -217,7 +217,7 @@ export function useIslandInteraction({
   const onPointerMove = useCallback((event: PointerEvent<HTMLElement>) => {
     if (!NATIVE_HOVER) {
       const width = event.currentTarget.clientWidth;
-      let edge: IslandEdge = 0;
+      let edge: MarqueeEdge = 0;
       if (event.clientX <= EDGE_ZONE_PX) edge = -1;
       else if (event.clientX >= width - EDGE_ZONE_PX) edge = 1;
       setDomEdge(edge);
@@ -234,7 +234,7 @@ export function useIslandInteraction({
     if (!press.origin) return;
     const scale = press.origin.pixelRatio;
     if (press.resizeEdge !== null) {
-      // Grow or shrink symmetrically so the island stays centred where it is.
+      // Grow or shrink symmetrically so the marquee stays centred where it is.
       const startWidth = press.origin.width / scale;
       const width = Math.round(Math.min(maxWidth, Math.max(minWidth, startWidth + 2 * dx * press.resizeEdge)));
       const centerX = press.origin.x + press.origin.width / 2;
@@ -266,15 +266,15 @@ export function useIslandInteraction({
       // Apply the last frame of the drag before acting on where it ended.
       const moved = flushMove();
       if (press.resizeEdge === null) {
-        // The host settles the island into its display's safe area, lines it
+        // The host settles the marquee into its display's safe area, lines it
         // up with an edge or the centre when close to one, and saves it.
-        void moved.then(() => settleIslandPosition()).catch(noop);
+        void moved.then(() => settleMarqueePosition()).catch(noop);
       } else if (origin) {
         // Persist the final width once, not on every frame of the drag, as
         // the width at Medium size so it follows later size changes.
         void moved
           .then(() => getCurrentWindow().innerSize())
-          .then((size) => updateIslandSettings({
+          .then((size) => updateMarqueeSettings({
             base_width: Math.round(size.width / origin.pixelRatio / sizeScale),
           }))
           .catch(noop);
@@ -308,7 +308,7 @@ export function useIslandInteraction({
   const hovered = NATIVE_HOVER ? nativeHover : domHover;
   return {
     hovered: hovered && !dragging,
-    /** Side whose resize handle should show; 0 when the pointer is mid-island. */
+    /** Side whose resize handle should show; 0 when the pointer is mid-marquee. */
     edge: hovered ? (NATIVE_HOVER ? nativeEdge : domEdge) : 0,
     dragging,
     handlers: {

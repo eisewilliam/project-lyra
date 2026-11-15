@@ -6,8 +6,8 @@ import type {
   FollowRule,
   KnownPlayerInfo,
   MediaPolicyView,
-  IslandFrame,
-  IslandSettingsPatch,
+  MarqueeFrame,
+  MarqueeSettingsPatch,
   KaraokeSettingsPatch,
   LyricLineSlim,
   MonitorInfo,
@@ -33,8 +33,8 @@ export function getUiState(): Promise<UiState> {
   return invoke('get_ui_state');
 }
 
-export type SurfaceLabel = 'main' | 'island' | 'karaoke' | 'settings';
-export type OverlayLabel = 'island' | 'karaoke';
+export type SurfaceLabel = 'main' | 'marquee' | 'karaoke' | 'settings';
+export type OverlayLabel = 'marquee' | 'karaoke';
 
 export function toggleSurface(label: SurfaceLabel): Promise<void> {
   return invoke('toggle_surface', { label });
@@ -47,12 +47,12 @@ export function setShowOnFullscreen(
   return invoke('set_show_on_fullscreen', { surface, value });
 }
 
-export function setIslandLocked(locked: boolean): Promise<void> {
-  return invoke('set_island_locked', { locked });
+export function setMarqueeLocked(locked: boolean): Promise<void> {
+  return invoke('set_marquee_locked', { locked });
 }
 
-export function setIslandClickThrough(enabled: boolean): Promise<void> {
-  return invoke('set_island_click_through', { enabled });
+export function setMarqueeClickThrough(enabled: boolean): Promise<void> {
+  return invoke('set_marquee_click_through', { enabled });
 }
 
 export function openMainWindow(): Promise<void> {
@@ -71,8 +71,8 @@ export function setTheme(theme: string): Promise<void> {
   return invoke('set_theme', { theme });
 }
 
-export function updateIslandSettings(patch: IslandSettingsPatch): Promise<void> {
-  return invoke('update_island_settings', { patch });
+export function updateMarqueeSettings(patch: MarqueeSettingsPatch): Promise<void> {
+  return invoke('update_marquee_settings', { patch });
 }
 
 export function updateKaraokeSettings(patch: KaraokeSettingsPatch): Promise<void> {
@@ -83,18 +83,18 @@ export function setOverlayPosition(label: OverlayLabel, x: number, y: number): P
   return invoke('set_overlay_position', { label, x, y });
 }
 
-/** After a drag: the host settles the island into its display's safe area
+/** After a drag: the host settles the marquee into its display's safe area
     and saves where it ends up. */
-export function settleIslandPosition(): Promise<void> {
-  return invoke('settle_island_position');
+export function settleMarqueePosition(): Promise<void> {
+  return invoke('settle_marquee_position');
 }
 
-export function resetIslandPosition(): Promise<void> {
-  return invoke('reset_island_position');
+export function resetMarqueePosition(): Promise<void> {
+  return invoke('reset_marquee_position');
 }
 
-export function getIslandFrame(): Promise<IslandFrame | null> {
-  return invoke('get_island_frame');
+export function getMarqueeFrame(): Promise<MarqueeFrame | null> {
+  return invoke('get_marquee_frame');
 }
 
 export function getRenderSnapshot(): Promise<RenderSnapshot> {
@@ -284,8 +284,8 @@ export function installUpdate(): Promise<void> {
   return invoke('install_update');
 }
 
-export function islandPointerInside(): Promise<boolean> {
-  return invoke('island_pointer_inside');
+export function marqueePointerInside(): Promise<boolean> {
+  return invoke('marquee_pointer_inside');
 }
 
 /** Floats Liquid Glass behind the settings sidebar (macOS 26+), or removes it

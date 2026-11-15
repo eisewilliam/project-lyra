@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import type { IslandFrame } from '@/types/tauri-contracts';
-import { getIslandFrame } from '@/utils/tauri-commands';
+import type { MarqueeFrame } from '@/types/tauri-contracts';
+import { getMarqueeFrame } from '@/utils/tauri-commands';
 
 const noop = (...args: unknown[]) => { if (args) return; };
 
@@ -9,10 +9,10 @@ const noop = (...args: unknown[]) => { if (args) return; };
  * The Marquee's size on its current display. The host fits the window when
  * the size settings change, the Marquee moves to a display of another width,
  * or it docks against the top edge or leaves it, then sends the result as
- * `island-frame`.
+ * `marquee-frame`.
  */
-export function useIslandFrame(ensureWindowReady?: () => Promise<void>): IslandFrame | null {
-  const [frame, setFrame] = useState<IslandFrame | null>(null);
+export function useMarqueeFrame(ensureWindowReady?: () => Promise<void>): MarqueeFrame | null {
+  const [frame, setFrame] = useState<MarqueeFrame | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -20,14 +20,14 @@ export function useIslandFrame(ensureWindowReady?: () => Promise<void>): IslandF
     void (async () => {
       await ensureWindowReady?.();
       if (cancelled) return;
-      const stop = await listen<IslandFrame>('island-frame', (event) => setFrame(event.payload));
+      const stop = await listen<MarqueeFrame>('marquee-frame', (event) => setFrame(event.payload));
       if (cancelled) {
         stop();
         return;
       }
       unlisten = stop;
       // A frame sent before the listener existed; an event since wins.
-      const current = await getIslandFrame();
+      const current = await getMarqueeFrame();
       if (!cancelled && current) setFrame((prev) => prev ?? current);
     })().catch(noop);
     return () => {

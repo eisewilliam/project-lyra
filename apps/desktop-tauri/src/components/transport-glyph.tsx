@@ -1,7 +1,7 @@
 /**
  * Lyra's play/pause mark. Two bars (pause) fold into a triangle (play) by
- * animating each half's clip-path — the same shape family as the island's
- * meter bars, so the meter, the island control and the main play button read
+ * animating each half's clip-path — the same shape family as the marquee's
+ * meter bars, so the meter, the marquee control and the main play button read
  * as one object changing state. Styles live in `index.css`.
  */
 export function TransportGlyph({
