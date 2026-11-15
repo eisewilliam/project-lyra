@@ -30,7 +30,7 @@ const SETTLE_REPOLL_MS: u64 = 100;
 /// The Discord application Lyra's activity appears under: its name and icon
 /// come from the Discord developer portal. The ID is public, not a secret.
 /// While empty, Discord presence is unavailable and Settings hides it.
-const DISCORD_APPLICATION_ID: &str = "";
+const DISCORD_APPLICATION_ID: &str = "1571634580354502817";
 
 /// Link shown as a button on the Discord activity.
 const DISCORD_BUTTON_LABEL: &str = "Get Lyra";
