@@ -10,6 +10,12 @@ offered it as an update.
 
 ## [Unreleased]
 
+## [0.3.0-beta.1] - 2026-11-15
+
+A pre-release for testing ahead of 0.3.0: Discord presence, the Liquid Glass
+Settings sidebar on macOS 26, the Linux startup and window fixes, and lyrics
+that stay in sync on music videos.
+
 ### Added
 
 - Lyra can show the song you are listening to on your Discord profile, with
@@ -278,7 +284,8 @@ The first pre-release, for internal testing ahead of 0.1.0.
 - As a pre-release, this build is not offered as an update; install each beta
   from its release page.
 
-[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.3.0-beta.1...HEAD
+[0.3.0-beta.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.3.0-beta.1
 [0.2.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.1
 [0.2.0]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.0
 [0.2.0-beta.2]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.0-beta.2
