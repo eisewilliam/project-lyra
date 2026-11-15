@@ -121,6 +121,10 @@ Notes:
   Other browser/player combinations depend on position reporting (❓).
 - Music.app triggers its own Automation permission prompt the first time Lyra
   reads it.
+- Music.app gives AppleScript no artwork for streamed tracks that are not in
+  the library (`URL track`, zero artworks). Lyra then uses the artwork of the
+  Now Playing session for Music.app when it shows the same title, so the
+  cover appears while Music.app is the app macOS considers "now playing".
 - On a MacBook Pro with a Touch Bar, dragging along Lyra's lyrics seeks when
   the followed player supports seeking and reports a track duration. The drag
   previews the lyric at that position and sends the seek when released. This
@@ -224,3 +228,4 @@ paused, stopped, or for media Lyra does not follow.
 | 2026-11-15 | macOS | Discord presence shows on a Discord profile with Apple Music (Music.app) playing: "Listening to Lyra", title, artist, album and progress bar with elapsed and total time. With no cover URL from the player, Discord shows the Lyra application icon | Screenshot of the profile's activity card, 0.3.0-beta.1 |
 | 2026-11-15 | macOS | Discord cover lookup: result matching, album reuse, one cover per album for a repeated title, misses and failures kept apart, consent for browser media, one extra update when a cover arrives | 13 `lyra-core` unit tests against a stand-in catalogue and Discord |
 | 2026-11-15 | macOS | Discord cover lookup reaches Apple's catalogue and returns a 512-pixel `https` cover. Not yet seen on a Discord profile | Live lookups through `CoverArt`: two known songs found in 1.4 s and (after the 3 s spacing) 3.3 s, a made-up song a miss; the returned image URL loads |
+| 2026-11-16 | macOS 26 | Apple Music streamed track outside the library (`URL track`): AppleScript reports no artwork, the Now Playing session reports a JPEG for the same title; the followed AppleScript session now carries that artwork | `osascript` query of Music.app, then live polls of `PlayerHub` with the Music.app and MediaRemote adapters, before and after the fix |

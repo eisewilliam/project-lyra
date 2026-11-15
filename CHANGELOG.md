@@ -19,6 +19,12 @@ offered it as an update.
   looked up only after you have allowed lookups for it. A song the catalogue
   doesn't have keeps the Lyra icon.
 
+### Fixed
+
+- On macOS, songs streamed in Apple Music that aren't in your library show
+  their cover in Lyra. Before, only library songs did, and the cover was
+  left blank.
+
 ## [0.3.0-beta.1] - 2026-11-15
 
 A pre-release for testing ahead of 0.3.0: Discord presence, the Liquid Glass

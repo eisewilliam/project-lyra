@@ -139,6 +139,7 @@ Cache filenames are percent-encoded track URIs:
 | `player/mediaremote_macos.rs` | macOS Now Playing (browsers, other apps) through the vendored mediaremote-adapter running in `/usr/bin/perl` |
 | `player/smtc_windows.rs` | Windows SMTC: every media session, per-session control flags and playback controls |
 | `player/mpris_linux.rs` | Linux MPRIS: every player on the user's D-Bus session bus |
+| `player/hub.rs` (artwork) | Before choosing a transport per app, a session with no artwork borrows the artwork another transport reports for the same app and title (Music.app streams have none over AppleScript; Now Playing does) |
 | `presence/mod.rs` | `DiscordPresence`: change detection in `publish`, worker thread with reconnect, idle check and rate limit |
 | `presence/activity.rs` | Pure `PlaybackSnapshot` → Discord Listening activity mapping, text limits, Spotify exclusion |
 | `presence/cover.rs` | `CoverArt`: cover URL for tracks whose player gives none Discord can fetch. iTunes Search lookup on its own thread, strict title and lead-artist matching, in-memory cache of covers and confirmed misses |
