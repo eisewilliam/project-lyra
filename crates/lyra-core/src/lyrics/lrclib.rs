@@ -1,4 +1,6 @@
-use crate::domain::{LyricDocument, LyricSourceKind, TrackRef};
+use crate::domain::{
+    CandidateFit, LyricCandidate, LyricDocument, LyricSearchQuery, LyricSourceKind, TrackRef,
+};
 use crate::lyrics::{parser, LyricSource};
 use anyhow::Result;
 use reqwest::{header, StatusCode};
@@ -21,6 +23,10 @@ const SEARCH_DURATION_TOLERANCE_SEC: i64 = 5;
 /// Minimum score a search candidate must reach to be accepted. Tuned so a
 /// pure title+artist match without duration agreement is rejected.
 const MIN_SEARCH_SCORE: i32 = 50;
+/// Most matches offered when the user chooses lyrics.
+const MAX_CANDIDATES: usize = 30;
+/// Lines shown from each match so the user can tell them apart.
+const PREVIEW_LINES: usize = 3;
 
 /// Tries per request while LRCLIB rate limits (429), fails (5xx other than
 /// 503) or the connection drops.
@@ -241,18 +247,33 @@ impl LrclibClient {
         }
     }
 
-    /// `/api/search` — keyword search, returns up to 20 records.
+    /// `/api/get/{id}` — one record by its LRCLIB ID. Returns Ok(None) on 404.
+    async fn get_by_id(&self, id: i64) -> Result<Option<LrclibRecord>> {
+        let url = format!("{}/get/{id}", self.base_url);
+        let (status, body) = self.request(&url).await?;
+        match status {
+            StatusCode::NOT_FOUND => Ok(None),
+            s if s.is_success() => Ok(Some(serde_json::from_slice(&body)?)),
+            s => Err(LrclibHttpError { status: s.as_u16() }.into()),
+        }
+    }
+
+    /// `/api/search` — keyword search, returns up to 20 records. An empty
+    /// artist searches by title alone.
     async fn search_records(
         &self,
         track_name: &str,
         artist_name: &str,
     ) -> Result<Vec<LrclibRecord>> {
-        let url = format!(
-            "{}/search?track_name={}&artist_name={}",
+        let mut url = format!(
+            "{}/search?track_name={}",
             self.base_url,
             urlencoding::encode(track_name),
-            urlencoding::encode(artist_name),
         );
+        if !artist_name.trim().is_empty() {
+            url.push_str("&artist_name=");
+            url.push_str(&urlencoding::encode(artist_name));
+        }
 
         let (status, body) = self.request(&url).await?;
         if !status.is_success() {
@@ -434,6 +455,171 @@ impl LyricSource for LrclibClient {
 
         Ok(plain_fallback)
     }
+
+    async fn candidates(
+        &self,
+        track: &TrackRef,
+        query: &LyricSearchQuery,
+    ) -> Result<Vec<LyricCandidate>> {
+        // The track's own title and artist get the same extra searches as
+        // an automatic lookup; a typed search is taken as written.
+        let automatic = query.title == track.title && query.artist == track.artist;
+        let mut searches = vec![(query.title.clone(), query.artist.clone())];
+        if automatic {
+            let base_title =
+                strip_feature_annotations(&track.title).unwrap_or_else(|| track.title.clone());
+            if base_title != track.title {
+                searches.push((base_title.clone(), track.artist.clone()));
+            }
+            if let Some(lead) = lead_artist(&track.artist) {
+                searches.push((base_title, lead.to_owned()));
+            }
+        }
+
+        let mut records = Vec::new();
+        let mut failure = None;
+        for (title, artist) in searches {
+            match self.search_records(&title, &artist).await {
+                Ok(found) => records.extend(found),
+                Err(error) => {
+                    failure.get_or_insert(error);
+                }
+            }
+        }
+        if let Some(error) = failure.filter(|_| records.is_empty()) {
+            return Err(error);
+        }
+
+        // Judge fit against what was searched, with the track's own length
+        // and album.
+        let target = TrackRef {
+            title: query.title.clone(),
+            artist: query.artist.clone(),
+            ..track.clone()
+        };
+        Ok(rank_candidates(records, &target))
+    }
+
+    async fn fetch_by_id(&self, track_key: &str, id: i64) -> Result<Option<LyricDocument>> {
+        match self.get_by_id(id).await? {
+            Some(record) => into_document(track_key, record),
+            None => Ok(None),
+        }
+    }
+}
+
+/// Every searched record with lyrics, labelled by how well it fits `track`
+/// and ordered best first, synced before plain within each fit. Unlike
+/// `pick_best_record`, nothing is rejected: the automatic choice being wrong
+/// is why the user is looking.
+fn rank_candidates(records: Vec<LrclibRecord>, track: &TrackRef) -> Vec<LyricCandidate> {
+    let duration_sec = (track.duration_ms > 0).then(|| (track.duration_ms + 500) / 1000);
+    let track_variants = extract_variant_tags(&track.title);
+    let norm_title = normalize_for_compare(&track.title);
+    let norm_artist = normalize_for_compare(&track.artist);
+    let norm_album = track
+        .album
+        .as_deref()
+        .map(normalize_for_compare)
+        .unwrap_or_default();
+    let score = |record: &LrclibRecord, variants: &VariantTags, duration: Option<u64>| {
+        score_candidate(
+            record,
+            track,
+            variants,
+            duration,
+            &norm_title,
+            &norm_artist,
+            &norm_album,
+        )
+    };
+
+    let mut seen = std::collections::HashSet::new();
+    let mut ranked: Vec<(CandidateFit, bool, i32, LyricCandidate)> = records
+        .into_iter()
+        .filter_map(|record| {
+            let id = record.id?;
+            if !seen.insert(id) {
+                return None;
+            }
+            // Same choice of text as `into_document`, so fingerprints match.
+            let synced = record
+                .synced_lyrics
+                .as_deref()
+                .filter(|raw| !raw.trim().is_empty())
+                .and_then(|raw| parser::parse_lrc("", raw, LyricSourceKind::Lrclib).ok())
+                .filter(|doc| !doc.lines.is_empty());
+            let (text, preview) = match &synced {
+                Some(doc) => (
+                    doc.raw_lrc.as_str(),
+                    preview(doc.lines.iter().map(|line| line.text.as_str())),
+                ),
+                None => {
+                    let plain = record
+                        .plain_lyrics
+                        .as_deref()
+                        .filter(|plain| !plain.trim().is_empty())?;
+                    (plain, preview(plain.lines()))
+                }
+            };
+
+            let cand_variants = extract_variant_tags(record.track_name.as_deref().unwrap_or(""));
+            let duration_delta = duration_sec
+                .zip(record.duration)
+                .map(|(want, got)| (want as i64 - got.round() as i64).abs());
+            let (fit, rank_score) = if !track_variants.compatible_with(&cand_variants) {
+                (
+                    CandidateFit::OtherVersion,
+                    score(&record, &cand_variants, None).unwrap_or(0),
+                )
+            } else if duration_delta.is_some_and(|delta| delta > SEARCH_DURATION_TOLERANCE_SEC) {
+                (
+                    CandidateFit::OtherLength,
+                    score(&record, &track_variants, None).unwrap_or(0),
+                )
+            } else {
+                match score(&record, &track_variants, duration_sec) {
+                    Some(points) if points >= MIN_SEARCH_SCORE => (CandidateFit::Good, points),
+                    Some(points) => (CandidateFit::Weak, points),
+                    None => (CandidateFit::Weak, 0),
+                }
+            };
+
+            let candidate = LyricCandidate {
+                id,
+                fingerprint: super::fingerprint(text),
+                title: record.track_name.clone().unwrap_or_default(),
+                artist: record.artist_name.clone().unwrap_or_default(),
+                album: record.album_name.clone().filter(|a| !a.trim().is_empty()),
+                duration_ms: record
+                    .duration
+                    .filter(|d| *d > 0.0)
+                    .map(|d| (d * 1000.0).round() as u64),
+                synced: synced.is_some(),
+                fit,
+                preview,
+                current: false,
+            };
+            Some((fit, candidate.synced, rank_score, candidate))
+        })
+        .collect();
+    ranked.sort_by_key(|(fit, synced, score, _)| {
+        (*fit, std::cmp::Reverse(*synced), std::cmp::Reverse(*score))
+    });
+    ranked
+        .into_iter()
+        .take(MAX_CANDIDATES)
+        .map(|(.., candidate)| candidate)
+        .collect()
+}
+
+fn preview<'a>(lines: impl Iterator<Item = &'a str>) -> Vec<String> {
+    lines
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .take(PREVIEW_LINES)
+        .map(str::to_owned)
+        .collect()
 }
 
 fn into_document(uri: &str, record: LrclibRecord) -> Result<Option<LyricDocument>> {
@@ -940,6 +1126,194 @@ mod tests {
             retry_backoff: Duration::from_millis(1),
             busy: Mutex::new(None),
         }
+    }
+
+    fn record(
+        id: i64,
+        title: &str,
+        artist: &str,
+        duration: f64,
+        synced: Option<&str>,
+        plain: Option<&str>,
+    ) -> LrclibRecord {
+        LrclibRecord {
+            id: Some(id),
+            track_name: Some(title.into()),
+            artist_name: Some(artist.into()),
+            album_name: None,
+            duration: Some(duration),
+            instrumental: false,
+            synced_lyrics: synced.map(Into::into),
+            plain_lyrics: plain.map(Into::into),
+        }
+    }
+
+    #[test]
+    fn candidates_keep_every_match_with_lyrics_ranked_by_fit() {
+        let track = TrackRef {
+            duration_ms: 180_000,
+            ..track()
+        };
+        let records = vec![
+            record(
+                1,
+                "Song (Remix)",
+                "Artist",
+                180.0,
+                Some("[00:01.00]Remix"),
+                None,
+            ),
+            record(2, "Song", "Artist", 240.0, Some("[00:01.00]Long"), None),
+            record(
+                3,
+                "Song",
+                "Artist",
+                180.0,
+                None,
+                Some("Plain one\n\nPlain two"),
+            ),
+            record(
+                4,
+                "Song",
+                "Artist",
+                181.0,
+                Some("[00:01.00]A\n[00:02.00]\n[00:03.00]B\n[00:04.00]C\n[00:05.00]D"),
+                None,
+            ),
+            record(
+                5,
+                "Something Else",
+                "Other",
+                180.0,
+                Some("[00:01.00]Loose"),
+                None,
+            ),
+            record(
+                4,
+                "Song",
+                "Artist",
+                181.0,
+                Some("[00:01.00]Duplicate"),
+                None,
+            ),
+            record(6, "Song", "Artist", 180.0, None, None),
+            LrclibRecord {
+                id: None,
+                ..record(0, "Song", "Artist", 180.0, Some("[00:01.00]No id"), None)
+            },
+        ];
+        let ranked = rank_candidates(records, &track);
+        let order: Vec<_> = ranked.iter().map(|c| (c.id, c.fit)).collect();
+        assert_eq!(
+            order,
+            [
+                (4, CandidateFit::Good),
+                (3, CandidateFit::Good),
+                (5, CandidateFit::Weak),
+                (2, CandidateFit::OtherLength),
+                (1, CandidateFit::OtherVersion),
+            ]
+        );
+        assert_eq!(ranked[0].preview, ["A", "B", "C"]);
+        assert!(ranked[0].synced);
+        assert_eq!(ranked[0].duration_ms, Some(181_000));
+        assert_eq!(ranked[1].preview, ["Plain one", "Plain two"]);
+        assert!(!ranked[1].synced);
+    }
+
+    #[test]
+    fn candidate_fingerprint_matches_the_document_it_becomes() {
+        let synced = record(
+            9,
+            "Song",
+            "Artist",
+            180.0,
+            Some("[00:01.00]Timed"),
+            Some("Untimed"),
+        );
+        let candidate = rank_candidates(vec![synced.clone()], &track()).remove(0);
+        let doc = into_document("k", synced).unwrap().unwrap();
+        assert_eq!(
+            Some(candidate.fingerprint),
+            super::super::document_fingerprint(&doc)
+        );
+
+        let broken = record(
+            10,
+            "Song",
+            "Artist",
+            180.0,
+            Some("not lrc"),
+            Some("Untimed"),
+        );
+        let candidate = rank_candidates(vec![broken.clone()], &track()).remove(0);
+        assert!(!candidate.synced);
+        let doc = into_document("k", broken).unwrap().unwrap();
+        assert_eq!(
+            Some(candidate.fingerprint),
+            super::super::document_fingerprint(&doc)
+        );
+    }
+
+    #[tokio::test]
+    async fn candidate_search_merges_title_and_lead_artist_searches() {
+        let track = TrackRef {
+            title: "Song (feat. Guest)".into(),
+            artist: "Artist, Guest".into(),
+            duration_ms: 180_000,
+            ..TrackRef::fixture("test")
+        };
+        let client = server(vec![
+            (200, "[]"),
+            (
+                200,
+                r#"[{"id":1,"trackName":"Song","artistName":"Artist, Guest","duration":180,"syncedLyrics":"[00:01.00]One"}]"#,
+            ),
+            (
+                200,
+                r#"[{"id":1,"trackName":"Song","artistName":"Artist, Guest","duration":180,"syncedLyrics":"[00:01.00]One"},{"id":2,"trackName":"Song","artistName":"Artist","duration":180,"plainLyrics":"Two"}]"#,
+            ),
+        ]);
+        let query = LyricSearchQuery {
+            title: track.title.clone(),
+            artist: track.artist.clone(),
+        };
+        let found = client.candidates(&track, &query).await.unwrap();
+        let ids: Vec<_> = found.iter().map(|c| c.id).collect();
+        assert_eq!(ids, [1, 2]);
+    }
+
+    #[tokio::test]
+    async fn candidate_search_fails_only_when_every_search_fails() {
+        let client = server(vec![(400, "{}")]);
+        let query = LyricSearchQuery {
+            title: "Typed".into(),
+            artist: String::new(),
+        };
+        assert!(client.candidates(&track(), &query).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn chosen_match_is_fetched_by_id() {
+        let client = server(vec![
+            (
+                200,
+                r#"{"id":7,"trackName":"Song","artistName":"Artist","syncedLyrics":"[00:01.00]Chosen"}"#,
+            ),
+            (404, "{}"),
+        ]);
+        let doc = client
+            .fetch_by_id("spotify:track:x", 7)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(doc.track_key, "spotify:track:x");
+        assert_eq!(doc.lines[0].text, "Chosen");
+        assert!(client
+            .fetch_by_id("spotify:track:x", 8)
+            .await
+            .unwrap()
+            .is_none());
     }
 
     #[tokio::test]

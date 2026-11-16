@@ -12,6 +12,17 @@ offered it as an update.
 
 ### Added
 
+- If Lyra shows the wrong lyrics for a song, choose others: Choose Lyrics… in
+  the main window's track menu (···) lists other matches from LRCLIB, with
+  their first lines, length and whether they are synced, and you can search
+  again with a different title or artist. When Lyra finds no lyrics, the same
+  search is under Search manually. Lyra keeps your choice for that song.
+- Add your own lyrics from a file with Add Lyrics File… in the track menu. LRC
+  files follow the song in every view; plain text files show in the main
+  window. Your lyrics are kept when the lyrics cache is cleared.
+- Use Automatic Lyrics in the track menu goes back to the lyrics Lyra finds by
+  itself. Choosing or adding lyrics resets the song's timing adjustment, since
+  it was set for the old lyrics.
 - Discord presence shows cover art for players that share artwork only as an
   image, such as Apple Music, where the Lyra icon showed before. Lyra finds
   the cover by sending the song's artist and title to Apple's music

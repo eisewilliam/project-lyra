@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePlaybackSnapshot } from '@/hooks/use-playback-snapshot';
 import type {
   IgnoredMedia,
+  LyricsOrigin,
   LyricWord,
   PlaybackCaps,
   RenderSnapshot,
@@ -43,6 +44,7 @@ export function useLyricsPlayback({
   const [lyricOffsetMs, setLyricOffsetMs] = useState(0);
   const [caps, setCaps] = useState<PlaybackCaps>(NO_PLAYBACK_CAPS);
   const [ignoredMedia, setIgnoredMedia] = useState<IgnoredMedia | null>(null);
+  const [lyricsOrigin, setLyricsOrigin] = useState<LyricsOrigin>(AUTOMATIC_ORIGIN);
   const canSeekRef = useRef(false);
 
   const baselineRef = useRef<PositionBaseline>({ ms: 0, at: 0, targetMs: 0, targetAt: 0, blendDur: 1 });
@@ -54,6 +56,7 @@ export function useLyricsPlayback({
   const lyricsLoadedUriRef = useRef('');
   const activeWordsKeyRef = useRef('');
   const offsetUriRef = useRef('');
+  const revisionRef = useRef<number | null>(null);
 
   // Guard: when the user toggles play/pause, ignore the snapshot's
   // isPlaying state for a short window so stale polls don't cause the
@@ -134,6 +137,20 @@ export function useLyricsPlayback({
       prev?.track_key === ignored?.track_key && prev?.reason === ignored?.reason ? prev : ignored
     ));
     setLyricsStatus(snap.lyrics_status);
+    const origin = snap.lyrics_origin ?? AUTOMATIC_ORIGIN;
+    setLyricsOrigin((prev) => (sameOrigin(prev, origin) ? prev : origin));
+
+    // New lyrics for the same track (the user chose others, or went back to
+    // the automatic ones) start with no timing offset.
+    const revision = snap.lyrics_revision ?? 0;
+    if (!uriChanged && uri && revisionRef.current !== null && revisionRef.current !== revision) {
+      getLyricOffset()
+        .then((ms) => {
+          if (lastUriRef.current === uri) setLyricOffsetMs(ms);
+        })
+        .catch(noop);
+    }
+    revisionRef.current = revision;
 
     const newPos = snap.playback.position_ms ?? 0;
     const now = performance.now();
@@ -161,9 +178,12 @@ export function useLyricsPlayback({
       setActiveLineWords(nextWords);
     }
 
+    // Once per track and revision: going back to automatic lyrics that were
+    // never cached needs a lookup for a track already looked up.
+    const lyricsKey = `${uri}:${revision}`;
     if (uri && snap.lyrics_status === 'Loading') {
-      if (refreshedUriRef.current !== uri) {
-        refreshedUriRef.current = uri;
+      if (refreshedUriRef.current !== lyricsKey) {
+        refreshedUriRef.current = lyricsKey;
         refreshLyrics().catch(noop);
       }
     } else {
@@ -172,7 +192,7 @@ export function useLyricsPlayback({
       refreshedUriRef.current = '';
     }
 
-    const contentKey = `${uri}:${snap.lyrics_status}`;
+    const contentKey = `${lyricsKey}:${snap.lyrics_status}`;
     if (uri && (snap.lyrics_status === 'Ready' || snap.lyrics_status === 'Unsynced')
       && lyricsLoadedUriRef.current !== contentKey) {
       lyricsLoadedUriRef.current = contentKey;
@@ -217,6 +237,7 @@ export function useLyricsPlayback({
     caps,
     ignoredMedia,
     lyricsStatus,
+    lyricsOrigin,
     snapshotReady,
     positionMs,
     setPositionMs,
@@ -233,4 +254,13 @@ export function useLyricsPlayback({
     seekToLine,
     isDragging,
   };
+}
+
+const AUTOMATIC_ORIGIN: LyricsOrigin = { kind: 'automatic' };
+
+function sameOrigin(a: LyricsOrigin, b: LyricsOrigin): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === 'picked' && b.kind === 'picked') return a.id === b.id;
+  if (a.kind === 'imported' && b.kind === 'imported') return a.name === b.name;
+  return true;
 }

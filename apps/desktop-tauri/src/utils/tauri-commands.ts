@@ -10,7 +10,9 @@ import type {
   MarqueeFrame,
   MarqueeSettingsPatch,
   KaraokeSettingsPatch,
+  LyricCandidates,
   LyricLineSlim,
+  LyricSearchQuery,
   MonitorInfo,
   PlayerSessionInfo,
   RenderSnapshot,
@@ -231,6 +233,29 @@ export function setSurfaceOccluded(label: SurfaceLabel, occluded: boolean): Prom
 
 export function getPlainLyrics(): Promise<string | null> {
   return invoke<string | null>('get_plain_lyrics');
+}
+
+/** Other LRCLIB matches for the playing track, searched with `query` or
+ * with the track's own title and artist. Rejects with a `LyricChoiceError`. */
+export function listLyricCandidates(query: LyricSearchQuery | null): Promise<LyricCandidates> {
+  return invoke('list_lyric_candidates', { query });
+}
+
+/** Show the match `id` for `trackKey` instead of the automatic lyrics. */
+export function chooseLyricCandidate(trackKey: string, id: number): Promise<void> {
+  return invoke('choose_lyric_candidate', { trackKey, id });
+}
+
+/** Ask for a lyrics file with the system's open panel and use it for the
+ * playing track. Resolves false when the user cancels. The host explains a
+ * file it can't use in a native alert. */
+export function importLyricsFile(): Promise<boolean> {
+  return invoke('import_lyrics_file');
+}
+
+/** Go back to the automatic lyrics for the playing track. */
+export function resetLyricsChoice(): Promise<void> {
+  return invoke('reset_lyrics_choice');
 }
 
 export function copyText(text: string): Promise<void> {

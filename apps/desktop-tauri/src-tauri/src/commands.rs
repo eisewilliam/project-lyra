@@ -3,8 +3,9 @@ use crate::tray;
 use crate::ui_state::UiState;
 use crate::AppState;
 use lyra_core::domain::{
-    BrowserLyrics, DiscordPresenceStatus, FollowRule, KnownPlayerInfo, MediaPolicyView,
-    PlayerSessionInfo, RenderSnapshot, SettingsSnapshot,
+    BrowserLyrics, DiscordPresenceStatus, FollowRule, KnownPlayerInfo, LyricCandidates,
+    LyricChoiceError, LyricSearchQuery, MediaPolicyView, PlayerSessionInfo, RenderSnapshot,
+    SettingsSnapshot,
 };
 use lyra_core::player::PlayerCommand;
 use serde::{Deserialize, Serialize};
@@ -522,6 +523,118 @@ pub async fn refresh_lyrics(state: State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 pub async fn force_refresh_lyrics(state: State<'_, AppState>) -> Result<(), String> {
     state.lyrics.force_refresh(&state.runtime).await
+}
+
+// ── Lyric choice ──────────────────────────────────────────────────────────────
+
+/// Broadcast a fresh snapshot after the playing track's lyrics change, so
+/// every surface shows the new ones at once.
+fn broadcast_render(state: &State<'_, AppState>, app: &AppHandle) {
+    let render = lock_runtime(state).tick();
+    let _ = app.emit("playback-tick", render);
+}
+
+/// Other LRCLIB matches for the playing track, searched with `query` or
+/// with the track's own title and artist.
+#[tauri::command]
+pub async fn list_lyric_candidates(
+    query: Option<LyricSearchQuery>,
+    state: State<'_, AppState>,
+) -> Result<LyricCandidates, LyricChoiceError> {
+    state.lyrics.candidates(&state.runtime, query).await
+}
+
+/// Show the LRCLIB match `id` for `track_key` instead of the automatic one.
+#[tauri::command]
+pub async fn choose_lyric_candidate(
+    track_key: String,
+    id: i64,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), LyricChoiceError> {
+    state.lyrics.choose(&state.runtime, &track_key, id).await?;
+    broadcast_render(&state, &app);
+    Ok(())
+}
+
+/// Ask for a lyrics file with the system's open panel and use it for the
+/// track playing now. A file Lyra can't use gets a native alert saying why.
+/// Returns false when the user cancels.
+#[tauri::command]
+pub async fn import_lyrics_file(
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<bool, LyricChoiceError> {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+
+    // The file is for the song playing when the user asked, even if it ends
+    // while the panel is open.
+    let track_key = lock_runtime(&state)
+        .current_track()
+        .ok_or(LyricChoiceError::NoTrack)?
+        .uri;
+    let (chosen, picked) = tokio::sync::oneshot::channel();
+    // Non-blocking: a sheet on macOS, so ticks keep running while it is open.
+    app.dialog()
+        .file()
+        .set_title("Choose a Lyrics File")
+        .add_filter("Lyrics", &["lrc", "txt"])
+        .set_parent(&window)
+        .pick_file(move |path| {
+            let _ = chosen.send(path);
+        });
+    let Some(path) = picked.await.ok().flatten() else {
+        return Ok(false);
+    };
+
+    let result = async {
+        let path = path.into_path().map_err(|_| LyricChoiceError::Unreadable)?;
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned());
+        let bytes = tauri::async_runtime::spawn_blocking(move || read_lyrics_file(&path))
+            .await
+            .map_err(|_| LyricChoiceError::Unreadable)??;
+        state
+            .lyrics
+            .import(&state.runtime, &track_key, &bytes, name)
+    }
+    .await;
+    if let Err(error) = result {
+        app.dialog()
+            .message(error.to_string())
+            .title("Couldn\u{2019}t use this file")
+            .kind(MessageDialogKind::Warning)
+            .parent(&window)
+            .show(|_| {});
+        return Err(error);
+    }
+    broadcast_render(&state, &app);
+    Ok(true)
+}
+
+/// Read at most one byte past the size limit: enough to know a file is too
+/// large without reading all of it.
+fn read_lyrics_file(path: &std::path::Path) -> Result<Vec<u8>, LyricChoiceError> {
+    use std::io::Read;
+    let file = std::fs::File::open(path).map_err(|_| LyricChoiceError::Unreadable)?;
+    let mut bytes = Vec::new();
+    file.take(lyra_core::lyrics::import::MAX_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| LyricChoiceError::Unreadable)?;
+    Ok(bytes)
+}
+
+/// Go back to the automatic lyrics for the playing track.
+#[tauri::command]
+pub async fn reset_lyrics_choice(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), LyricChoiceError> {
+    state.lyrics.reset_choice(&state.runtime)?;
+    broadcast_render(&state, &app);
+    Ok(())
 }
 use lyra_core::domain::SettingsPatch;
 

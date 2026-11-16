@@ -1,7 +1,7 @@
 import { memo, type RefObject } from 'react';
 import { useCrossfadeSrc } from '@/hooks/use-crossfade-src';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import type { PlaybackCaps, TrackRef } from '@/types/tauri-contracts';
+import type { LyricsOrigin, PlaybackCaps, TrackRef } from '@/types/tauri-contracts';
 import type { PositionBaseline } from '@/utils/playback-sync';
 import { SyncLyricsPanel } from './sync-lyrics-panel';
 import { ProgressBar } from './progress-bar';
@@ -26,12 +26,16 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   hasSyncedLyrics,
   isPlaying,
   lyricOffsetMs,
+  lyricsOrigin,
+  onAddLyricsFile,
   onArtworkError,
+  onChooseLyrics,
   onMarkNotMusic,
   onNudgeOffset,
   onResetOffset,
   onRetryLyrics,
   onSetOffset,
+  onUseAutomaticLyrics,
   positionLabelRef,
   progressFillRef,
   progressPct,
@@ -57,12 +61,16 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   hasSyncedLyrics: boolean;
   isPlaying: boolean;
   lyricOffsetMs: number;
+  lyricsOrigin: LyricsOrigin;
+  onAddLyricsFile: () => void;
   onArtworkError: () => void;
+  onChooseLyrics: () => void;
   onMarkNotMusic: () => void;
   onNudgeOffset: (deltaMs: number) => void;
   onResetOffset: () => void;
   onRetryLyrics: () => void;
   onSetOffset: (offsetMs: number) => void;
+  onUseAutomaticLyrics: () => void;
   positionLabelRef: RefObject<HTMLSpanElement | null>;
   progressFillRef: RefObject<HTMLDivElement | null>;
   progressPct: number;
@@ -137,8 +145,12 @@ export const PlayerSidebar = memo(function PlayerSidebar({
                 hasTrack={hasTrack}
                 hasSyncedLyrics={hasSyncedLyrics}
                 lyricOffsetMs={lyricOffsetMs}
+                lyricsOrigin={lyricsOrigin}
+                onAddLyricsFile={onAddLyricsFile}
+                onChooseLyrics={onChooseLyrics}
                 onMarkNotMusic={onMarkNotMusic}
                 onRetryLyrics={onRetryLyrics}
+                onUseAutomaticLyrics={onUseAutomaticLyrics}
                 setShowDelayControl={setShowDelayControl}
                 snapshotReady={snapshotReady}
                 track={track}

@@ -1,4 +1,4 @@
-import type { TrackRef } from '@/types/tauri-contracts';
+import type { LyricsOrigin, TrackRef } from '@/types/tauri-contracts';
 import type { MenuGroups } from '@/utils/native-menu';
 import { detectHostOs } from '@/utils/os';
 import { toggleSurface } from '@/utils/tauri-commands';
@@ -15,8 +15,12 @@ export function TrackInfo({
   hasTrack,
   hasSyncedLyrics,
   lyricOffsetMs,
+  lyricsOrigin,
+  onAddLyricsFile,
+  onChooseLyrics,
   onMarkNotMusic,
   onRetryLyrics,
+  onUseAutomaticLyrics,
   setShowDelayControl,
   snapshotReady,
   track,
@@ -24,9 +28,13 @@ export function TrackInfo({
   hasTrack: boolean;
   hasSyncedLyrics: boolean;
   lyricOffsetMs: number;
+  lyricsOrigin: LyricsOrigin;
+  onAddLyricsFile: () => void;
+  onChooseLyrics: () => void;
   /** Stop following this media and remember it is not music. */
   onMarkNotMusic: () => void;
   onRetryLyrics: () => void;
+  onUseAutomaticLyrics: () => void;
   setShowDelayControl: React.Dispatch<React.SetStateAction<boolean>>;
   snapshotReady: boolean;
   track: TrackRef | null;
@@ -48,7 +56,19 @@ export function TrackInfo({
         disabled: !hasSyncedLyrics,
         onSelect: () => setShowDelayControl(true),
       },
-      { id: 'refresh', label: 'Refresh Lyrics', symbol: 'arrow.clockwise', onSelect: onRetryLyrics },
+      { id: 'choose', label: 'Choose Lyrics…', symbol: 'text.magnifyingglass', onSelect: onChooseLyrics },
+      { id: 'add-file', label: 'Add Lyrics File…', symbol: 'doc.badge.plus', onSelect: onAddLyricsFile },
+      // The user's own lyrics stay until they go back, so a refresh would
+      // change nothing; going back takes its place.
+      lyricsOrigin.kind === 'automatic'
+        ? { id: 'refresh', label: 'Refresh Lyrics', symbol: 'arrow.clockwise', onSelect: onRetryLyrics }
+        : {
+          id: 'automatic',
+          label: 'Use Automatic Lyrics',
+          symbol: 'arrow.uturn.backward',
+          hint: describeLyricsOrigin(lyricsOrigin),
+          onSelect: onUseAutomaticLyrics,
+        },
     ],
     [
       {
@@ -93,4 +113,11 @@ export function TrackInfo({
       </div>
     </div>
   );
+}
+
+/** What the lyrics menu says is showing instead of the automatic lyrics. */
+function describeLyricsOrigin(origin: LyricsOrigin): string | undefined {
+  if (origin.kind === 'imported') return origin.name ? `Now showing “${origin.name}”` : 'Now showing your file';
+  if (origin.kind === 'picked') return 'Now showing lyrics you chose';
+  return undefined;
 }

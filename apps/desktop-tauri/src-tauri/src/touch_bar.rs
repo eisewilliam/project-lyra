@@ -1548,6 +1548,8 @@ mod tests {
                 })
                 .collect(),
             active_line_words: None,
+            lyrics_origin: Default::default(),
+            lyrics_revision: 0,
         }
     }
 

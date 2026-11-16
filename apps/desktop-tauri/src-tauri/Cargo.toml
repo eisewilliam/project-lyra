@@ -29,6 +29,7 @@ dirs-next = "2"
 tokio = { workspace = true }
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-updater = "2"
+tauri-plugin-dialog = "2"
 
 # macOS already keeps one instance per app bundle and reports a second launch
 # as a reopen event.

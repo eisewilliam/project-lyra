@@ -1057,6 +1057,9 @@ pub fn run() {
         .manage(state)
         .manage(updates)
         .plugin(tauri_plugin_clipboard_manager::init())
+        // Used from Rust only (the lyrics file panel); the webview has no
+        // dialog permission.
+        .plugin(tauri_plugin_dialog::init())
         // macOS LaunchAgent / Windows registry; `app.autolaunch()` needs it.
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -1272,6 +1275,10 @@ pub fn run() {
             commands::update_settings,
             commands::refresh_lyrics,
             commands::force_refresh_lyrics,
+            commands::list_lyric_candidates,
+            commands::choose_lyric_candidate,
+            commands::import_lyrics_file,
+            commands::reset_lyrics_choice,
             commands::clear_lyrics_cache,
             commands::playback_play_pause,
             commands::playback_next,

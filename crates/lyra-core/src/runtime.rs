@@ -1,7 +1,7 @@
 use crate::{
     config::ConfigStore,
     domain::{
-        durations_differ, BrowserLyrics, LyricDocument, LyricsStatus, NotFoundReason,
+        durations_differ, BrowserLyrics, LyricDocument, LyricsOrigin, LyricsStatus, NotFoundReason,
         PlaybackSnapshot, PlaybackState, RenderSnapshot, SettingsSnapshot, TrackRef,
     },
     lyrics::cache::LyricCache,
@@ -49,6 +49,8 @@ pub struct SeekPreview {
     context_above: usize,
     context_below: usize,
     offset_ms: i64,
+    origin: LyricsOrigin,
+    revision: u64,
 }
 
 impl SeekPreview {
@@ -67,14 +69,17 @@ impl SeekPreview {
     pub fn render_at(&self, position_ms: u64) -> RenderSnapshot {
         let mut playback = self.playback.clone();
         playback.position_ms = Some(position_ms);
-        compute_render(
+        let mut render = compute_render(
             playback,
             self.doc.as_ref(),
             self.status.clone(),
             self.context_above,
             self.context_below,
             self.offset_ms,
-        )
+        );
+        render.lyrics_origin = self.origin.clone();
+        render.lyrics_revision = self.revision;
+        render
     }
 }
 
@@ -97,6 +102,10 @@ pub struct LyraRuntime {
     current_doc: Option<LyricDocument>,
     /// Playing duration `current_doc` was prepared for.
     presented_for_ms: u64,
+    /// Whether `stored_doc` is the automatic match or the user's choice.
+    current_origin: LyricsOrigin,
+    /// Bumped whenever `current_doc` is prepared again.
+    lyrics_revision: u64,
     last_track_key: Option<String>,
     /// Adapter track key last seen, when it appeared or stopped reporting
     /// its length, and whether it reported one last time.
@@ -127,6 +136,8 @@ impl LyraRuntime {
             base_doc: None,
             current_doc: None,
             presented_for_ms: 0,
+            current_origin: LyricsOrigin::Automatic,
+            lyrics_revision: 0,
             last_track_key: None,
             seen: None,
             duration_grace: DURATION_GRACE,
@@ -256,10 +267,14 @@ impl LyraRuntime {
     }
 
     /// Prepare `current_doc` from `stored_doc` for the playing duration.
+    /// Lyrics the user chose keep their timing: they were told the length
+    /// differs and can adjust the offset.
     fn present(&mut self, duration_ms: u64) {
         self.presented_for_ms = duration_ms;
+        self.lyrics_revision = self.lyrics_revision.wrapping_add(1);
+        let keep_timing = self.current_origin.is_user_choice();
         self.current_doc = self.stored_doc.as_ref().map(|doc| {
-            if !doc.lines.is_empty() && doc.timed_for_other_duration(duration_ms) {
+            if !keep_timing && !doc.lines.is_empty() && doc.timed_for_other_duration(duration_ms) {
                 doc.without_timing()
             } else {
                 doc.clone()
@@ -282,10 +297,56 @@ impl LyraRuntime {
         spawn_cache_write(move || {
             let _ = cache.put_document(&cached_doc);
         });
-        if self.last_track_key.as_deref() == Some(&doc.track_key) {
-            self.stored_doc = Some(doc);
-            self.present(self.playing_duration_ms());
+        // The user's own lyrics stay until they go back to the automatic
+        // ones; a lookup that lands after their choice only fills the cache.
+        if self.last_track_key.as_deref() == Some(&doc.track_key)
+            && !self.cache.has_override(&doc.track_key)
+        {
+            self.set_stored(Some(doc), LyricsOrigin::Automatic);
         }
+    }
+
+    /// Show the user's own lyrics for their track (already saved by the
+    /// cache), replacing what shows now if it is playing. The track's timing
+    /// offset was set against the old lyrics, so it starts over.
+    pub fn apply_user_lyrics(&mut self, doc: LyricDocument, origin: LyricsOrigin) {
+        let key = doc.track_key.clone();
+        self.transient_errors.remove(&key);
+        self.offsets.set(&key, 0);
+        if self.last_track_key.as_deref() == Some(&key) {
+            self.set_stored(Some(doc), origin);
+        }
+    }
+
+    /// Show what the cache now holds for the track: after the user's own
+    /// lyrics are removed, the automatic ones, or nothing until they are
+    /// looked up. The offset starts over, as when lyrics are chosen.
+    pub fn reload_lyrics(&mut self, track_key: &str) {
+        self.offsets.set(track_key, 0);
+        if self.last_track_key.as_deref() == Some(track_key) {
+            let doc = self.cache.get(track_key);
+            let origin = self.cache.origin(track_key);
+            self.set_stored(doc, origin);
+        }
+    }
+
+    pub fn current_origin(&self) -> &LyricsOrigin {
+        &self.current_origin
+    }
+
+    /// Fingerprint of the current track's lyrics as stored (before any
+    /// timing is set aside for another length), to mark them among
+    /// candidates.
+    pub fn current_fingerprint(&self) -> Option<u64> {
+        self.stored_doc
+            .as_ref()
+            .and_then(crate::lyrics::document_fingerprint)
+    }
+
+    fn set_stored(&mut self, doc: Option<LyricDocument>, origin: LyricsOrigin) {
+        self.stored_doc = doc;
+        self.current_origin = origin;
+        self.present(self.playing_duration_ms());
     }
 
     /// Record a confirmed miss for `track_key`, looked up at `duration_ms`
@@ -329,8 +390,7 @@ impl LyraRuntime {
             .as_ref()
             .is_some_and(|d| d.track_key == track_key)
         {
-            self.stored_doc = None;
-            self.current_doc = None;
+            self.set_stored(None, LyricsOrigin::Automatic);
         }
     }
 
@@ -382,6 +442,8 @@ impl LyraRuntime {
             context_above: self.settings.appearance.context_lines_above as usize,
             context_below: self.settings.appearance.context_lines_below as usize,
             offset_ms: self.current_offset(),
+            origin: self.current_origin.clone(),
+            revision: self.lyrics_revision,
         }
     }
 
@@ -417,7 +479,10 @@ impl LyraRuntime {
             // from an earlier play (or a background probe) would never clear.
             // Forget them; the track shows `Loading` and is looked up again.
             self.transient_errors.clear();
-            self.stored_doc = track_key.as_deref().and_then(|key| self.cache.get(key));
+            (self.stored_doc, self.current_origin) = match track_key.as_deref() {
+                Some(key) => (self.cache.get(key), self.cache.origin(key)),
+                None => (None, LyricsOrigin::Automatic),
+            };
             self.base_doc = track_key
                 .as_deref()
                 .map(|key| self.adapter_key(key))
@@ -476,7 +541,10 @@ impl LyraRuntime {
             .map(|k| self.offsets.get(k))
             .unwrap_or(0);
 
-        compute_render(snapshot, doc, status, above, below, offset_ms)
+        let mut render = compute_render(snapshot, doc, status, above, below, offset_ms);
+        render.lyrics_origin = self.current_origin.clone();
+        render.lyrics_revision = self.lyrics_revision;
+        render
     }
 
     /// Find the next lyric transition timestamp (in playback time) relative to `current_pos_ms`.
@@ -880,6 +948,36 @@ mod tests {
             );
             assert_eq!(render.active_line_index, Some(1));
         }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn chosen_lyrics_keep_their_timing_for_another_length() {
+        let (mut rt, dir) = fresh_runtime("chosen-length");
+        let video = "meta::artist::telephone::571";
+        rt.cache
+            .put_document(&timed_doc(video, Some(220_000)))
+            .unwrap();
+        let before = playing(&mut rt, video, 571_000);
+        assert!(matches!(before.lyrics_status, LyricsStatus::Unsynced));
+
+        // The user picks the same lyrics knowing the length differs.
+        let origin = LyricsOrigin::Picked { id: Some(7) };
+        let chosen = timed_doc(video, Some(220_000));
+        rt.cache.put_override(&chosen, &origin).unwrap();
+        rt.apply_user_lyrics(chosen, origin.clone());
+        let render = rt.tick();
+        assert!(matches!(render.lyrics_status, LyricsStatus::Ready));
+        assert_eq!(render.active_line_index, Some(1));
+        assert_eq!(render.lyrics_origin, origin);
+        assert_ne!(render.lyrics_revision, before.lyrics_revision);
+
+        // Going back to automatic shows the cached lyrics, unsynced again.
+        rt.cache.remove_override(video).unwrap();
+        rt.reload_lyrics(video);
+        let render = rt.tick();
+        assert!(matches!(render.lyrics_status, LyricsStatus::Unsynced));
+        assert_eq!(render.lyrics_origin, LyricsOrigin::Automatic);
         let _ = std::fs::remove_dir_all(dir);
     }
 

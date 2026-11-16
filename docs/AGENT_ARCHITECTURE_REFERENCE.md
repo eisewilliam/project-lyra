@@ -92,7 +92,17 @@ Confirmed misses (`Ok(None)`) persist a `.nomatch` sentinel recording how many l
 Lyric documents record `source_duration_ms`, the length of the recording their timings were made for (the LRCLIB record's `duration`, which LRCLIB requires on publish; else the length looked up with; `None` for overrides and older cache files). Confirmed misses record the length they were looked up with. `LyraRuntime` uses these to keep versions of one track apart:
 - **Waiting for a length.** A track that reports no duration, when it first appears or after it stops reporting one (Spotify does this for a moment while it switches a track to its music video), shows `Loading` and is not looked up for up to `DURATION_GRACE` (4 s). `LyricsRefresh` waits in core meanwhile, so the frontend's single refresh request still lands. Players that never report a length then behave as before.
 - **Per-length keys.** Keys without a duration in them (`spotify:track:…`, `smtc::…`, `mpris::…`, Apple Music IDs) move to `<key>::<seconds>` in `set_playback_snapshot` when the result cached under the plain key was made for a length more than `LyricDocument::DURATION_TOLERANCE_MS` (6 s) away. The refined key is the track's `uri` everywhere after that: cache, misses, overrides, offsets, refresh claims and the frontend. `meta::` keys already carry their duration.
-- **Mismatched timing.** Timed lyrics whose source length differs from the playing length by more than the tolerance are presented as plain text (`Unsynced`). A per-length key with a confirmed miss shows the plain key's words, without timing.
+- **Mismatched timing.** Timed lyrics whose source length differs from the playing length by more than the tolerance are presented as plain text (`Unsynced`), except lyrics the user chose, which keep their timing. A per-length key with a confirmed miss shows the plain key's words, without timing.
+
+User lyrics replace automatic ones through `lyrics/choice.rs` (methods on `LyricsRefresh`) and the commands `list_lyric_candidates`, `choose_lyric_candidate`, `import_lyrics_file` and `reset_lyrics_choice`:
+
+- `candidates` asks `LyricSource::candidates` for every LRCLIB search record with lyrics, ranked by `CandidateFit` then synced first, each with a short preview. No query (or a blank title) means the track's own title and artist, which also runs the feature-stripped and lead-artist searches; the candidate already showing is marked by text fingerprint. Browser media without lookup consent returns `ConsentRequired` or `LookupDisabled`.
+- `choose(track_key, id)` returns `TrackChanged` unless the track is still current, fetches `/api/get/{id}` through `LyricSource::fetch_by_id`, and saves it with origin `Picked`.
+- `import(track_key, bytes, name)` parses with `lyrics/import.rs` (LRC or plain text, UTF-8 or UTF-16 with a BOM, 512 KB at most) and saves it with origin `Imported`. It needs no lookup consent. The host opens the picker through `tauri-plugin-dialog` from Rust, reads the file off the async runtime and shows an alert for a file it can't use.
+- Saving takes the `saving` mutex, writes the override outside the runtime lock, then calls `LyraRuntime::apply_user_lyrics`, which clears transient failure state, resets the track offset to 0 and shows the document if the track is still playing.
+- `reset_choice` removes the override, then `reload_lyrics` shows the cached document or leaves the track to be looked up again.
+
+`store_lyrics` caches a late automatic result but never replaces a track's user lyrics. `RenderSnapshot.lyrics_origin` (`{"kind": "automatic" | "picked" | "imported", ...}`) describes the current lyrics, and `lyrics_revision` increments whenever the current document is prepared again (a new track, new lyrics or a new playing length); the main window keys its lyric fetch and automatic refresh on URI plus revision. Errors serialize as `LyricChoiceError` snake_case strings.
 
 Render states are `Loading`, `Ready`, `Unsynced`, structured `NotFound` with a reason, or `Error`. No track and confirmed misses use `Miss`; pending uncached tracks use `Loading`. Timed documents use `Ready`; plain text uses `Unsynced` and is exposed only to the main pane through `get_plain_lyrics`. Transient failures are forgotten whenever the playing track changes, so a track played again (or one a background probe failed on) shows `Loading` and is looked up again. The frontend requests a refresh once per `Loading` episode per track URI and re-arms when the status settles; manual retry is explicit.
 
@@ -111,7 +121,7 @@ The host’s single `app_support_dir()` helper chooses `dirs_next::data_dir()/ly
 
 Cache filenames are percent-encoded track URIs:
 - Fetched: `lyrics_cache/spotify%3Atrack%3Aabc123.lrc`
-- User override (wins over cache): `lyrics_overrides/spotify%3Atrack%3Aabc123.lrc`
+- User override (wins over cache, survives clearing it): `lyrics_overrides/spotify%3Atrack%3Aabc123.lrc` or `.txt`, with `.json` holding its `LyricsOrigin` (missing means imported)
 - Plain text: `lyrics_cache/spotify%3Atrack%3Aabc123.txt`
 - Negative (no lyrics found): `lyrics_cache/spotify%3Atrack%3Aabc123.nomatch` (`v4 <misses> <duration_ms>`)
 - Source length of cached lyrics: `lyrics_cache/spotify%3Atrack%3Aabc123.meta.json` (`{"source_duration_ms": …}`)
@@ -121,9 +131,11 @@ Cache filenames are percent-encoded track URIs:
 
 | File | Role |
 |---|---|
-| `domain.rs` | All shared types: `TrackRef`, `RenderSnapshot`, `LyricsStatus`, `LyricDocument`, `VisibleLine` |
+| `domain.rs` | All shared types: `TrackRef`, `RenderSnapshot`, `LyricsStatus`, `LyricDocument`, `VisibleLine`, `LyricsOrigin`, `LyricCandidate` |
 | `runtime.rs` | Playback observations, lyric state/cache coordination, settings, offsets, and next-transition calculation |
 | `lyrics/refresh.rs` | Async provider fetching, in-flight claims, cache eligibility and failure classification |
+| `lyrics/choice.rs` | User lyric choice on `LyricsRefresh`: list candidates, choose by ID, import a file, reset |
+| `lyrics/import.rs` | `parse_user_lyrics`: decodes and parses a user's LRC or plain-text file |
 | `sync.rs` | `compute_render()` — deterministic line selection and visible window computation |
 | `player/mod.rs` | `PlayerAdapter` trait, `SessionObservation`, `PlayerCommand`, `ControlError` |
 | `player/hub.rs` | `PlayerHub`: polls adapters, publishes artwork bytes, routes commands to the followed session |
@@ -144,8 +156,8 @@ Cache filenames are percent-encoded track URIs:
 | `presence/activity.rs` | Pure `PlaybackSnapshot` → Discord Listening activity mapping, text limits, Spotify exclusion |
 | `presence/cover.rs` | `CoverArt`: cover URL for tracks whose player gives none Discord can fetch. iTunes Search lookup on its own thread, strict title and lead-artist matching, in-memory cache of covers and confirmed misses |
 | `presence/ipc.rs` | Discord local RPC: socket/pipe discovery, framing, handshake, `SET_ACTIVITY`; every read has a deadline |
-| `lyrics/lrclib.rs` | LRCLIB HTTP client; prefers synced lyrics, falls back to plain lyrics; returns `Ok(None)` only for confirmed misses |
-| `lyrics/cache.rs` | Flat-file cache + negative cache + manual override resolution |
+| `lyrics/lrclib.rs` | LRCLIB HTTP client; prefers synced lyrics, falls back to plain lyrics; returns `Ok(None)` only for confirmed misses; ranks candidates and fetches a record by ID |
+| `lyrics/cache.rs` | Flat-file cache + negative cache + user overrides (`.lrc`/`.txt` plus `.json` origin) |
 | `lyrics/parser.rs` | LRC parser; `parse_lrc(track_key, raw, source)` |
 
 ### Linux MPRIS integration

@@ -29,6 +29,8 @@ pub fn compute_render(
             line_progress: None,
             visible_lines: vec![],
             active_line_words: None,
+            lyrics_origin: Default::default(),
+            lyrics_revision: 0,
         };
     }
 
@@ -40,6 +42,8 @@ pub fn compute_render(
             line_progress: None,
             visible_lines: vec![],
             active_line_words: None,
+            lyrics_origin: Default::default(),
+            lyrics_revision: 0,
         };
     };
 
@@ -51,6 +55,8 @@ pub fn compute_render(
             line_progress: None,
             visible_lines: vec![],
             active_line_words: None,
+            lyrics_origin: Default::default(),
+            lyrics_revision: 0,
         };
     }
 
@@ -108,6 +114,8 @@ pub fn compute_render(
         line_progress,
         visible_lines,
         active_line_words,
+        lyrics_origin: Default::default(),
+        lyrics_revision: 0,
     }
 }
 

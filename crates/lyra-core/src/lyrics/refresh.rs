@@ -28,12 +28,15 @@ const RETRY_DELAYS: [Duration; 4] = [
 const DURATION_WAIT_POLL: Duration = Duration::from_millis(250);
 
 pub struct LyricsRefresh<S = LrclibClient> {
-    source: S,
+    pub(super) source: S,
     in_flight: Mutex<HashSet<String>>,
     /// Bumped by every lookup of the playing track; an automatic retry that
     /// finds it changed hands over to the newer lookup.
     generation: AtomicU64,
     retry_delays: Vec<Duration>,
+    /// Held while the user's lyric choice is saved and applied, so the file
+    /// on disk and the lyrics on screen agree even when two choices race.
+    pub(super) saving: Mutex<()>,
 }
 
 impl Default for LyricsRefresh {
@@ -49,6 +52,7 @@ impl<S: LyricSource> LyricsRefresh<S> {
             in_flight: Mutex::new(HashSet::new()),
             generation: AtomicU64::new(0),
             retry_delays: RETRY_DELAYS.to_vec(),
+            saving: Mutex::new(()),
         }
     }
 
@@ -222,20 +226,23 @@ impl<S: LyricSource> LyricsRefresh<S> {
                 Outcome::Settled
             }
             Err(error) => {
-                // Rate limits and overload get their own message: the server
-                // answered, so the user's connection is fine.
-                let reason = if error
-                    .downcast_ref::<super::lrclib::LrclibHttpError>()
-                    .is_some_and(|error| error.is_busy())
-                {
-                    NotFoundReason::RateLimit
-                } else {
-                    NotFoundReason::NetworkError
-                };
-                rt.store_transient_error(&track.uri, reason);
+                rt.store_transient_error(&track.uri, failure_reason(&error));
                 Outcome::Failed
             }
         })
+    }
+}
+
+/// Why a provider request failed. Rate limits and overload get their own
+/// message: the server answered, so the user's connection is fine.
+pub(super) fn failure_reason(error: &anyhow::Error) -> NotFoundReason {
+    if error
+        .downcast_ref::<super::lrclib::LrclibHttpError>()
+        .is_some_and(|error| error.is_busy())
+    {
+        NotFoundReason::RateLimit
+    } else {
+        NotFoundReason::NetworkError
     }
 }
 
