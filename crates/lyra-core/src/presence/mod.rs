@@ -6,8 +6,12 @@
 //! the snapshot with what was last published and queues a change. The worker
 //! connects while the feature is on, retries while Discord is closed, and
 //! keeps updates inside Discord's rate limit.
+//!
+//! Players that share artwork only as image data get their cover from a
+//! catalogue lookup (`cover`), which runs on a thread of its own.
 
 mod activity;
+mod cover;
 mod ipc;
 
 use std::collections::VecDeque;
@@ -19,7 +23,8 @@ use std::time::{Duration, Instant};
 
 pub use activity::{Activity, ActivityButton, ActivityOptions};
 
-use crate::domain::{DiscordPresenceStatus, PlaybackSnapshot};
+use crate::domain::{DiscordPresenceStatus, PlaybackSnapshot, TrackRef};
+use cover::CoverArt;
 use ipc::Connection;
 
 /// How often to look for Discord while it is not running.
@@ -39,12 +44,15 @@ pub struct DiscordPresence {
     worker: Option<mpsc::Sender<Message>>,
     options: Mutex<ActivityOptions>,
     published: Mutex<Published>,
+    covers: CoverArt,
 }
 
 #[derive(Default)]
 struct Shared {
     enabled: AtomicBool,
     connected: AtomicBool,
+    /// The user allows lookups for media playing in a browser.
+    browser_lookups: AtomicBool,
     /// Counts connections, so `publish` resends after a reconnect.
     generation: AtomicU64,
     /// Discord's reason for refusing the last activity, for diagnostics.
@@ -70,7 +78,11 @@ impl DiscordPresence {
     /// activity carries. `button` adds a link to every activity.
     pub fn new(application_id: &str, button: Option<ActivityButton>) -> Self {
         let application_id = application_id.to_owned();
-        Self::with_connector(Box::new(move || Connection::open(&application_id)), button)
+        Self::with_connector(
+            Box::new(move || Connection::open(&application_id)),
+            button,
+            CoverArt::new(),
+        )
     }
 
     /// A presence that never connects, for builds without an application ID.
@@ -80,10 +92,15 @@ impl DiscordPresence {
             worker: None,
             options: Mutex::default(),
             published: Mutex::default(),
+            covers: CoverArt::disabled(),
         }
     }
 
-    fn with_connector(connector: Connector, button: Option<ActivityButton>) -> Self {
+    fn with_connector(
+        connector: Connector,
+        button: Option<ActivityButton>,
+        covers: CoverArt,
+    ) -> Self {
         let shared = Arc::new(Shared::default());
         let (sender, receiver) = mpsc::channel();
         let worker_shared = Arc::clone(&shared);
@@ -98,6 +115,7 @@ impl DiscordPresence {
                 button,
             }),
             published: Mutex::default(),
+            covers,
         }
     }
 
@@ -111,6 +129,22 @@ impl DiscordPresence {
         if self.shared.enabled.swap(enabled, Ordering::AcqRel) != enabled {
             let _ = worker.send(Message::Wake);
         }
+    }
+
+    /// Whether media playing in a browser may be looked up; mirrors the
+    /// user's lyric-lookup consent. Until it is given, nothing about browser
+    /// media is sent to the cover catalogue.
+    pub fn set_browser_lookups(&self, allowed: bool) {
+        self.shared
+            .browser_lookups
+            .store(allowed, Ordering::Release);
+    }
+
+    /// Called from the lookup thread when a cover has been found for a
+    /// track that was published without one. Publishing the current
+    /// snapshot again then shows it.
+    pub fn on_cover_found(&self, listener: impl Fn() + Send + Sync + 'static) {
+        self.covers.on_found(listener);
     }
 
     /// Called from the worker thread when the connection to Discord opens
@@ -147,8 +181,15 @@ impl DiscordPresence {
             return;
         }
         let generation = self.shared.generation.load(Ordering::Acquire);
-        let activity =
+        let mut activity =
             Activity::for_snapshot(snapshot, crate::player::now_ms(), &lock(&self.options));
+        if let (Some(activity), Some(track)) = (activity.as_mut(), snapshot.track.as_ref()) {
+            if !activity.has_cover() && self.may_look_up(track) {
+                if let Some(url) = self.covers.cover_for(track) {
+                    activity.set_cover(url);
+                }
+            }
+        }
 
         let mut published = lock(&self.published);
         let unchanged = published.generation == generation
@@ -165,6 +206,12 @@ impl DiscordPresence {
             activity: activity.clone(),
         };
         let _ = worker.send(Message::Show(activity));
+    }
+
+    /// Whether `track`'s artist and title may be sent to the cover
+    /// catalogue: browser media needs the user's consent, as for lyrics.
+    fn may_look_up(&self, track: &TrackRef) -> bool {
+        !track.from_browser || self.shared.browser_lookups.load(Ordering::Acquire)
     }
 }
 
@@ -321,9 +368,11 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 #[cfg(all(test, unix))]
 mod tests {
+    use super::cover::test_support::{catalogue, cover_url, found, result};
     use super::ipc::test_support::FakeDiscord;
     use super::*;
     use crate::domain::{PlaybackCaps, PlaybackState, PlayerApp, PositionQuality, TrackRef};
+    use std::sync::atomic::AtomicUsize;
 
     fn playing(title: &str) -> PlaybackSnapshot {
         PlaybackSnapshot {
@@ -346,8 +395,15 @@ mod tests {
     }
 
     /// A presence whose connector hands out the given fake clients in turn,
-    /// then fails as if Discord were closed.
+    /// then fails as if Discord were closed. It looks no covers up.
     fn presence_with(clients: Vec<FakeDiscord>) -> (DiscordPresence, mpsc::Receiver<FakeDiscord>) {
+        presence_with_covers(clients, CoverArt::disabled())
+    }
+
+    fn presence_with_covers(
+        clients: Vec<FakeDiscord>,
+        covers: CoverArt,
+    ) -> (DiscordPresence, mpsc::Receiver<FakeDiscord>) {
         let (accepted, server_ends) = mpsc::channel();
         let mut clients = clients.into_iter();
         let connector: Connector = Box::new(move || {
@@ -365,7 +421,7 @@ mod tests {
             connection
         });
         (
-            DiscordPresence::with_connector(connector, None),
+            DiscordPresence::with_connector(connector, None, covers),
             server_ends,
         )
     }
@@ -444,6 +500,80 @@ mod tests {
         wait_until("reconnection", || presence.wants_playback());
         presence.publish(&playing("Next"));
         assert_eq!(second.accept_activity()["details"], "Next");
+    }
+
+    #[test]
+    fn a_found_cover_is_added_with_one_more_update() {
+        let (covers, searches) =
+            catalogue(vec![found(&[result("artist", "Song", "Album", "album")])]);
+        let (presence, discords) = presence_with_covers(clients(1), covers);
+        let found_cover = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&found_cover);
+        presence.on_cover_found(move || flag.store(true, Ordering::SeqCst));
+        presence.configure(true, false);
+        let mut discord = discords.recv_timeout(Duration::from_secs(5)).unwrap();
+        wait_until("connection", || presence.wants_playback());
+
+        // Shown at once without a cover, while the lookup runs.
+        presence.publish(&playing("Song"));
+        let first = discord.accept_activity();
+        assert_eq!(first["details"], "Song");
+        assert!(first.get("assets").is_none());
+
+        wait_until("cover", || found_cover.load(Ordering::SeqCst));
+        presence.publish(&playing("Song"));
+        assert_eq!(
+            discord.accept_activity()["assets"]["large_image"],
+            cover_url("album")
+        );
+
+        // Nothing more is sent for the same track: the next update is the
+        // next track, whose own artwork needs no lookup.
+        presence.publish(&playing("Song"));
+        let mut next = playing("Next");
+        next.track.as_mut().unwrap().artwork_url = Some("https://example.com/next.jpg".into());
+        presence.publish(&next);
+        assert_eq!(discord.accept_activity()["details"], "Next");
+        assert_eq!(searches.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn covers_are_looked_up_only_for_tracks_that_may_and_need_to_be() {
+        let (covers, searches) = catalogue(vec![found(&[])]);
+        let (presence, discords) = presence_with_covers(clients(1), covers);
+        presence.configure(true, false);
+        let mut discord = discords.recv_timeout(Duration::from_secs(5)).unwrap();
+        wait_until("connection", || presence.wants_playback());
+        let searched = |searches: &AtomicUsize| searches.load(Ordering::SeqCst);
+
+        // Browser media before the user has allowed lookups for it.
+        let mut browser = playing("In a browser");
+        browser.track.as_mut().unwrap().from_browser = true;
+        presence.publish(&browser);
+        assert_eq!(discord.accept_activity()["details"], "In a browser");
+
+        // Artwork Discord can already fetch.
+        let mut with_art = playing("Has artwork");
+        with_art.track.as_mut().unwrap().artwork_url = Some("https://example.com/a.jpg".into());
+        presence.publish(&with_art);
+        assert_eq!(discord.accept_activity()["details"], "Has artwork");
+
+        // Playback that is not published at all: paused, and Spotify
+        // while it is left to Discord.
+        let mut paused = playing("Paused");
+        paused.state = PlaybackState::Paused;
+        presence.publish(&paused);
+        assert!(discord.accept_activity().is_null());
+        let mut spotify = playing("On Spotify");
+        spotify.track.as_mut().unwrap().player.id = "com.spotify.client".into();
+        presence.publish(&spotify);
+
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(searched(&searches), 0);
+
+        presence.set_browser_lookups(true);
+        presence.publish(&browser);
+        wait_until("search", || searched(&searches) == 1);
     }
 
     #[test]

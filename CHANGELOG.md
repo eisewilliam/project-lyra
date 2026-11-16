@@ -10,6 +10,38 @@ offered it as an update.
 
 ## [Unreleased]
 
+## [0.3.0-beta.2] - 2026-11-16
+
+A pre-release for testing ahead of 0.3.0: choosing other lyrics or adding your
+own, and cover art on Discord for Apple Music and other players. Includes the
+changes listed under 0.3.0-beta.1.
+
+### Added
+
+- If Lyra shows the wrong lyrics for a song, choose others: Choose Lyrics… in
+  the main window's track menu (···) lists other matches from LRCLIB, with
+  their first lines, length and whether they are synced, and you can search
+  again with a different title or artist. When Lyra finds no lyrics, the same
+  search is under Search manually. Lyra keeps your choice for that song.
+- Add your own lyrics from a file with Add Lyrics File… in the track menu. LRC
+  files follow the song in every view; plain text files show in the main
+  window. Your lyrics are kept when the lyrics cache is cleared.
+- Use Automatic Lyrics in the track menu goes back to the lyrics Lyra finds by
+  itself. Choosing or adding lyrics resets the song's timing adjustment, since
+  it was set for the old lyrics.
+- Discord presence shows cover art for players that share artwork only as an
+  image, such as Apple Music, where the Lyra icon showed before. Lyra finds
+  the cover by sending the song's artist and title to Apple's music
+  catalogue, only while Discord presence is on. Media playing in a browser is
+  looked up only after you have allowed lookups for it. A song the catalogue
+  doesn't have keeps the Lyra icon.
+
+### Fixed
+
+- On macOS, songs streamed in Apple Music that aren't in your library show
+  their cover in Lyra. Before, only library songs did, and the cover was
+  left blank.
+
 ## [0.3.0-beta.1] - 2026-11-15
 
 A pre-release for testing ahead of 0.3.0: Discord presence, the Liquid Glass
@@ -284,7 +316,8 @@ The first pre-release, for internal testing ahead of 0.1.0.
 - As a pre-release, this build is not offered as an update; install each beta
   from its release page.
 
-[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.3.0-beta.1...HEAD
+[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.3.0-beta.2...HEAD
+[0.3.0-beta.2]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.3.0-beta.2
 [0.3.0-beta.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.3.0-beta.1
 [0.2.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.1
 [0.2.0]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.0

@@ -20,6 +20,10 @@ import type {
   TrackRef,
   PlaybackState,
   NotFoundReason,
+  LyricCandidate,
+  LyricCandidates,
+  LyricSearchQuery,
+  LyricsOrigin,
 } from '@/types/tauri-contracts';
 
 const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI_IPC__' in window);
@@ -267,6 +271,61 @@ if (!isTauri) {
     return result;
   };
 
+  // --- Lyric choices (mirrors lyra-core's override layer) ---
+  type MockTrack = (typeof MOCK_TRACKS)[number];
+  type MockLine = MockTrack['lines'][number];
+  const mockChoices = new Map<string, { origin: LyricsOrigin; lines: MockLine[] }>();
+  let mockRevision = 0;
+  const linesFor = (trackData: MockTrack) => mockChoices.get(trackData.track.uri)?.lines ?? trackData.lines;
+  const originFor = (uri: string): LyricsOrigin => mockChoices.get(uri)?.origin ?? { kind: 'automatic' };
+  const markedLines = (lines: MockLine[], label: string, shiftMs = 0): MockLine[] =>
+    lines.map((line, index) => ({
+      start_ms: line.start_ms + shiftMs,
+      end_ms: line.end_ms + shiftMs,
+      text: index === 1 ? `(${label}) ${line.text}` : line.text,
+    }));
+  const setMockChoice = (uri: string, choice: { origin: LyricsOrigin; lines: MockLine[] } | null) => {
+    if (choice) mockChoices.set(uri, choice);
+    else mockChoices.delete(uri);
+    mockRevision += 1;
+    setMockOffset(uri, 0);
+    void emit('playback-tick', computeRenderSnapshot());
+  };
+  const mockCandidates = (trackData: MockTrack, query: LyricSearchQuery): LyricCandidates => {
+    const { track } = trackData;
+    const sung = trackData.lines.map((line) => line.text).filter((text) => text && !text.startsWith('♪'));
+    const origin = originFor(track.uri);
+    const make = (
+      id: number,
+      overrides: Partial<LyricCandidate>,
+      previewFrom: number,
+    ): LyricCandidate => ({
+      id,
+      title: query.title,
+      artist: query.artist,
+      album: track.album,
+      duration_ms: track.duration_ms,
+      synced: true,
+      fit: 'good',
+      preview: sung.slice(previewFrom, previewFrom + 3),
+      current: origin.kind === 'picked' ? origin.id === id : origin.kind === 'automatic' && id === 101,
+      ...overrides,
+    });
+    return {
+      track_key: track.uri,
+      query,
+      candidates: [
+        make(101, {}, 0),
+        make(102, { duration_ms: track.duration_ms + 1000, album: `${track.album ?? 'Single'} (Deluxe)` }, 0),
+        make(103, { synced: false, album: null }, 1),
+        make(104, { fit: 'weak', title: `${query.title} (Karaoke Version)`, artist: 'Sing-Along Hits' }, 0),
+        make(105, { fit: 'other_length', duration_ms: track.duration_ms + 42000 }, 2),
+        make(106, { fit: 'other_version', title: `${query.title} (Live)`, duration_ms: track.duration_ms + 9000 }, 0),
+      ],
+    };
+  };
+  const mockDelay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
   // --- Compute Render Snapshot ---
   const computeRenderSnapshot = (): RenderSnapshot => {
     const trackData = MOCK_TRACKS[currentTrackIdx];
@@ -287,6 +346,8 @@ if (!isTauri) {
         line_progress: null,
         visible_lines: [],
         active_line_words: null,
+        lyrics_origin: { kind: 'automatic' },
+        lyrics_revision: mockRevision,
       };
     }
 
@@ -305,7 +366,7 @@ if (!isTauri) {
     };
 
     let activeIdx: number | null = null;
-    const lines = trackData.lines;
+    const lines = linesFor(trackData);
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (line && line.start_ms <= adjustedPos) {
@@ -367,13 +428,15 @@ if (!isTauri) {
       line_progress: lineProgress,
       visible_lines: visibleLines,
       active_line_words: activeLineWords,
+      lyrics_origin: originFor(trackData.track.uri),
+      lyrics_revision: mockRevision,
     };
   };
 
   const get_all_lines = (): LyricLineSlim[] => {
     const trackData = MOCK_TRACKS[currentTrackIdx];
     if (!trackData) return [];
-    return trackData.lines.map((l) => ({
+    return linesFor(trackData).map((l) => ({
       start_ms: l.start_ms,
       text: l.text,
     }));
@@ -453,8 +516,14 @@ if (!isTauri) {
         return;
 
       // A plain browser can't draw a system menu; nothing is chosen.
-      case 'show_native_menu':
-        return null;
+      case 'show_native_menu': {
+        // Dev aid: set `window.__lyraMockMenuChoice` to a row id to pick it
+        // the next time a native menu opens.
+        const pick = window as { __lyraMockMenuChoice?: string | null };
+        const chosen = pick.__lyraMockMenuChoice ?? null;
+        pick.__lyraMockMenuChoice = null;
+        return chosen;
+      }
 
       case 'set_touch_bar_control_strip': {
         const { enabled } = args as { enabled: boolean };
@@ -737,6 +806,45 @@ if (!isTauri) {
 
       case 'force_refresh_lyrics':
         return;
+
+      case 'list_lyric_candidates': {
+        const trackData = MOCK_TRACKS[currentTrackIdx];
+        if (!trackData) throw 'no_track';
+        const { query } = args as { query: LyricSearchQuery | null };
+        await mockDelay(700);
+        return mockCandidates(trackData, query?.title.trim()
+          ? { title: query.title.trim(), artist: query.artist.trim() }
+          : { title: trackData.track.title, artist: trackData.track.artist });
+      }
+
+      case 'choose_lyric_candidate': {
+        const trackData = MOCK_TRACKS[currentTrackIdx];
+        const { trackKey, id } = args as { trackKey: string; id: number };
+        if (!trackData || trackData.track.uri !== trackKey) throw 'track_changed';
+        await mockDelay(400);
+        setMockChoice(trackKey, {
+          origin: { kind: 'picked', id },
+          lines: markedLines(trackData.lines, `match ${id}`, id === 102 ? 1000 : 0),
+        });
+        return;
+      }
+
+      case 'import_lyrics_file': {
+        const trackData = MOCK_TRACKS[currentTrackIdx];
+        if (!trackData) throw 'no_track';
+        setMockChoice(trackData.track.uri, {
+          origin: { kind: 'imported', name: 'my-lyrics.lrc' },
+          lines: markedLines(trackData.lines, 'your file'),
+        });
+        return true;
+      }
+
+      case 'reset_lyrics_choice': {
+        const trackData = MOCK_TRACKS[currentTrackIdx];
+        if (!trackData) throw 'no_track';
+        setMockChoice(trackData.track.uri, null);
+        return;
+      }
 
       case 'update_settings': {
         const { patch } = args as { patch: Partial<AppSettings> };

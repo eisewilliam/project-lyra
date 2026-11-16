@@ -151,7 +151,64 @@ export type RenderSnapshot = {
   line_progress: number | null;
   visible_lines: VisibleLine[];
   active_line_words: LyricWord[] | null;
+  /** Whether the lyrics are the automatic match or the user's own choice. */
+  lyrics_origin: LyricsOrigin;
+  /** Changes whenever the track's lyrics are replaced; reload them then. */
+  lyrics_revision: number;
 };
+
+/** Where a track's lyrics came from. */
+export type LyricsOrigin =
+  | { kind: 'automatic' }
+  /** Another LRCLIB match the user chose. */
+  | { kind: 'picked'; id: number | null }
+  /** A lyrics file the user added. */
+  | { kind: 'imported'; name: string | null };
+
+/** How well a match fits the playing track. */
+export type CandidateFit = 'good' | 'weak' | 'other_length' | 'other_version';
+
+/** One LRCLIB match the user can choose instead. */
+export type LyricCandidate = {
+  id: number;
+  title: string;
+  artist: string;
+  album: string | null;
+  duration_ms: number | null;
+  synced: boolean;
+  fit: CandidateFit;
+  /** The first few lines. */
+  preview: string[];
+  /** These are the lyrics showing now. */
+  current: boolean;
+};
+
+export type LyricSearchQuery = {
+  title: string;
+  artist: string;
+};
+
+export type LyricCandidates = {
+  track_key: string;
+  /** What was searched, for the search fields. */
+  query: LyricSearchQuery;
+  candidates: LyricCandidate[];
+};
+
+/** Why choosing, adding or resetting lyrics failed. */
+export type LyricChoiceError =
+  | 'no_track'
+  | 'track_changed'
+  | 'consent_required'
+  | 'lookup_disabled'
+  | 'network_error'
+  | 'rate_limit'
+  | 'gone'
+  | 'empty'
+  | 'too_large'
+  | 'not_text'
+  | 'unreadable'
+  | 'save_failed';
 
 export type LyricLineSlim = {
   start_ms: number;

@@ -33,6 +33,9 @@ export const MainLyricsPane = memo(function MainLyricsPane({
   onLineMenu,
   automationDenied,
   onOpenAutomationSettings,
+  onChooseLyrics,
+  onAddLyricsFile,
+  chooser,
 }: Readonly<{
   activeLine: number | null;
   activeLineWords: ReadonlyArray<LyricWord>;
@@ -63,8 +66,18 @@ export const MainLyricsPane = memo(function MainLyricsPane({
   /** Players macOS refused to let Lyra read; shown when nothing plays. */
   automationDenied?: ReadonlyArray<string>;
   onOpenAutomationSettings?: () => void;
+  /** Open the lyrics chooser from the no-lyrics state. */
+  onChooseLyrics?: () => void;
+  /** Ask for a lyrics file from the no-lyrics state. */
+  onAddLyricsFile?: () => void;
+  /** The lyrics chooser, shown in place of the lyrics while open. */
+  chooser?: React.ReactNode;
 }>) {
-  const placeholderProps = onRetryLyrics ? { onRetry: onRetryLyrics } : {};
+  const placeholderProps = {
+    ...(onRetryLyrics ? { onRetry: onRetryLyrics } : {}),
+    ...(onChooseLyrics ? { onChooseLyrics } : {}),
+    ...(onAddLyricsFile ? { onAddLyricsFile } : {}),
+  };
   const [keyboardLineIndex, setKeyboardLineIndex] = useState<number | null>(null);
   const hasLyrics = lyrics.length > 0;
   const selectedLineIndex = useMemo(() => {
@@ -141,15 +154,15 @@ export const MainLyricsPane = memo(function MainLyricsPane({
 
   return (
     <section
-      className={`lyrics-pane ${lyricsViewState === 'unsynced' ? 'is-unsynced' : ''} ${lyricsViewState === 'ready' || lyricsViewState === 'unsynced' ? '' : 'is-placeholder'} ${isBrowsing ? 'is-browsing' : ''} ${switching ? 'is-switching' : ''}`}
+      className={`lyrics-pane ${lyricsViewState === 'unsynced' ? 'is-unsynced' : ''} ${lyricsViewState === 'ready' || lyricsViewState === 'unsynced' ? '' : 'is-placeholder'} ${isBrowsing ? 'is-browsing' : ''} ${switching ? 'is-switching' : ''} ${chooser ? 'is-choosing' : ''}`}
       aria-label="Lyrics"
       onFocus={handleLyricsPaneFocus}
       onKeyDown={handleLyricsPaneKeyDown}
       onContextMenu={handleContextMenu}
       ref={lyricsPaneRef}
-      tabIndex={(lyricsViewState === 'ready' && hasLyrics) || lyricsViewState === 'unsynced' ? 0 : undefined}
+      tabIndex={!chooser && ((lyricsViewState === 'ready' && hasLyrics) || lyricsViewState === 'unsynced') ? 0 : undefined}
     >
-      {lyricsViewState === 'unsynced' ? (
+      {chooser ?? (lyricsViewState === 'unsynced' ? (
         <div className="plain-lyrics">
           <p className="plain-lyrics-label">Unsynchronized lyrics</p>
           <p className="plain-lyrics-text">{plainLyrics ?? 'Loading lyrics text…'}</p>
@@ -196,8 +209,8 @@ export const MainLyricsPane = memo(function MainLyricsPane({
           {...(onOpenAutomationSettings ? { onOpenAutomationSettings } : {})}
           {...placeholderProps}
         />
-      )}
-      {isBrowsing && lyricsViewState === 'ready' && (
+      ))}
+      {isBrowsing && lyricsViewState === 'ready' && !chooser && (
         <button type="button" className="lyrics-return" onClick={onReturnToCurrent}>
           Back to current line
         </button>

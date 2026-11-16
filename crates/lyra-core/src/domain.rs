@@ -397,7 +397,133 @@ pub struct RenderSnapshot {
     /// `None` when no active line or line has no end_ms.
     #[serde(default)]
     pub active_line_words: Option<Vec<LyricWord>>,
+    /// Whether the current lyrics are the automatic match or the user's own
+    /// choice.
+    #[serde(default)]
+    pub lyrics_origin: LyricsOrigin,
+    /// Changes whenever the current track's lyrics are replaced, so views
+    /// that hold the full lyric text know to fetch it again.
+    #[serde(default)]
+    pub lyrics_revision: u64,
 }
+
+/// Where a track's lyrics came from.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LyricsOrigin {
+    /// The provider match Lyra picked.
+    #[default]
+    Automatic,
+    /// Another provider match the user chose instead.
+    Picked { id: Option<i64> },
+    /// A lyrics file the user added.
+    Imported { name: Option<String> },
+}
+
+impl LyricsOrigin {
+    pub fn is_user_choice(&self) -> bool {
+        !matches!(self, Self::Automatic)
+    }
+}
+
+/// How well a provider match fits the playing track.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CandidateFit {
+    /// Title, artist and length agree.
+    Good,
+    /// Same length and version, but the title or artist only loosely agree.
+    Weak,
+    /// More than a few seconds longer or shorter than the track.
+    OtherLength,
+    /// A remix, live, acoustic or other version the track is not (or the
+    /// reverse).
+    OtherVersion,
+}
+
+/// One provider match the user can choose for the playing track.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LyricCandidate {
+    /// Provider record ID; choosing a match fetches it again by this ID.
+    pub id: i64,
+    pub title: String,
+    pub artist: String,
+    pub album: Option<String>,
+    pub duration_ms: Option<u64>,
+    /// Timed lyrics; otherwise plain text.
+    pub synced: bool,
+    pub fit: CandidateFit,
+    /// The first few lines, to tell matches apart.
+    pub preview: Vec<String>,
+    /// These are the lyrics showing now.
+    pub current: bool,
+    /// Hash of the lyric text, compared with the current document.
+    #[serde(skip)]
+    pub fingerprint: u64,
+}
+
+/// Title and artist to search the provider with.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LyricSearchQuery {
+    pub title: String,
+    pub artist: String,
+}
+
+/// Provider matches for one track, best first.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LyricCandidates {
+    pub track_key: String,
+    /// What was searched, so the search fields can show it.
+    pub query: LyricSearchQuery,
+    pub candidates: Vec<LyricCandidate>,
+}
+
+/// Why choosing, adding or resetting a track's lyrics failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LyricChoiceError {
+    NoTrack,
+    /// The track changed before the choice could apply.
+    TrackChanged,
+    /// Browser media; the user has not allowed lyric lookups for it.
+    ConsentRequired,
+    /// Browser media; the user turned lyric lookups for it off.
+    LookupDisabled,
+    NetworkError,
+    RateLimit,
+    /// The provider no longer has the chosen match.
+    Gone,
+    /// The file has no lyrics in it.
+    Empty,
+    TooLarge,
+    /// The file is not text (or not a text encoding Lyra reads).
+    NotText,
+    /// The file could not be read.
+    Unreadable,
+    /// The choice could not be saved.
+    SaveFailed,
+}
+
+impl std::fmt::Display for LyricChoiceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::NoTrack => "Nothing is playing.",
+            Self::TrackChanged => "The song changed before the lyrics could be used.",
+            Self::ConsentRequired => "Allow lyric lookups for browser media first.",
+            Self::LookupDisabled => "Lyric lookups for browser media are turned off.",
+            Self::NetworkError => "Couldn't reach the lyric server.",
+            Self::RateLimit => "The lyric server is busy. Try again in a moment.",
+            Self::Gone => "Those lyrics are no longer available.",
+            Self::Empty => "The file has no lyrics in it.",
+            Self::TooLarge => "The file is too large to be a lyrics file.",
+            Self::NotText => "The file isn't a text or LRC file.",
+            Self::Unreadable => "The file couldn't be opened.",
+            Self::SaveFailed => "The lyrics couldn't be saved.",
+        })
+    }
+}
+
+impl std::error::Error for LyricChoiceError {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowSettings {

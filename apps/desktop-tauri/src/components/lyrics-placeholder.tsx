@@ -25,6 +25,8 @@ export function LyricsPlaceholder({
   onFollowAutomatically,
   automationDenied,
   onOpenAutomationSettings,
+  onChooseLyrics,
+  onAddLyricsFile,
 }: Readonly<{
   state: LyricsPlaceholderState;
   notFoundReason?: NotFoundReason | null;
@@ -40,6 +42,10 @@ export function LyricsPlaceholder({
   /** Players macOS refused to let Lyra read (Automation permission). */
   automationDenied?: ReadonlyArray<string>;
   onOpenAutomationSettings?: () => void;
+  /** Search LRCLIB by hand when the automatic lookup found nothing. */
+  onChooseLyrics?: () => void;
+  /** Use a lyrics file the user has. */
+  onAddLyricsFile?: () => void;
 }>) {
   const loading = state === 'booting' || state === 'loading';
   const ignoredNow = state === 'idle' ? ignored ?? null : null;
@@ -50,6 +56,9 @@ export function LyricsPlaceholder({
   let label = getPlaceholderLabel(state, notFoundReason ?? null);
   if (ignoredNow) label = `Not following “${ignoredNow.title}”`;
   else if (deniedNow) label = `Lyra can't see ${deniedNow.join(' or ')}`;
+  // Lookups for browser media that the user turned off stay off by hand too.
+  const canSearchByHand = state === 'empty' && notFoundReason !== 'LookupDisabled' ? onChooseLyrics : undefined;
+  const canAddFile = state === 'empty' || state === 'error' ? onAddLyricsFile : undefined;
 
   return (
     <div className={`lyrics-placeholder is-${state} ${loading ? 'is-loading' : ''}`}>
@@ -140,7 +149,25 @@ export function LyricsPlaceholder({
           </div>
         ) : null}
 
-        {onRetry ? (
+        {canSearchByHand || canAddFile ? (
+          <div className="lyrics-placeholder-actions">
+            {onRetry ? (
+              <button type="button" className="lyrics-placeholder-retry" onClick={onRetry}>
+                {state === 'empty' ? 'Search again' : 'Retry'}
+              </button>
+            ) : null}
+            {canSearchByHand ? (
+              <button type="button" className="lyrics-placeholder-retry is-secondary" onClick={canSearchByHand}>
+                Search manually
+              </button>
+            ) : null}
+            {canAddFile ? (
+              <button type="button" className="lyrics-placeholder-retry is-secondary" onClick={canAddFile}>
+                Add lyrics file
+              </button>
+            ) : null}
+          </div>
+        ) : onRetry ? (
           <button type="button" className="lyrics-placeholder-retry" onClick={onRetry}>
             {state === 'empty' ? 'Search again' : 'Retry'}
           </button>

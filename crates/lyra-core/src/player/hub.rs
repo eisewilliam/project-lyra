@@ -93,7 +93,7 @@ impl PlayerHub {
 
     /// Observe every adapter and return the snapshot Lyra should display.
     pub fn poll(&self) -> PlaybackSnapshot {
-        let observed: Vec<(usize, Transport, SessionObservation)> = self
+        let mut observed: Vec<(usize, Transport, SessionObservation)> = self
             .adapters
             .iter()
             .enumerate()
@@ -105,6 +105,7 @@ impl PlayerHub {
                     .map(move |observation| (index, transport, observation))
             })
             .collect();
+        share_artwork_across_transports(&mut observed);
 
         let lookups_allowed = self.lookups_allowed.load(Ordering::Relaxed);
         let mut probes = Vec::new();
@@ -372,6 +373,36 @@ impl PlayerHub {
     }
 }
 
+/// Give a session that has no artwork the artwork another transport reports
+/// for the same app playing the same title. Music.app gives AppleScript no
+/// artwork for streamed tracks that are not in the library, while the Now
+/// Playing session for it has the cover; the AppleScript session is the one
+/// kept, so without this the cover would be dropped with the duplicate.
+fn share_artwork_across_transports(observed: &mut [(usize, Transport, SessionObservation)]) {
+    for index in 0..observed.len() {
+        let (_, transport, session) = &observed[index];
+        let Some(track) = session.snapshot.track.as_ref() else {
+            continue;
+        };
+        if session.artwork.is_some() || track.artwork_url.is_some() {
+            continue;
+        }
+        let borrowed = observed.iter().find_map(|(_, donor_transport, donor)| {
+            let donor_track = donor.snapshot.track.as_ref()?;
+            let same_track = donor_transport != transport
+                && donor_track.player.id == track.player.id
+                && donor_track
+                    .title
+                    .trim()
+                    .eq_ignore_ascii_case(track.title.trim());
+            same_track.then(|| donor.artwork.clone()).flatten()
+        });
+        if let Some(artwork) = borrowed {
+            observed[index].2.artwork = Some(artwork);
+        }
+    }
+}
+
 /// Preference when two transports report the same app: app-specific
 /// scripting carries native IDs and file paths; MediaRemote is the fallback.
 fn transport_rank(transport: Transport) -> u8 {
@@ -523,6 +554,85 @@ mod tests {
         let sessions = hub.sessions();
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].id, "applescript:spotify");
+    }
+
+    #[test]
+    fn kept_session_borrows_artwork_the_other_transport_has() {
+        // Music.app streaming a track outside the library: AppleScript has
+        // the track but no artwork, the Now Playing session has the cover.
+        let mut applescript = with_player(
+            observation("applescript:music", PlaybackCaps::ALL),
+            "com.apple.Music",
+            "Song",
+            "Artist",
+        );
+        applescript.artwork = None;
+        let mut now_playing = with_player(
+            observation("mediaremote:music", PlaybackCaps::ALL),
+            "com.apple.Music",
+            "Song",
+            "Artist",
+        );
+        now_playing.artwork.as_mut().unwrap().data = Arc::from(&b"cover"[..]);
+        let hub = PlayerHub::new(
+            vec![
+                fake_on(Transport::AppleScript, applescript.clone()),
+                fake_on(Transport::MediaRemote, now_playing.clone()),
+            ],
+            "x/",
+        );
+        let track = hub.poll().track.unwrap();
+        assert_eq!(hub.sessions()[0].id, "applescript:music");
+        let id = track.artwork_url.unwrap();
+        assert_eq!(
+            &*hub.artwork(id.strip_prefix("x/").unwrap()).unwrap().data,
+            b"cover"
+        );
+
+        // Another title is another track: the Now Playing session has not
+        // caught up, so its cover is not this track's.
+        let stale = with_player(
+            now_playing.clone(),
+            "com.apple.Music",
+            "Previous Song",
+            "Artist",
+        );
+        let hub = PlayerHub::new(
+            vec![
+                fake_on(Transport::AppleScript, applescript.clone()),
+                fake_on(Transport::MediaRemote, stale),
+            ],
+            "x/",
+        );
+        assert!(hub.poll().track.unwrap().artwork_url.is_none());
+
+        // Nor is another app's cover borrowed.
+        let other_app = with_player(now_playing, "com.spotify.client", "Song", "Artist");
+        let mut observed = vec![
+            (0, Transport::AppleScript, applescript),
+            (1, Transport::MediaRemote, other_app),
+        ];
+        share_artwork_across_transports(&mut observed);
+        assert!(observed[0].2.artwork.is_none());
+
+        // Two sessions on one transport are separate players, not two
+        // views of one.
+        let mut bare = with_player(
+            observation("smtc:a", PlaybackCaps::ALL),
+            "Player.exe",
+            "Song",
+            "Artist",
+        );
+        bare.artwork = None;
+        let with_art = with_player(
+            observation("smtc:b", PlaybackCaps::ALL),
+            "Player.exe",
+            "Song",
+            "Artist",
+        );
+        let mut observed = vec![(0, Transport::Smtc, bare), (0, Transport::Smtc, with_art)];
+        share_artwork_across_transports(&mut observed);
+        assert!(observed[0].2.artwork.is_none());
     }
 
     #[test]

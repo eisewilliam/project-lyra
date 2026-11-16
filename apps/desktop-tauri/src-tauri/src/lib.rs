@@ -329,6 +329,8 @@ pub(crate) fn apply_presence_settings(
     behavior: &lyra_core::domain::BehaviorSettings,
 ) {
     presence.configure(behavior.discord_presence, behavior.discord_presence_spotify);
+    // Cover lookups for browser media follow the lyric-lookup consent.
+    presence.set_browser_lookups(behavior.browser_lyrics == BrowserLyrics::Allow);
 }
 
 fn app_support_dir() -> std::path::PathBuf {
@@ -1055,6 +1057,9 @@ pub fn run() {
         .manage(state)
         .manage(updates)
         .plugin(tauri_plugin_clipboard_manager::init())
+        // Used from Rust only (the lyrics file panel); the webview has no
+        // dialog permission.
+        .plugin(tauri_plugin_dialog::init())
         // macOS LaunchAgent / Windows registry; `app.autolaunch()` needs it.
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -1112,6 +1117,14 @@ pub fn run() {
                         state.poll.request_poll();
                     }
                 });
+            // A cover found for the playing track is shown by publishing
+            // the track again, which the next poll does.
+            let cover_app = app.handle().clone();
+            app.state::<AppState>().presence.on_cover_found(move || {
+                if let Some(state) = cover_app.try_state::<AppState>() {
+                    state.poll.request_poll();
+                }
+            });
 
             // Windows start hidden (tauri.conf.json visible:false). Each
             // surface's frontend calls `window_ready` once its WebView has
@@ -1262,6 +1275,10 @@ pub fn run() {
             commands::update_settings,
             commands::refresh_lyrics,
             commands::force_refresh_lyrics,
+            commands::list_lyric_candidates,
+            commands::choose_lyric_candidate,
+            commands::import_lyrics_file,
+            commands::reset_lyrics_choice,
             commands::clear_lyrics_cache,
             commands::playback_play_pause,
             commands::playback_next,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { AmbientBackground } from './components/ambient-background';
+import { ChooseLyricsPanel } from './components/choose-lyrics-panel';
 import { FirstRunCard } from './components/first-run-card';
 import { MainLyricsPane } from './components/main-lyrics-pane';
 import { PlayerSidebar } from './components/player-sidebar';
@@ -33,8 +34,10 @@ import {
   completeOnboarding,
   forceRefreshLyrics,
   getAutomationDenied,
+  importLyricsFile,
   openAutomationSettings,
   nudgeLyricOffset,
+  resetLyricsChoice,
   setBrowserLyrics,
   setLyricOffset,
   setPinnedApp,
@@ -80,6 +83,7 @@ function App() {
     caps,
     ignoredMedia,
     lyricsStatus,
+    lyricsOrigin,
     snapshotReady,
     positionMs,
     setPositionMs,
@@ -106,6 +110,9 @@ function App() {
   const [onboarded, setOnboarded] = useState(true);
   const [automationDenied, setAutomationDenied] = useState<string[]>([]);
   const [showDelayControl, setShowDelayControl] = useState(false);
+  // The track the lyrics chooser was opened for; it closes when that track
+  // stops playing.
+  const [chooserUri, setChooserUri] = useState<string | null>(null);
   const [screenEdgeMotion, setScreenEdgeMotion] = useState<ScreenEdgeMotionMap>({});
 
   const lyricsPaneRef = useRef<HTMLElement | null>(null);
@@ -292,6 +299,44 @@ function App() {
     completeOnboarding().catch(noop);
   }, []);
 
+  // Forget the chooser once its track stops playing, so it does not open
+  // again if that track comes back.
+  if (chooserUri !== null && chooserUri !== trackUri) setChooserUri(null);
+  const chooserOpen = chooserUri !== null;
+  const openChooser = useCallback(() => {
+    if (!trackUri) return;
+    setShowDelayControl(false);
+    setChooserUri(trackUri);
+  }, [trackUri]);
+  const closeChooser = useCallback(() => setChooserUri(null), []);
+
+  const addLyricsFile = useCallback(() => {
+    importLyricsFile()
+      .then((used) => {
+        if (used) setChooserUri(null);
+      })
+      // The host explains a file it can't use in an alert.
+      .catch(noop);
+  }, []);
+
+  const useAutomaticLyrics = useCallback(() => {
+    resetLyricsChoice().catch(noop);
+  }, []);
+
+  const allowBrowserLyrics = useCallback(() => setBrowserLyrics('Allow'), []);
+
+  const chooser = chooserOpen && track ? (
+    <ChooseLyricsPanel
+      trackKey={track.uri}
+      trackTitle={track.title}
+      trackArtist={track.artist}
+      trackDurationMs={durationMs}
+      origin={lyricsOrigin}
+      onAllowBrowserLyrics={allowBrowserLyrics}
+      onClose={closeChooser}
+    />
+  ) : null;
+
   const retryLyrics = useCallback(() => {
     refreshedUriForRetry.current = '';
     forceRefreshLyrics().catch(noop);
@@ -337,11 +382,15 @@ function App() {
         hasTrack={hasTrack}
         isPlaying={isPlaying}
         lyricOffsetMs={lyricOffsetMs}
+        lyricsOrigin={lyricsOrigin}
+        onAddLyricsFile={addLyricsFile}
         onArtworkError={handleArtworkError}
+        onChooseLyrics={openChooser}
         onNudgeOffset={nudgeOffset}
         onResetOffset={resetOffset}
         onRetryLyrics={retryLyrics}
         onSetOffset={setOffset}
+        onUseAutomaticLyrics={useAutomaticLyrics}
         positionLabelRef={positionLabelRef}
         progressFillRef={progressFillRef}
         progressPct={progressPct}
@@ -383,6 +432,8 @@ function App() {
         onLineMenu={openLineMenu}
         automationDenied={automationDenied}
         onOpenAutomationSettings={openPrivacySettings}
+        {...(hasTrack ? { onChooseLyrics: openChooser, onAddLyricsFile: addLyricsFile } : {})}
+        {...(chooser ? { chooser } : {})}
       />
 
       <ShortcutHud hud={hud} />

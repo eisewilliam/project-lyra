@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use crate::domain::{LyricDocument, LyricSourceKind};
+use crate::domain::{LyricDocument, LyricSourceKind, LyricsOrigin};
 use crate::lyrics::parser;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 
 const DAY_SECS: u64 = 24 * 60 * 60;
@@ -42,15 +42,9 @@ impl LyricCache {
     }
 
     pub fn get(&self, track_key: &str) -> Option<LyricDocument> {
-        // Manual override takes priority
-        let override_path = self.override_dir.join(Self::filename(track_key));
-        if override_path.exists() {
-            if let Ok(raw) = std::fs::read_to_string(&override_path) {
-                if let Ok(doc) = parser::parse_lrc(track_key, &raw, LyricSourceKind::ManualOverride)
-                {
-                    return Some(doc);
-                }
-            }
+        // The user's own lyrics win over the provider's.
+        if let Some(doc) = self.get_override(track_key) {
+            return Some(doc);
         }
 
         let cache_path = self.cache_dir.join(Self::filename(track_key));
@@ -116,12 +110,90 @@ impl LyricCache {
     /// True when synced, plain or user-supplied lyrics exist for the track.
     /// Cheaper than `get`: checks files without reading them.
     pub fn has_lyrics(&self, track_key: &str) -> bool {
-        self.override_dir.join(Self::filename(track_key)).exists()
+        self.has_override(track_key)
             || self.cache_dir.join(Self::filename(track_key)).exists()
             || self
                 .cache_dir
                 .join(format!("{}.txt", Self::stem(track_key)))
                 .exists()
+    }
+
+    /// The user's own lyrics for the track: timed (`.lrc`) or plain (`.txt`).
+    fn get_override(&self, track_key: &str) -> Option<LyricDocument> {
+        if let Ok(raw) = std::fs::read_to_string(self.override_path(track_key, "lrc")) {
+            if let Ok(doc) = parser::parse_lrc(track_key, &raw, LyricSourceKind::ManualOverride) {
+                if !doc.lines.is_empty() {
+                    return Some(doc);
+                }
+            }
+        }
+        let plain = std::fs::read_to_string(self.override_path(track_key, "txt")).ok()?;
+        if plain.trim().is_empty() {
+            return None;
+        }
+        Some(LyricDocument {
+            track_key: track_key.to_owned(),
+            source: LyricSourceKind::ManualOverride,
+            lines: vec![],
+            raw_lrc: String::new(),
+            plain_lyrics: Some(plain),
+            source_duration_ms: None,
+        })
+    }
+
+    /// True when the user's own lyrics replace the provider's for the track.
+    pub fn has_override(&self, track_key: &str) -> bool {
+        self.override_path(track_key, "lrc").exists()
+            || self.override_path(track_key, "txt").exists()
+    }
+
+    /// Where the track's lyrics come from, judged by the files on disk.
+    pub fn origin(&self, track_key: &str) -> LyricsOrigin {
+        if !self.has_override(track_key) {
+            return LyricsOrigin::Automatic;
+        }
+        std::fs::read_to_string(self.override_path(track_key, "json"))
+            .ok()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            // A file placed in the folder by hand has no record of its origin.
+            .unwrap_or(LyricsOrigin::Imported { name: None })
+    }
+
+    /// Save the user's own lyrics for a track. They win over the provider's
+    /// until removed, and clearing the cache keeps them.
+    pub fn put_override(&self, doc: &LyricDocument, origin: &LyricsOrigin) -> Result<()> {
+        let key = &doc.track_key;
+        let (keep, other, body) = if doc.lines.is_empty() {
+            let plain = doc
+                .plain_lyrics
+                .as_deref()
+                .filter(|plain| !plain.trim().is_empty())
+                .ok_or_else(|| anyhow!("no lyrics to save"))?;
+            ("txt", "lrc", plain)
+        } else {
+            ("lrc", "txt", doc.raw_lrc.as_str())
+        };
+        std::fs::create_dir_all(&self.override_dir)?;
+        write_atomically(&self.override_path(key, keep), body)?;
+        remove_if_present(&self.override_path(key, other))?;
+        write_atomically(
+            &self.override_path(key, "json"),
+            &serde_json::to_string(origin)?,
+        )?;
+        Ok(())
+    }
+
+    /// Remove the user's lyrics for a track so the provider's show again.
+    pub fn remove_override(&self, track_key: &str) -> Result<()> {
+        for ext in ["lrc", "txt", "json"] {
+            remove_if_present(&self.override_path(track_key, ext))?;
+        }
+        Ok(())
+    }
+
+    fn override_path(&self, track_key: &str, ext: &str) -> PathBuf {
+        self.override_dir
+            .join(format!("{}.{ext}", Self::stem(track_key)))
     }
 
     pub fn put_document(&self, doc: &LyricDocument) -> Result<()> {
@@ -252,6 +324,25 @@ impl LyricCache {
     }
 }
 
+/// Write through a temporary file, so a crash never leaves half a file.
+fn write_atomically(path: &Path, contents: &str) -> Result<()> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    std::fs::write(&tmp, contents)?;
+    std::fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })?;
+    Ok(())
+}
+
+fn remove_if_present(path: &Path) -> Result<()> {
+    match std::fs::remove_file(path) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
+        _ => Ok(()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,6 +383,82 @@ mod tests {
         let read = cache.get(key).unwrap();
         assert_eq!(read.lines[0].text, "Override");
         assert!(read.plain_lyrics.is_none());
+    }
+
+    fn timed(key: &str, raw: &str) -> LyricDocument {
+        parser::parse_lrc(key, raw, LyricSourceKind::ManualOverride).unwrap()
+    }
+
+    #[test]
+    fn user_lyrics_win_until_removed_and_survive_clearing_the_cache() {
+        let (cache, _t) = tmp_cache();
+        let key = "spotify:track:mine";
+        cache.put(key, "[00:01.00]Provider").unwrap();
+        assert_eq!(cache.origin(key), LyricsOrigin::Automatic);
+
+        let origin = LyricsOrigin::Picked { id: Some(42) };
+        cache
+            .put_override(&timed(key, "[00:02.00]Chosen"), &origin)
+            .unwrap();
+        assert!(cache.has_override(key));
+        assert_eq!(cache.get(key).unwrap().lines[0].text, "Chosen");
+        assert_eq!(cache.origin(key), origin);
+
+        cache.clear().unwrap();
+        assert_eq!(cache.get(key).unwrap().lines[0].text, "Chosen");
+
+        cache.put(key, "[00:01.00]Provider").unwrap();
+        cache.remove_override(key).unwrap();
+        assert!(!cache.has_override(key));
+        assert_eq!(cache.origin(key), LyricsOrigin::Automatic);
+        assert_eq!(cache.get(key).unwrap().lines[0].text, "Provider");
+        // Removing again is not an error.
+        cache.remove_override(key).unwrap();
+    }
+
+    #[test]
+    fn plain_user_lyrics_replace_timed_ones() {
+        let (cache, _t) = tmp_cache();
+        let key = "meta::artist::title::200";
+        cache
+            .put_override(
+                &timed(key, "[00:02.00]Timed"),
+                &LyricsOrigin::Imported {
+                    name: Some("a.lrc".into()),
+                },
+            )
+            .unwrap();
+        let plain = LyricDocument {
+            track_key: key.into(),
+            source: LyricSourceKind::ManualOverride,
+            lines: vec![],
+            raw_lrc: String::new(),
+            plain_lyrics: Some("Verse\nChorus".into()),
+            source_duration_ms: None,
+        };
+        let origin = LyricsOrigin::Imported {
+            name: Some("b.txt".into()),
+        };
+        cache.put_override(&plain, &origin).unwrap();
+        let read = cache.get(key).unwrap();
+        assert!(read.lines.is_empty());
+        assert_eq!(read.plain_lyrics.as_deref(), Some("Verse\nChorus"));
+        assert!(cache.has_lyrics(key));
+        assert_eq!(cache.origin(key), origin);
+    }
+
+    #[test]
+    fn hand_placed_override_counts_as_an_imported_file() {
+        let (cache, path) = tmp_cache();
+        let key = "spotify:track:byhand";
+        std::fs::write(
+            path.as_path()
+                .join("lyrics_overrides")
+                .join(LyricCache::filename(key)),
+            "[00:01.00]Mine",
+        )
+        .unwrap();
+        assert_eq!(cache.origin(key), LyricsOrigin::Imported { name: None });
     }
 
     #[test]

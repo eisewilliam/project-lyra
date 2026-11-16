@@ -180,7 +180,7 @@ Windows and Linux use the OS data directory selected by the app runtime for the 
 
 ## Privacy
 
-Lyra does not require an account and does not include telemetry or analytics. Its remote lyric lookups go to [LRCLIB](https://lrclib.net); playback state is read locally from your music player through the operating system. Media playing in a browser is only looked up after you allow it once.
+Lyra does not require an account and does not include telemetry or analytics. Its remote lyric lookups go to [LRCLIB](https://lrclib.net); playback state is read locally from your music player through the operating system. If you turn on Discord presence, which is off by default, Lyra shows your current song on your Discord profile and, when the player has no cover art Discord can load, sends the song's artist and title to Apple's music catalogue (the iTunes Search API) to find it. Media playing in a browser is only looked up after you allow it once.
 
 On Linux, Lyra reads players through the standard MPRIS service on the user's D-Bus session bus. This keeps playback detection independent of a specific distribution or package format. On a Wayland desktop Lyra runs through XWayland, which lets the Marquee and Karaoke lyrics be placed and kept above other windows; a desktop without XWayland can run Lyra, but cannot position those surfaces.
 
