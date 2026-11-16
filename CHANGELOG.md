@@ -10,6 +10,12 @@ offered it as an update.
 
 ## [Unreleased]
 
+## [0.3.0-beta.2] - 2026-11-16
+
+A pre-release for testing ahead of 0.3.0: choosing other lyrics or adding your
+own, and cover art on Discord for Apple Music and other players. Includes the
+changes listed under 0.3.0-beta.1.
+
 ### Added
 
 - If Lyra shows the wrong lyrics for a song, choose others: Choose Lyrics… in
@@ -310,7 +316,8 @@ The first pre-release, for internal testing ahead of 0.1.0.
 - As a pre-release, this build is not offered as an update; install each beta
   from its release page.
 
-[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.3.0-beta.1...HEAD
+[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.3.0-beta.2...HEAD
+[0.3.0-beta.2]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.3.0-beta.2
 [0.3.0-beta.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.3.0-beta.1
 [0.2.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.1
 [0.2.0]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.0
