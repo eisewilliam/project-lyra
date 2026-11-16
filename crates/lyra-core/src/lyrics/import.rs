@@ -63,13 +63,12 @@ fn decode(bytes: &[u8]) -> Result<String, LyricChoiceError> {
 }
 
 fn utf16(bytes: &[u8], read: fn([u8; 2]) -> u16) -> Result<String, LyricChoiceError> {
-    if !bytes.len().is_multiple_of(2) {
+    // UTF-16 text is whole 2-byte units; a stray byte means it isn't.
+    let (pairs, rest) = bytes.as_chunks::<2>();
+    if !rest.is_empty() {
         return Err(LyricChoiceError::NotText);
     }
-    let units: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|pair| read([pair[0], pair[1]]))
-        .collect();
+    let units: Vec<u16> = pairs.iter().map(|pair| read(*pair)).collect();
     String::from_utf16(&units).map_err(|_| LyricChoiceError::NotText)
 }
 
