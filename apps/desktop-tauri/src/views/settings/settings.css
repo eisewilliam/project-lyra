@@ -32,6 +32,7 @@
   --group-fill: rgba(255, 255, 255, 0.72);
   --group-edge: rgba(0, 0, 0, 0.045);
   --row-divider: rgba(0, 0, 0, 0.065);
+  --sidebar-inactive: rgba(0, 0, 0, 0.03);
   /* Opaque fill for native select menus; see `option` below. */
   --menu-bg: #ffffff;
 }
@@ -69,6 +70,7 @@
     --group-fill: rgba(255, 255, 255, 0.04);
     --group-edge: transparent;
     --row-divider: rgba(255, 255, 255, 0.06);
+    --sidebar-inactive: rgba(255, 255, 255, 0.04);
   }
 }
 
@@ -998,6 +1000,16 @@ body[data-os="macos"] {
   border-radius: 18px;
   background: transparent;
   border-right: none;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+/* Extend the artwork over the grey veil that native glass draws when inactive. */
+.settings-shell[data-sidebar-glass][data-window-inactive] .settings-ambient-bg {
+  clip-path: none;
+}
+
+.settings-shell[data-sidebar-glass][data-window-inactive] .settings-sidebar {
+  background: var(--sidebar-inactive);
 }
 
 /* The inset already clears part of the window controls. */
