@@ -10,6 +10,11 @@ offered it as an update.
 
 ## [Unreleased]
 
+### Fixed
+
+- On macOS 26, the Settings sidebar keeps its album-art tint when the window
+  loses focus.
+
 ## [0.3.0-beta.2] - 2026-11-16
 
 A pre-release for testing ahead of 0.3.0: choosing other lyrics or adding your

@@ -9,6 +9,7 @@ import { useScrollEdges } from './hooks/use-scroll-edges';
 import { useSettings } from './hooks/use-settings';
 import { useSidebarGlass } from './hooks/use-sidebar-glass';
 import { useTouchBarSupport } from './hooks/use-touch-bar-support';
+import { useWindowFocused } from './hooks/use-window-focused';
 import { SETTINGS_SECTION_LABELS } from './settings-sections';
 import type { Section } from './types';
 import './settings.css';
@@ -37,6 +38,7 @@ export default function Settings() {
   const shellRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const sidebarGlass = useSidebarGlass(shellRef, sidebarRef);
+  const windowFocused = useWindowFocused();
   const edges = useScrollEdges(paneRef, state ? section : null);
 
   // A new section starts at its top, like a native settings window.
@@ -53,6 +55,7 @@ export default function Settings() {
       ref={shellRef}
       className="settings-shell fixed inset-0 flex overflow-hidden select-none"
       data-sidebar-glass={sidebarGlass ? '' : undefined}
+      data-window-inactive={windowFocused ? undefined : ''}
     >
       <div className="settings-ambient-bg absolute inset-0 z-0 overflow-hidden pointer-events-none" aria-hidden="true">
         <img src={artworkSrcUrl} alt="" decoding="async" key={artworkSrcUrl} />
