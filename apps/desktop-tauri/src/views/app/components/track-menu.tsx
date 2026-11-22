@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import { showMenu, type MenuGroups } from '@/utils/native-menu';
 
 /** Space between the button and the menu, as under a toolbar pull-down. */
@@ -14,14 +14,15 @@ const noop = () => {};
  * drops down from the button like a toolbar pull-down.
  */
 export function TrackMenu({
+  buttonRef,
   groups,
   disabled,
 }: Readonly<{
+  buttonRef: RefObject<HTMLButtonElement | null>;
   groups: MenuGroups;
   disabled: boolean;
 }>) {
   const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
   // A mouse opens the menu on press, as a native pull-down does; the click
   // that may follow the release must not open it a second time.
   const pressedRef = useRef(false);
@@ -43,7 +44,7 @@ export function TrackMenu({
     <button
       ref={buttonRef}
       type="button"
-      className={`track-action-btn${open ? ' active' : ''}`}
+      className="track-action-btn"
       aria-label="Track actions"
       aria-haspopup="menu"
       aria-expanded={open}

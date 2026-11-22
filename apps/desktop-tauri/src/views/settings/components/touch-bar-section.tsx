@@ -17,7 +17,7 @@ export function TouchBarSection({
   return (
     <>
       <Group title="In Lyra">
-        <Row label="Touch Bar buttons" hint="Lyra's bar shows while Lyra is the active app. Drag along its lyrics to move through the song.">
+        <Row label="Touch Bar buttons">
           <button type="button" className="action-btn" onClick={() => runSettingsAction(customizeTouchBar())}>
             Customize…
           </button>
@@ -29,8 +29,8 @@ export function TouchBarSection({
           label="Show Lyra in the Control Strip"
           hint={
             support.control_strip
-              ? 'Tap it to show lyrics over any app. It replaces the Now Playing button.'
-              : 'Not available on this version of macOS.'
+              ? 'Replaces the Now Playing button.'
+              : 'Unavailable on this version of macOS.'
           }
           disabled={!support.control_strip}
         >

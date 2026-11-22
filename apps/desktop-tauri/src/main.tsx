@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { installNativeFeel } from '@/utils/native-feel'
+import { applySurfaceVisible } from '@/utils/playback-sync'
 import './index.css'
 import App from './views/app'
 import Marquee from './views/marquee'
@@ -17,6 +18,8 @@ if (path === '/marquee') {
 } else if (path === '/settings') {
   surface = 'settings';
 }
+
+if (surface !== 'settings') applySurfaceVisible(false);
 
 let view = <App />;
 if (surface === 'marquee') {

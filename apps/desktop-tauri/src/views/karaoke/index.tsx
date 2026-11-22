@@ -1,10 +1,11 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { GlidingLine, type GlideClock } from '@/components/gliding-line';
+import { VocalCountdown } from '@/components/vocal-countdown';
 import {
   resolveLyricsSurfaceState,
   type LyricsPlaceholderState,
 } from '@/utils/lyrics-state';
-import type { LyricWord } from '@/types/tauri-contracts';
+import type { LyricWord, VocalCue } from '@/types/tauri-contracts';
 import {
   shouldShowTrackIntro,
   getActiveContentKey,
@@ -16,12 +17,10 @@ import { KaraokePlaceholder } from './components/placeholder';
 import { usePageVisible } from '@/utils/use-page-visible';
 import { useSurfaceAutoHide } from '@/hooks/use-surface-auto-hide';
 import { useWordColouring } from '@/hooks/use-word-colouring';
-import { makeWindowReady, applySurfaceVisible } from '@/utils/playback-sync';
+import { makeWindowReady } from '@/utils/playback-sync';
 import { useKaraokePlayback } from './hooks/use-playback';
 import { useKaraokeLayout } from './hooks/use-layout';
 import './karaoke.css';
-
-applySurfaceVisible(false);
 
 const SURFACE_LABEL = 'karaoke';
 const ensureKaraokeWindowReady = makeWindowReady(SURFACE_LABEL);
@@ -30,6 +29,7 @@ const ensureKaraokeWindowReady = makeWindowReady(SURFACE_LABEL);
 
 function renderKaraokeContent({
   karaokeState,
+  vocalCue,
   showTrackIntro,
   activeContentKey,
   activeLineWords,
@@ -42,6 +42,7 @@ function renderKaraokeContent({
   trackArtist,
 }: Readonly<{
   karaokeState: LyricsPlaceholderState;
+  vocalCue: VocalCue | null;
   showTrackIntro: boolean;
   activeContentKey: string;
   activeLineWords: LyricWord[];
@@ -53,6 +54,15 @@ function renderKaraokeContent({
   trackTitle: string;
   trackArtist: string;
 }>): ReactNode {
+  if (vocalCue) {
+    return (
+      <>
+        <div className="karaoke-current"><VocalCountdown seconds={vocalCue.seconds} /></div>
+        {lines >= 2 && <div className="karaoke-next">{vocalCue.next_line}</div>}
+      </>
+    );
+  }
+
   if (karaokeState === 'ready') {
     return (
       <>
@@ -107,6 +117,7 @@ export default function Karaoke() {
 
   const {
     activeLine,
+    vocalCue,
     nextLine,
     activeLineProgress,
     trackTitle,
@@ -146,7 +157,7 @@ export default function Karaoke() {
     booted: snapshotReady,
     hasTrack,
     lyricsStatus,
-    hasContent: hasVisibleLyrics,
+    hasContent: hasVisibleLyrics || vocalCue !== null,
   });
 
   const showTrackIntro = shouldShowTrackIntro({
@@ -162,6 +173,7 @@ export default function Karaoke() {
   const lineContent = renderLyricContent(activeLineWords, wordRefs, currentLineFallback);
   const panelContent = renderKaraokeContent({
     karaokeState,
+    vocalCue,
     showTrackIntro,
     activeContentKey,
     activeLineWords,

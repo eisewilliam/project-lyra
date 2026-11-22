@@ -77,6 +77,29 @@ pub fn set_marquee_click_through(enabled: bool, state: State<'_, AppState>, app:
     let _ = app.emit("ui-settings-changed", new_state);
 }
 
+pub(crate) fn disable_click_through(
+    app: &AppHandle,
+    state: State<'_, AppState>,
+    marquee_click_through: bool,
+) {
+    if marquee_click_through {
+        set_marquee_click_through(false, app.state(), app.clone());
+    }
+    let settings = {
+        let mut rt = lock_runtime(&state);
+        let mut settings = rt.settings().clone();
+        if !settings.window.click_through {
+            return;
+        }
+        settings.window.click_through = false;
+        rt.update_settings(settings.clone());
+        settings
+    };
+    crate::apply_main_window_settings(app, &settings.window);
+    let _ = app.emit("app-settings-changed", settings);
+    let _ = app.emit("main-click-through-restored", ());
+}
+
 /// Whether this Mac has a Touch Bar and Lyra can add its Control Strip
 /// button. Sync so it runs on the main thread.
 #[tauri::command]
@@ -421,13 +444,15 @@ pub fn set_lyric_offset(offset_ms: i64, state: State<'_, AppState>, app: AppHand
 /// Returns the new offset.
 #[tauri::command]
 pub fn nudge_lyric_offset(delta_ms: i64, state: State<'_, AppState>, app: AppHandle) -> i64 {
-    let new_offset = {
+    let (new_offset, render) = {
         let mut rt = lock_runtime(&state);
-        let next = (rt.current_offset() + delta_ms).clamp(-30_000, 30_000);
-        rt.set_current_offset(next);
-        next
+        let current = rt.current_offset();
+        let next = current.saturating_add(delta_ms).clamp(-30_000, 30_000);
+        if next != current && rt.has_synced_lyrics() {
+            rt.set_current_offset(next);
+        }
+        (rt.current_offset(), rt.tick())
     };
-    let render = lock_runtime(&state).tick();
     let _ = app.emit("playback-tick", render);
     new_offset
 }

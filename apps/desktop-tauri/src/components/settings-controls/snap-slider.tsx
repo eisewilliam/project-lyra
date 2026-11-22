@@ -61,7 +61,6 @@ export function SnapSlider({
           aria-labelledby={aria['aria-labelledby']}
           aria-describedby={aria['aria-describedby']}
           aria-valuetext={valueText}
-          title={valueText}
           list={listId}
           onChange={handleInput}
         />

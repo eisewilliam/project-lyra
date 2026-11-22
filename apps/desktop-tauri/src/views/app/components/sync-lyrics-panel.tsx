@@ -56,6 +56,7 @@ function useHoldRepeat(step: () => void) {
  * timing earlier or later. Changes apply live and are saved per song. */
 export function SyncLyricsPanel({
   baselineRef,
+  initialTarget,
   isPlaying,
   lines,
   lyricOffsetMs,
@@ -65,6 +66,7 @@ export function SyncLyricsPanel({
   onSetOffset,
 }: Readonly<{
   baselineRef: RefObject<PositionBaseline>;
+  initialTarget: number | null;
   isPlaying: boolean;
   /** Synced lines on the lyric clock, before any offset. */
   lines: ReadonlyArray<LineRef>;
@@ -78,7 +80,7 @@ export function SyncLyricsPanel({
   const panelRef = useRef<HTMLDivElement>(null);
   // The line to tap, and the last line tapped or skipped; the next target
   // comes after it.
-  const [target, setTarget] = useState<number | null>(null);
+  const [target, setTarget] = useState(initialTarget);
   const [cursor, setCursor] = useState(-1);
   const [taps, setTaps] = useState(0);
 

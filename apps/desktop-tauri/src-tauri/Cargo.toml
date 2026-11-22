@@ -30,6 +30,7 @@ tokio = { workspace = true }
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-global-shortcut = "2.4.1"
 
 # macOS already keeps one instance per app bundle and reports a second launch
 # as a reopen event.

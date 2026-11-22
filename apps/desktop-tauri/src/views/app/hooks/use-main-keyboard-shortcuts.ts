@@ -34,6 +34,7 @@ export function useMainKeyboardShortcuts({
   setPositionMs,
   onSkip,
   onFeedback,
+  onFind,
 }: {
   track: TrackRef | null;
   caps: PlaybackCaps;
@@ -44,11 +45,12 @@ export function useMainKeyboardShortcuts({
   onSkip: (direction: SkipDirection) => void;
   /** Confirms a shortcut on screen, since nothing was clicked. */
   onFeedback: (kind: ShortcutFeedback) => void;
+  onFind: (() => void) | null;
 }) {
-  const latestRef = useRef({ track, caps, isPlaying, togglePlaying, onSkip, onFeedback });
+  const latestRef = useRef({ track, caps, isPlaying, togglePlaying, onSkip, onFeedback, onFind });
   useEffect(() => {
-    latestRef.current = { track, caps, isPlaying, togglePlaying, onSkip, onFeedback };
-  }, [track, caps, isPlaying, togglePlaying, onSkip, onFeedback]);
+    latestRef.current = { track, caps, isPlaying, togglePlaying, onSkip, onFeedback, onFind };
+  }, [track, caps, isPlaying, togglePlaying, onSkip, onFeedback, onFind]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -60,7 +62,14 @@ export function useMainKeyboardShortcuts({
         togglePlaying: toggle,
         onSkip: skip,
         onFeedback: feedback,
+        onFind: find,
       } = latestRef.current;
+      const findModifier = handlesTrackSkip ? event.ctrlKey && !event.metaKey : event.metaKey && !event.ctrlKey;
+      if (find && findModifier && !event.shiftKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        find();
+        return;
+      }
       if (!current) return;
 
       if (event.metaKey || event.ctrlKey) {

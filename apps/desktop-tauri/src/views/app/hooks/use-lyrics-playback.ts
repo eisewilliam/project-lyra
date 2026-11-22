@@ -19,7 +19,6 @@ import {
 import {
   getAllLines,
   getPlainLyrics,
-  getLyricOffset,
   playbackSeekMs,
   refreshLyrics,
 } from '@/utils/tauri-commands';
@@ -40,12 +39,13 @@ export function useLyricsPlayback({
   const [lyricsStatus, setLyricsStatus] = useState<RenderSnapshot['lyrics_status']>('Loading');
   const [snapshotReady, setSnapshotReady] = useState(false);
   const [positionMs, setPositionMs] = useState(0);
+  const [vocalCountdown, setVocalCountdown] = useState<number | null>(null);
   const [activeLineWords, setActiveLineWords] = useState<LyricWord[]>([]);
   const [lyricOffsetMs, setLyricOffsetMs] = useState(0);
   const [caps, setCaps] = useState<PlaybackCaps>(NO_PLAYBACK_CAPS);
   const [ignoredMedia, setIgnoredMedia] = useState<IgnoredMedia | null>(null);
   const [lyricsOrigin, setLyricsOrigin] = useState<LyricsOrigin>(AUTOMATIC_ORIGIN);
-  const canSeekRef = useRef(false);
+  const seekContext = useRef({ enabled: false, durationMs: 0, offsetMs: 0 });
 
   const baselineRef = useRef<PositionBaseline>({ ms: 0, at: 0, targetMs: 0, targetAt: 0, blendDur: 1 });
   const lyricsRef = useRef<(HTMLButtonElement | null)[]>([]);
@@ -55,8 +55,6 @@ export function useLyricsPlayback({
   const refreshedUriRef = useRef('');
   const lyricsLoadedUriRef = useRef('');
   const activeWordsKeyRef = useRef('');
-  const offsetUriRef = useRef('');
-  const revisionRef = useRef<number | null>(null);
 
   // Guard: when the user toggles play/pause, ignore the snapshot's
   // isPlaying state for a short window so stale polls don't cause the
@@ -83,9 +81,11 @@ export function useLyricsPlayback({
   }, [lyrics]);
 
   const seekToLine = useCallback((index: number, eventTimeStamp: number) => {
-    const target = lyricsRefForCb.current[index]?.start_ms;
+    const lineStart = lyricsRefForCb.current[index]?.start_ms;
     // Players that cannot seek keep their position; do not move the UI.
-    if (target === undefined || !canSeekRef.current) return;
+    const { enabled, durationMs, offsetMs } = seekContext.current;
+    if (lineStart === undefined || !enabled) return;
+    const target = Math.max(0, Math.min(durationMs || Infinity, lineStart + offsetMs));
     const now = eventTimeStamp;
     baselineRef.current = { ms: target, at: now, targetMs: target, targetAt: now, blendDur: 1 };
     setPositionMs(target);
@@ -109,15 +109,6 @@ export function useLyricsPlayback({
       lyricsRef.current = [];
       wordRefs.current = [];
 
-      if (uri && offsetUriRef.current !== uri) {
-        offsetUriRef.current = uri;
-        getLyricOffset()
-          .then((ms) => setLyricOffsetMs(ms))
-          .catch(() => setLyricOffsetMs(0));
-      } else if (!uri) {
-        offsetUriRef.current = '';
-        setLyricOffsetMs(0);
-      }
     }
 
     setSnapshotReady(true);
@@ -130,7 +121,12 @@ export function useLyricsPlayback({
       setIsPlaying(playingNow);
     }
     setTrack((prev) => sameTrack(prev, snap.playback.track) ? prev : snap.playback.track);
-    canSeekRef.current = snap.playback.caps.seek;
+    const offsetMs = snap.lyric_offset_ms ?? 0;
+    seekContext.current = {
+      enabled: snap.playback.caps.seek,
+      durationMs: snap.playback.track?.duration_ms ?? 0,
+      offsetMs,
+    };
     setCaps((prev) => sameCaps(prev, snap.playback.caps) ? prev : snap.playback.caps);
     const ignored = snap.playback.ignored;
     setIgnoredMedia((prev) => (
@@ -140,17 +136,9 @@ export function useLyricsPlayback({
     const origin = snap.lyrics_origin ?? AUTOMATIC_ORIGIN;
     setLyricsOrigin((prev) => (sameOrigin(prev, origin) ? prev : origin));
 
-    // New lyrics for the same track (the user chose others, or went back to
-    // the automatic ones) start with no timing offset.
     const revision = snap.lyrics_revision ?? 0;
-    if (!uriChanged && uri && revisionRef.current !== null && revisionRef.current !== revision) {
-      getLyricOffset()
-        .then((ms) => {
-          if (lastUriRef.current === uri) setLyricOffsetMs(ms);
-        })
-        .catch(noop);
-    }
-    revisionRef.current = revision;
+    setLyricOffsetMs(offsetMs);
+    setVocalCountdown(snap.vocal_cue?.seconds ?? null);
 
     const newPos = snap.playback.position_ms ?? 0;
     const now = performance.now();
@@ -243,7 +231,7 @@ export function useLyricsPlayback({
     setPositionMs,
     activeLineWords,
     lyricOffsetMs,
-    setLyricOffsetMs,
+    vocalCountdown,
     baselineRef,
     lyricsRef,
     wordRefs,

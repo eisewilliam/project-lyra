@@ -1,5 +1,6 @@
 use crate::domain::{
-    CandidateFit, LyricCandidate, LyricDocument, LyricSearchQuery, LyricSourceKind, TrackRef,
+    CandidateFit, LyricCandidate, LyricDocument, LyricPreviewLine, LyricSearchQuery,
+    LyricSourceKind, TrackRef,
 };
 use crate::lyrics::{parser, LyricSource};
 use anyhow::Result;
@@ -25,8 +26,6 @@ const SEARCH_DURATION_TOLERANCE_SEC: i64 = 5;
 const MIN_SEARCH_SCORE: i32 = 50;
 /// Most matches offered when the user chooses lyrics.
 const MAX_CANDIDATES: usize = 30;
-/// Lines shown from each match so the user can tell them apart.
-const PREVIEW_LINES: usize = 3;
 
 /// Tries per request while LRCLIB rate limits (429), fails (5xx other than
 /// 503) or the connection drops.
@@ -552,14 +551,29 @@ fn rank_candidates(records: Vec<LrclibRecord>, track: &TrackRef) -> Vec<LyricCan
             let (text, preview) = match &synced {
                 Some(doc) => (
                     doc.raw_lrc.as_str(),
-                    preview(doc.lines.iter().map(|line| line.text.as_str())),
+                    doc.lines
+                        .iter()
+                        .map(|line| LyricPreviewLine {
+                            start_ms: Some(line.start_ms),
+                            text: line.text.clone(),
+                        })
+                        .collect(),
                 ),
                 None => {
                     let plain = record
                         .plain_lyrics
                         .as_deref()
                         .filter(|plain| !plain.trim().is_empty())?;
-                    (plain, preview(plain.lines()))
+                    (
+                        plain,
+                        plain
+                            .lines()
+                            .map(|line| LyricPreviewLine {
+                                start_ms: None,
+                                text: line.to_owned(),
+                            })
+                            .collect(),
+                    )
                 }
             };
 
@@ -610,15 +624,6 @@ fn rank_candidates(records: Vec<LrclibRecord>, track: &TrackRef) -> Vec<LyricCan
         .into_iter()
         .take(MAX_CANDIDATES)
         .map(|(.., candidate)| candidate)
-        .collect()
-}
-
-fn preview<'a>(lines: impl Iterator<Item = &'a str>) -> Vec<String> {
-    lines
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .take(PREVIEW_LINES)
-        .map(str::to_owned)
         .collect()
 }
 
@@ -1214,10 +1219,32 @@ mod tests {
                 (1, CandidateFit::OtherVersion),
             ]
         );
-        assert_eq!(ranked[0].preview, ["A", "B", "C"]);
+        let preview: Vec<_> = ranked[0]
+            .preview
+            .iter()
+            .map(|line| (line.start_ms, line.text.as_str()))
+            .collect();
+        assert_eq!(
+            preview,
+            [
+                (Some(1000), "A"),
+                (Some(2000), ""),
+                (Some(3000), "B"),
+                (Some(4000), "C"),
+                (Some(5000), "D")
+            ]
+        );
         assert!(ranked[0].synced);
         assert_eq!(ranked[0].duration_ms, Some(181_000));
-        assert_eq!(ranked[1].preview, ["Plain one", "Plain two"]);
+        let plain: Vec<_> = ranked[1]
+            .preview
+            .iter()
+            .map(|line| (line.start_ms, line.text.as_str()))
+            .collect();
+        assert_eq!(
+            plain,
+            [(None, "Plain one"), (None, ""), (None, "Plain two")]
+        );
         assert!(!ranked[1].synced);
     }
 

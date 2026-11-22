@@ -92,6 +92,28 @@ export function useSettings() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    listen('main-click-through-restored', () => {
+      const previous = stateRef.current;
+      if (!previous || cancelled) return;
+      const next = {
+        ...previous,
+        app: { ...previous.app, window: { ...previous.app.window, click_through: false } },
+      };
+      stateRef.current = next;
+      setState(next);
+    }).then((stop) => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    }).catch(() => undefined);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
   // Launch at login can change in System Settings (allowed, blocked or
   // removed there), so ask the OS again whenever Settings comes back to front.
   useEffect(() => {

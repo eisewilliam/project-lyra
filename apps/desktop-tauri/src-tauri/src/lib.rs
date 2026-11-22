@@ -1,5 +1,6 @@
 mod autostart;
 mod commands;
+mod global_shortcuts;
 mod linux;
 mod macos;
 mod marquee_size;
@@ -495,6 +496,7 @@ type PollSignature = (
     PlaybackState,
     u8,
     Option<usize>,
+    Option<u8>,
     Option<String>,
     u64,
     Option<String>,
@@ -585,8 +587,10 @@ fn process_tick(
         // battery-saver interval.
         let base = rt.settings().behavior.effective_poll_interval_ms();
         let render = rt.tick();
-        let current_pos = render.playback.position_ms.unwrap_or(0);
-        let next_t = rt.next_transition_playback_ms(current_pos);
+        let next_t = render
+            .playback
+            .position_ms
+            .and_then(|pos| rt.next_transition_playback_ms(pos));
         // Font face and lyric colour, only while the Touch Bar shows them.
         let appearance = touch_bar_vis.then(|| rt.settings().appearance.clone());
         (Some(render), base, next_t, appearance)
@@ -630,6 +634,7 @@ fn process_tick(
             render.playback.state.clone(),
             lyrics_status_disc(&render.lyrics_status),
             render.active_line_index,
+            render.vocal_cue.as_ref().map(|cue| cue.seconds),
             render
                 .playback
                 .ignored
@@ -707,8 +712,11 @@ fn process_tick(
     if any_visible && current_state == Some(PlaybackState::Playing) && lyrics_ready {
         if let Some(render) = &render_opt {
             let rate = render.playback.rate;
-            if let (Some(trans_pos), true) = (next_transition_playback, rate > 0.0) {
-                let current_pos = render.playback.position_ms.unwrap_or(0);
+            if let (Some(trans_pos), Some(current_pos), true) = (
+                next_transition_playback,
+                render.playback.position_ms,
+                rate > 0.0,
+            ) {
                 if trans_pos > current_pos {
                     // Playback-time distance to wall-clock delay.
                     let time_to_trans = ((trans_pos - current_pos) as f64 / rate).ceil() as u64;
@@ -1070,6 +1078,7 @@ pub fn run() {
             artwork_response(ctx.app_handle(), &request)
         })
         .setup(move |app| {
+            global_shortcuts::init(app.handle());
             #[cfg(target_os = "macos")]
             if mediaremote_framework().is_none() {
                 log::warn!("MediaRemoteAdapter.framework not found; Now Playing apps unavailable");
@@ -1241,6 +1250,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_ui_state,
+            global_shortcuts::get_global_shortcuts_status,
+            global_shortcuts::set_global_shortcuts_enabled,
             commands::toggle_surface,
             commands::set_show_on_fullscreen,
             commands::set_marquee_locked,

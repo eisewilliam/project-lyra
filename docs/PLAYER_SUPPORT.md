@@ -42,6 +42,18 @@ were tested in Chrome on both OSes, including seeking. YouTube skipping works
 within playlists. OS and app versions were not specified; browser results
 apply to Chrome with these players.
 
+## Lyrics and global shortcuts
+
+The main window can find text in synced or plain lyrics. Jumping from a
+search result requires timed lyrics and a player that supports seeking. The
+vocal countdown requires timed lyrics and a reported playback position.
+
+Settings → General can enable global shortcuts for Marquee, Karaoke,
+click-through, and lyric timing on macOS, Windows, and Linux with X11.
+Timing shortcuts apply while a lyric window is visible.
+Native Wayland sessions cannot register these shortcuts. Under XWayland,
+availability depends on the desktop compositor.
+
 ## Media detection (all OSes)
 
 Lyra follows music only by default. Every session is classified as music,

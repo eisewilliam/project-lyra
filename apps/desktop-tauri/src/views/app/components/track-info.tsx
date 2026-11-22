@@ -1,3 +1,4 @@
+import type { RefObject } from 'react';
 import type { LyricsOrigin, TrackRef } from '@/types/tauri-contracts';
 import type { MenuGroups } from '@/utils/native-menu';
 import { detectHostOs } from '@/utils/os';
@@ -18,12 +19,14 @@ export function TrackInfo({
   lyricsOrigin,
   onAddLyricsFile,
   onChooseLyrics,
+  onFindLyrics,
   onMarkNotMusic,
   onRetryLyrics,
+  onSyncLyrics,
   onUseAutomaticLyrics,
-  setShowDelayControl,
   snapshotReady,
   track,
+  trackActionsRef,
 }: Readonly<{
   hasTrack: boolean;
   hasSyncedLyrics: boolean;
@@ -31,13 +34,15 @@ export function TrackInfo({
   lyricsOrigin: LyricsOrigin;
   onAddLyricsFile: () => void;
   onChooseLyrics: () => void;
+  onFindLyrics: (() => void) | null;
   /** Stop following this media and remember it is not music. */
   onMarkNotMusic: () => void;
   onRetryLyrics: () => void;
+  onSyncLyrics: () => void;
   onUseAutomaticLyrics: () => void;
-  setShowDelayControl: React.Dispatch<React.SetStateAction<boolean>>;
   snapshotReady: boolean;
   track: TrackRef | null;
+  trackActionsRef: RefObject<HTMLButtonElement | null>;
 }>) {
   // Title case, like native menus. Groups: this track's lyrics, the track,
   // the app. The sync offset shows only once it differs from the original,
@@ -54,9 +59,10 @@ export function TrackInfo({
         symbol: 'timer',
         hint: syncHint,
         disabled: !hasSyncedLyrics,
-        onSelect: () => setShowDelayControl(true),
+        onSelect: onSyncLyrics,
       },
       { id: 'choose', label: 'Choose Lyrics…', symbol: 'text.magnifyingglass', onSelect: onChooseLyrics },
+      ...(onFindLyrics ? [{ id: 'find', label: 'Find in Lyrics…', symbol: 'magnifyingglass', onSelect: onFindLyrics }] : []),
       { id: 'add-file', label: 'Add Lyrics File…', symbol: 'doc.badge.plus', onSelect: onAddLyricsFile },
       // The user's own lyrics stay until they go back, so a refresh would
       // change nothing; going back takes its place.
@@ -109,7 +115,7 @@ export function TrackInfo({
         )}
       </div>
       <div className="track-actions">
-        <TrackMenu groups={menu} disabled={!hasTrack} />
+        <TrackMenu buttonRef={trackActionsRef} groups={menu} disabled={!hasTrack} />
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { usePlaybackSnapshot } from '@/hooks/use-playback-snapshot';
 import type {
   CandidateFit,
   LyricCandidate,
@@ -80,6 +81,16 @@ export function ChooseLyricsPanel({
   const [artist, setArtist] = useState(trackArtist);
   const [choosingId, setChoosingId] = useState<number | null>(null);
   const [chooseError, setChooseError] = useState<LyricChoiceError | null>(null);
+  const [positionMs, setPositionMs] = useState<number | null>(null);
+  const [offsetMs, setOffsetMs] = useState(0);
+  const [focusedId, setFocusedId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  usePlaybackSnapshot({ onSnapshot: (snapshot) => {
+    if (snapshot.playback.track?.uri !== trackKey) return;
+    setPositionMs(snapshot.playback.position_ms);
+    setOffsetMs(snapshot.lyric_offset_ms ?? 0);
+  } });
 
   // Results apply only if no newer search started meanwhile. They leave the
   // fields alone: the user may already be typing the next search.
@@ -97,6 +108,8 @@ export function ChooseLyricsPanel({
   const runSearch = (query: LyricSearchQuery | null) => {
     setSearch({ state: 'loading' });
     setChooseError(null);
+    setFocusedId(null);
+    setExpandedId(null);
     fetchResults(query);
   };
 
@@ -159,7 +172,8 @@ export function ChooseLyricsPanel({
   const onListKeyDown = (event: React.KeyboardEvent<HTMLUListElement>) => {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     const rows = Array.from(listRef.current?.querySelectorAll<HTMLButtonElement>('button.chooser-row') ?? []);
-    const at = rows.indexOf(document.activeElement as HTMLButtonElement);
+    const at = rows.indexOf(event.target as HTMLButtonElement);
+    if (at < 0) return;
     const next = rows[Math.max(0, Math.min(rows.length - 1, at + (event.key === 'ArrowDown' ? 1 : -1)))];
     if (next) {
       event.preventDefault();
@@ -167,7 +181,9 @@ export function ChooseLyricsPanel({
     }
   };
 
-  const candidates = search.state === 'done' ? search.result.candidates : [];
+  const candidates = search.state === 'done' && search.result.track_key === trackKey
+    ? search.result.candidates
+    : [];
 
   return (
     <div
@@ -251,12 +267,17 @@ export function ChooseLyricsPanel({
         {candidates.length > 0 && (
           <ul ref={listRef} className="chooser-list" aria-label="Matches" onKeyDown={onListKeyDown}>
             {candidates.map((candidate) => (
-              <li key={candidate.id}>
+              <li key={candidate.id} onFocus={() => setFocusedId(candidate.id)}>
                 <CandidateRow
                   candidate={candidate}
                   trackDurationMs={trackDurationMs}
+                  positionMs={positionMs}
+                  offsetMs={candidate.current ? offsetMs : 0}
                   choosing={choosingId === candidate.id}
                   disabled={choosingId !== null}
+                  isTabStop={candidate.id === (focusedId ?? candidates[0]?.id)}
+                  expanded={expandedId === candidate.id}
+                  onTogglePreview={() => setExpandedId((id) => id === candidate.id ? null : candidate.id)}
                   onChoose={choose}
                 />
               </li>
@@ -286,16 +307,27 @@ export function ChooseLyricsPanel({
 function CandidateRow({
   candidate,
   trackDurationMs,
+  positionMs,
+  offsetMs,
   choosing,
   disabled,
+  isTabStop,
+  expanded,
+  onTogglePreview,
   onChoose,
 }: Readonly<{
   candidate: LyricCandidate;
   trackDurationMs: number;
+  positionMs: number | null;
+  offsetMs: number;
   choosing: boolean;
   disabled: boolean;
+  isTabStop: boolean;
+  expanded: boolean;
+  onTogglePreview: () => void;
   onChoose: (candidate: LyricCandidate) => void;
 }>) {
+  const previewId = useId();
   const fitLabel = FIT_LABELS[candidate.fit];
   const meta = [candidate.artist, candidate.album].filter(Boolean).join(' · ');
   let lengthNote: string | null = null;
@@ -303,43 +335,93 @@ function CandidateRow({
     const diff = candidate.duration_ms - trackDurationMs;
     if (Math.abs(diff) >= DURATION_NOTE_MS) lengthNote = `${diff > 0 ? '+' : '−'}${formatMs(Math.abs(diff))}`;
   }
+  const pastEnd = positionMs !== null && candidate.duration_ms !== null && positionMs >= candidate.duration_ms;
+  const hasLivePreview = candidate.synced && positionMs !== null;
+  const lineIndex = hasLivePreview && !pastEnd ? previewLineAt(candidate.preview, positionMs - offsetMs) : -1;
+  let previewText: string;
+  if (pastEnd && hasLivePreview) previewText = 'End of this version';
+  else if (lineIndex >= 0) previewText = candidate.preview[lineIndex]?.text.trim() || 'Instrumental';
+  else if (hasLivePreview) previewText = 'Before the first line';
+  else previewText = candidate.preview.map((line) => line.text.trim()).filter(Boolean).slice(0, 3).join(' / ');
 
   return (
-    <button
-      type="button"
-      className={`chooser-row${candidate.current ? ' is-current' : ''}${choosing ? ' is-choosing' : ''}`}
-      aria-current={candidate.current || undefined}
-      aria-disabled={(disabled && !choosing) || candidate.current || undefined}
-      onClick={() => onChoose(candidate)}
-    >
-      <span className="chooser-row-main">
-        <span className="chooser-row-title">{candidate.title || 'Untitled'}</span>
-        {meta && <span className="chooser-row-meta">{meta}</span>}
-        {candidate.preview.length > 0 && (
-          <span className="chooser-row-preview">{candidate.preview.join(' / ')}</span>
-        )}
-      </span>
-      <span className="chooser-row-side">
-        {candidate.duration_ms !== null && (
-          <span className="chooser-row-duration">
-            {formatMs(candidate.duration_ms)}
-            {lengthNote && <span className="chooser-row-delta"> ({lengthNote})</span>}
+    <>
+      <div className="chooser-match">
+        <button
+          type="button"
+          className={`chooser-row${candidate.current ? ' is-current' : ''}${choosing ? ' is-choosing' : ''}`}
+          aria-current={candidate.current || undefined}
+          aria-disabled={(disabled && !choosing) || candidate.current || undefined}
+          tabIndex={isTabStop ? 0 : -1}
+          onClick={() => onChoose(candidate)}
+        >
+          <span className="chooser-row-main">
+            <span className="chooser-row-title">{candidate.title || 'Untitled'}</span>
+            {meta && <span className="chooser-row-meta">{meta}</span>}
+            {previewText && (
+              <span className={`chooser-row-preview${hasLivePreview ? ' is-live' : ''}`}>
+                {hasLivePreview && <span className="chooser-preview-position">{formatMs(positionMs)}</span>}
+                {previewText}
+              </span>
+            )}
           </span>
-        )}
-        <span className="chooser-tags">
-          {choosing && <span className="chooser-tag">Loading…</span>}
-          {candidate.current && <span className="chooser-tag is-current">Showing</span>}
-          <span
-            className="chooser-tag"
-            title={candidate.synced ? undefined : 'No timing: shows in this window only'}
-          >
-            {candidate.synced ? 'Synced' : 'Plain text'}
+          <span className="chooser-row-side">
+            {candidate.duration_ms !== null && (
+              <span className="chooser-row-duration">
+                {formatMs(candidate.duration_ms)}
+                {lengthNote && <span className="chooser-row-delta"> ({lengthNote})</span>}
+              </span>
+            )}
+            <span className="chooser-tags">
+              {choosing && <span className="chooser-tag">Loading…</span>}
+              {candidate.current && <span className="chooser-tag is-current">Showing</span>}
+              <span
+                className="chooser-tag"
+                title={candidate.synced ? undefined : 'No timing: shows in this window only'}
+              >
+                {candidate.synced ? 'Synced' : 'Plain text'}
+              </span>
+              {fitLabel && <span className="chooser-tag is-caution">{fitLabel}</span>}
+            </span>
           </span>
-          {fitLabel && <span className="chooser-tag is-caution">{fitLabel}</span>}
-        </span>
-      </span>
-    </button>
+        </button>
+        <button
+          type="button"
+          className="chooser-preview-toggle"
+          aria-expanded={expanded}
+          aria-controls={previewId}
+          aria-label={`${expanded ? 'Hide' : 'Preview'} lyrics for ${candidate.title || 'untitled match'}`}
+          tabIndex={isTabStop ? 0 : -1}
+          onClick={onTogglePreview}
+        >
+          {expanded ? 'Hide' : 'Preview'}
+        </button>
+      </div>
+      <div id={previewId} hidden={!expanded}>
+        {expanded && (
+          <ol className="chooser-full-preview" aria-label="Lyrics preview" tabIndex={0}>
+            {candidate.preview.map((line, index) => (
+              <li key={index} className={index === lineIndex ? 'is-live' : undefined}>
+                {line.start_ms !== null && <span>{formatMs(line.start_ms)}</span>}
+                {line.text || (line.start_ms !== null ? '♪' : '\u00a0')}
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </>
   );
+}
+
+function previewLineAt(lines: LyricCandidate['preview'], positionMs: number): number {
+  let start = 0;
+  let end = lines.length;
+  while (start < end) {
+    const mid = start + Math.floor((end - start) / 2);
+    if ((lines[mid]?.start_ms ?? Infinity) <= positionMs) start = mid + 1;
+    else end = mid;
+  }
+  return start - 1;
 }
 
 function describeOrigin(origin: LyricsOrigin): string {

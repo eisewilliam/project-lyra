@@ -5,6 +5,7 @@ import type {
   BrowserLyrics,
   DiscordPresenceStatus,
   FollowRule,
+  GlobalShortcutStatus,
   KnownPlayerInfo,
   MediaPolicyView,
   MarqueeFrame,
@@ -34,6 +35,14 @@ import type {
 
 export function getUiState(): Promise<UiState> {
   return invoke('get_ui_state');
+}
+
+export function getGlobalShortcutsStatus(): Promise<GlobalShortcutStatus> {
+  return invoke('get_global_shortcuts_status');
+}
+
+export function setGlobalShortcutsEnabled(enabled: boolean): Promise<GlobalShortcutStatus> {
+  return invoke('set_global_shortcuts_enabled', { enabled });
 }
 
 export type SurfaceLabel = 'main' | 'marquee' | 'karaoke' | 'settings';

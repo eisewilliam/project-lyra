@@ -10,6 +10,31 @@ offered it as an update.
 
 ## [Unreleased]
 
+### Added
+
+- Choose Lyrics shows the line each match would display at the current
+  playback position. Open Preview to read the full lyrics before choosing.
+- Settings → General has opt-in global shortcuts to show or hide Marquee and
+  Karaoke, turn off click-through, and adjust lyric timing from another app.
+- Three dots count down to the next vocal line after a long intro or
+  instrumental break in the main window, Marquee, and Karaoke.
+- Find a phrase in the current song with Find in Lyrics in the track menu
+  or with Command-F (Ctrl-F on Windows and Linux). Select a result to jump
+  to it when the lyrics are timed and the player supports seeking.
+
+### Changed
+
+- Settings is easier to scan, with clearer labels, fewer inline explanations,
+  and more contrast for the help that remains. Hover or focus Battery saver
+  or Background darkness for details.
+- In Settings, pane changes and tooltips fade in place. Sliders track the
+  thumb directly, and arrow keys move between segmented choices.
+- The artwork and playback controls move smoothly when you open or close
+  Sync Lyrics. Closing a tool opened from Track Actions returns focus to
+  that button. Playback buttons respond as soon as you press them.
+- Marquee gives immediate feedback when you press its play button and
+  releases it when you start dragging the panel.
+
 ### Fixed
 
 - On macOS 26, the Settings sidebar keeps its album-art tint when the window

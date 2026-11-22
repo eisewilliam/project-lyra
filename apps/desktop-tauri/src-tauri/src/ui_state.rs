@@ -11,6 +11,8 @@ pub struct UiState {
     pub floating_visible: bool,
     #[serde(default)]
     pub karaoke_visible: bool,
+    #[serde(default)]
+    pub global_shortcuts_enabled: bool,
     /// Position lock: the marquee can't be dragged. It still takes hover and
     /// clicks unless `marquee_click_through` is on. Off by default, so the
     /// marquee can be moved straight away.
@@ -171,6 +173,7 @@ impl Default for UiState {
             marquee_visible: true,
             floating_visible: true,
             karaoke_visible: false,
+            global_shortcuts_enabled: false,
             marquee_locked: false,
             marquee_click_through: false,
             marquee_pos: None,
@@ -351,6 +354,7 @@ mod tests {
         assert!(!state.marquee_visible);
         assert!(state.marquee_locked);
         assert!(state.marquee_click_through);
+        assert!(!state.global_shortcuts_enabled);
         assert_eq!(state.marquee_pos, Some((120, 840)));
         assert!(state.marquee_pos_checked);
         assert!(!state.marquee_hide_when_idle);

@@ -103,6 +103,7 @@ body[data-os="linux"] .win-control-btn.close:active {
   .lyric-line.is-leaving-edge { animation: none !important; transform: none !important; }
   .lyrics-container { transition: none !important; }
   .lyrics-pane { scroll-behavior: auto; }
+  .album-art-frame.is-paused { transform: none; }
 }
 :root[data-low-power="true"] .lyra-window { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(18, 18, 22, 0.82); }
 :root[data-low-power="true"] .scrub-preview { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(20, 20, 24, 0.86); }
@@ -197,17 +198,22 @@ body[data-os="linux"] .win-control-btn.close:active {
 .album-art-frame {
   position: relative;
   width: 100%;
-  transition: transform 560ms cubic-bezier(0.34, 1.3, 0.64, 1);
+  transition: transform var(--duration-base) var(--ease-standard);
 }
 
-/* Paused: the cover settles back, like a record lifted off the platter, and
-   springs forward again on play. Readable from across the room. */
+@media (prefers-reduced-motion: no-preference) {
+  /* Keep cover sampling consistent when the Sync animation releases its transform. */
+  :root[data-surface-visible="true"]:not([data-low-power="true"]) .album-art-frame {
+    will-change: translate, scale;
+  }
+}
+
 .album-art-frame.is-paused {
-  transform: scale(0.92);
+  transform: scale(0.95);
 }
 
 .album-art-frame .album-cover {
-  transition: box-shadow 560ms var(--ease-standard);
+  transition: box-shadow var(--duration-base) var(--ease-standard);
 }
 
 /* Track change: the new cover fades in over the old one, which stays
@@ -568,6 +574,8 @@ button.source-badge:focus-visible {
 }
 
 .btn-icon {
+  position: relative;
+  isolation: isolate;
   background: transparent;
   border: none;
   outline: none;
@@ -579,23 +587,46 @@ button.source-badge:focus-visible {
   align-items: center;
   justify-content: center;
   padding: 0;
-  /* Release springs back with a slight overshoot; the press itself is quick
-     (see :active), so a click reads as a physical push. */
   transition:
     color var(--duration-fast) var(--ease-standard),
-    opacity var(--duration-fast) var(--ease-standard),
-    transform 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    opacity var(--duration-fast) var(--ease-standard);
+}
+
+.btn-icon::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-control);
 }
 
 .btn-icon:hover:not(:disabled) {
   color: #fff;
-  transform: scale(1.06);
 }
 
-.btn-icon:active:not(:disabled) {
-  transform: scale(0.86);
-  transition-duration: 90ms;
-  transition-timing-function: ease-out;
+.btn-icon:hover:not(:disabled)::before {
+  opacity: 1;
+}
+
+.btn-icon:active:not(:disabled)::before {
+  background: rgba(255, 255, 255, 0.16);
+  opacity: 1;
+  transition-duration: 0s;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn-icon > * {
+    scale: 1;
+    transition: scale 180ms var(--ease-standard);
+  }
+
+  .btn-icon:active:not(:disabled) > * {
+    scale: 0.9;
+    transition-duration: 65ms;
+  }
 }
 
 .btn-icon:disabled {
@@ -619,6 +650,10 @@ button.source-badge:focus-visible {
 
 .btn-icon.play-pause .transport-glyph {
   --glyph-size: 34px;
+}
+
+.transport-button-glyph {
+  display: flex;
 }
 
 
@@ -1081,17 +1116,15 @@ button.lyric-line:focus-visible {
 /* ── Track quick-options menu (three-dot) ────────────────────────────────────
    The menu itself is the system's; only its button is drawn here, held in
    its pressed look while the menu is open. */
-.track-action-btn.active {
+.track-action-btn:active:not(:disabled),
+.track-action-btn[aria-expanded="true"] {
   color: rgba(255, 255, 255, 0.95);
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.15);
+  transition-duration: 0s;
 }
 
 
-/* ── Sync lyrics ───────────────────────────────────────────────────────────
-   Takes the track title's place. Tap as a line is sung to line the lyrics up
-   with the singer, then nudge earlier or later to fine-tune. Monochrome like
-   the rest of the window; the only colour is the lyric colour in the tap
-   flash, since that is what is being aligned. */
+/* ── Sync lyrics ─────────────────────────────────────────────────────────── */
 .sync-panel {
   display: flex;
   flex-direction: column;
@@ -1169,6 +1202,11 @@ button.lyric-line:focus-visible {
 
 .sync-done-btn:hover {
   background: #fff;
+}
+
+.sync-done-btn:active {
+  background: rgba(255, 255, 255, 0.72);
+  transition-duration: 0s;
 }
 
 .sync-tap {
@@ -1357,6 +1395,32 @@ button.lyric-line:focus-visible {
   outline: none;
 }
 
+.chooser {
+  animation: control-panel-enter var(--duration-fast) var(--ease-standard);
+}
+
+@keyframes control-panel-enter {
+  from { opacity: 0.8; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sync-control-entry {
+    --sync-reveal-clip: inset(-6px -6px 68% -6px);
+    animation: sync-controls-reveal 220ms var(--ease-standard);
+  }
+}
+
+@media (min-width: 901px) {
+  .sync-control-entry {
+    --sync-reveal-clip: inset(68% -6px -6px);
+  }
+}
+
+@keyframes sync-controls-reveal {
+  from { opacity: 0.82; clip-path: var(--sync-reveal-clip); }
+  to { opacity: 1; clip-path: inset(-6px); }
+}
+
 .chooser-header {
   display: flex;
   align-items: center;
@@ -1464,6 +1528,152 @@ button.lyric-line:focus-visible {
 
 .chooser-row:hover:not([aria-disabled="true"]) {
   background: rgba(255, 255, 255, 0.07);
+}
+
+.chooser-match {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chooser-match .chooser-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.chooser-preview-toggle {
+  flex: none;
+  padding: 6px 9px;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  font-size: .74rem;
+  background: rgba(255, 255, 255, .07);
+}
+
+.chooser-preview-toggle:hover,
+.chooser-preview-toggle[aria-expanded="true"] {
+  background: rgba(255, 255, 255, .15);
+}
+
+.chooser-row-preview.is-live,
+.chooser-full-preview .is-live {
+  color: #fff;
+}
+
+.chooser-preview-position,
+.chooser-full-preview li > span,
+.lyrics-find-time {
+  margin-inline-end: .65em;
+  font-variant-numeric: tabular-nums;
+  opacity: .64;
+}
+
+.chooser-full-preview {
+  max-height: 10rem;
+  margin: 2px 0 8px;
+  padding: 8px 12px;
+  overflow-y: auto;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .06);
+  color: rgba(255, 255, 255, .72);
+  font-size: .83rem;
+  line-height: 1.65;
+  list-style: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.lyrics-pane.is-finding {
+  overflow: hidden;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+.lyrics-pane.is-finding .lyrics-container,
+.lyrics-pane.is-finding .plain-lyrics {
+  visibility: hidden;
+}
+
+.lyrics-find {
+  position: absolute;
+  inset: 80px 32px 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lyrics-find-bar {
+    animation: find-bar-reveal 180ms var(--ease-standard);
+  }
+}
+
+@keyframes find-bar-reveal {
+  from { opacity: 0.55; transform: translateY(-5px); }
+}
+
+.lyrics-find-bar {
+  display: flex;
+  gap: 8px;
+}
+
+.lyrics-find-bar input {
+  min-width: 0;
+  flex: 1;
+}
+
+.lyrics-find-status {
+  margin: 0;
+  font-size: .78rem;
+  opacity: .8;
+}
+
+.lyrics-find-matches {
+  margin: 0;
+  padding: 2px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.lyrics-find-match {
+  display: flex;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+button.lyrics-find-match:hover,
+button.lyrics-find-match:focus-visible {
+  background-color: rgba(255, 255, 255, .1);
+}
+
+.lyrics-find-match mark {
+  padding: 0 .08em;
+  border-radius: 2px;
+  color: #17140d;
+  background: #f3d78e;
+}
+
+.lyrics-vocal-cue {
+  position: absolute;
+  inset: 60px auto auto 24px;
+  z-index: 2;
+  font-size: 1.25rem;
+  pointer-events: none;
+}
+
+@media (max-width: 900px) {
+  .lyrics-find {
+    inset: 8px 32px 16px;
+  }
+
+  .lyrics-vocal-cue {
+    inset: 32px auto auto 32px;
+  }
 }
 
 .chooser-row.is-current {

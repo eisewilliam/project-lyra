@@ -21,6 +21,7 @@ export function useMarqueePlayback({
   ensureWindowReady: () => Promise<void>;
 }) {
   const [activeLine, setActiveLine] = useState<string | null>(null);
+  const [vocalCue, setVocalCue] = useState<RenderSnapshot['vocal_cue']>(null);
   const [nextLine, setNextLine] = useState<string | null>(null);
   const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
   const [trackTitle, setTrackTitle] = useState('');
@@ -65,6 +66,8 @@ export function useMarqueePlayback({
     }
 
     setSnapshotReady(true);
+    setVocalCue((current) => current?.seconds === snap.vocal_cue?.seconds
+      && current?.next_line === snap.vocal_cue?.next_line ? current : snap.vocal_cue ?? null);
     setHasTrack(Boolean(track));
     setHasVisibleLyrics(hasActiveLine);
     const playingNow = snap.playback.state === 'Playing';
@@ -137,6 +140,7 @@ export function useMarqueePlayback({
 
   return {
     activeLine,
+    vocalCue,
     nextLine,
     artworkUrl,
     trackTitle,

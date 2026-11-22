@@ -16,8 +16,8 @@ export function DiscordGroup({ enabled, includeSpotify, onEnabledChange, onInclu
 
   const hint =
     enabled && !status.connected
-      ? 'Waiting for Discord. Open the Discord app on this computer.'
-      : 'Shows the song you are listening to on your Discord profile. To show its cover, Lyra may look the song up in Apple’s music catalogue.';
+      ? 'Open Discord to connect.'
+      : 'Apple may receive the title and artist for cover art.';
 
   return (
     <Group title="Discord">
@@ -25,7 +25,7 @@ export function DiscordGroup({ enabled, includeSpotify, onEnabledChange, onInclu
         <Toggle value={enabled} onChange={onEnabledChange} />
       </Row>
       {enabled && (
-        <Row label="Include Spotify" hint="Discord already shows Spotify when the two accounts are linked.">
+        <Row label="Include Spotify">
           <Toggle value={includeSpotify} onChange={onIncludeSpotifyChange} />
         </Row>
       )}

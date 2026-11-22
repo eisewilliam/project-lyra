@@ -554,17 +554,12 @@ html, body {
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.14);
   opacity: 0;
-  transform: scale(0.6);
-  transition:
-    opacity var(--duration-base) var(--ease-standard),
-    transform var(--duration-base) var(--ease-standard);
+  transition: opacity var(--duration-fast) var(--ease-standard);
 }
 
 .marquee-meter .audio-bars {
   justify-content: center;
-  transition:
-    opacity var(--duration-fast) var(--ease-standard),
-    transform var(--duration-base) var(--ease-standard);
+  transition: opacity var(--duration-fast) var(--ease-standard);
 }
 
 .marquee-glyph {
@@ -572,32 +567,35 @@ html, body {
   position: absolute;
   color: #fff;
   opacity: 0;
-  transform: scale(0.5);
-  transition:
-    opacity var(--duration-base) var(--ease-standard),
-    transform var(--duration-base) cubic-bezier(0.34, 1.56, 0.64, 1),
-    gap var(--duration-base) var(--ease-standard),
-    padding var(--duration-base) var(--ease-standard);
+  transition: opacity var(--duration-fast) var(--ease-standard),
+    transform var(--duration-base) var(--ease-standard);
 }
 
-.floating-panel.is-hovered .marquee-meter.can-toggle::before {
+.floating-panel.is-hovered .marquee-meter.can-toggle::before,
+.marquee-meter.can-toggle[data-pressed]::before {
   opacity: 1;
-  transform: scale(1);
 }
 
-.floating-panel.is-hovered .marquee-meter.can-toggle .audio-bars {
+.floating-panel.is-hovered .marquee-meter.can-toggle .audio-bars,
+.marquee-meter.can-toggle[data-pressed] .audio-bars {
   opacity: 0;
-  transform: scaleY(0.2);
 }
 
-.floating-panel.is-hovered .marquee-meter.can-toggle .marquee-glyph {
+.floating-panel.is-hovered .marquee-meter.can-toggle .marquee-glyph,
+.marquee-meter.can-toggle[data-pressed] .marquee-glyph {
   opacity: 1;
-  transform: scale(1);
 }
 
-.marquee-meter.can-toggle:active .marquee-glyph {
-  transform: scale(0.86);
-  transition-duration: 80ms;
+.marquee-meter.can-toggle[data-pressed]::before {
+  background: rgba(255, 255, 255, 0.24);
+  transition-duration: 0s;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .marquee-meter.can-toggle[data-pressed] .marquee-glyph {
+    transform: scale(0.9);
+    transition-duration: 65ms;
+  }
 }
 
 

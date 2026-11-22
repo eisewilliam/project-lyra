@@ -151,11 +151,15 @@ export type RenderSnapshot = {
   line_progress: number | null;
   visible_lines: VisibleLine[];
   active_line_words: LyricWord[] | null;
+  vocal_cue: VocalCue | null;
+  lyric_offset_ms: number;
   /** Whether the lyrics are the automatic match or the user's own choice. */
   lyrics_origin: LyricsOrigin;
   /** Changes whenever the track's lyrics are replaced; reload them then. */
   lyrics_revision: number;
 };
+
+export type VocalCue = { seconds: number; next_line: string };
 
 /** Where a track's lyrics came from. */
 export type LyricsOrigin =
@@ -177,8 +181,7 @@ export type LyricCandidate = {
   duration_ms: number | null;
   synced: boolean;
   fit: CandidateFit;
-  /** The first few lines. */
-  preview: string[];
+  preview: { start_ms: number | null; text: string }[];
   /** These are the lyrics showing now. */
   current: boolean;
 };
@@ -216,6 +219,7 @@ export type LyricLineSlim = {
 };
 
 export type UiState = {
+  global_shortcuts_enabled: boolean;
   marquee_visible: boolean;
   floating_visible: boolean;
   karaoke_visible: boolean;
@@ -259,6 +263,12 @@ export type UiState = {
   touch_bar_control_strip: boolean;
   /** The first-run explanation has been acknowledged. */
   onboarded: boolean;
+};
+
+export type GlobalShortcutStatus = {
+  available: boolean;
+  enabled: boolean;
+  bindings: { key: string; label: string; registered: boolean }[];
 };
 
 export type WindowSettings = {

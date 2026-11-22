@@ -415,6 +415,7 @@ export function useMainLyricReel({
     if (!pane || !container || karaokeMode || lyricsCount === 0) return;
 
     const onWheel = (event: WheelEvent) => {
+      if (event.target instanceof Element && event.target.closest('.lyrics-find')) return;
       if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
       const targets = targetCacheRef.current;
       const first = targets[0];

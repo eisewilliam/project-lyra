@@ -397,6 +397,10 @@ pub struct RenderSnapshot {
     /// `None` when no active line or line has no end_ms.
     #[serde(default)]
     pub active_line_words: Option<Vec<LyricWord>>,
+    #[serde(default)]
+    pub vocal_cue: Option<VocalCue>,
+    #[serde(default)]
+    pub lyric_offset_ms: i64,
     /// Whether the current lyrics are the automatic match or the user's own
     /// choice.
     #[serde(default)]
@@ -405,6 +409,12 @@ pub struct RenderSnapshot {
     /// that hold the full lyric text know to fetch it again.
     #[serde(default)]
     pub lyrics_revision: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VocalCue {
+    pub seconds: u8,
+    pub next_line: String,
 }
 
 /// Where a track's lyrics came from.
@@ -453,13 +463,18 @@ pub struct LyricCandidate {
     /// Timed lyrics; otherwise plain text.
     pub synced: bool,
     pub fit: CandidateFit,
-    /// The first few lines, to tell matches apart.
-    pub preview: Vec<String>,
+    pub preview: Vec<LyricPreviewLine>,
     /// These are the lyrics showing now.
     pub current: bool,
     /// Hash of the lyric text, compared with the current document.
     #[serde(skip)]
     pub fingerprint: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LyricPreviewLine {
+    pub start_ms: Option<u64>,
+    pub text: String,
 }
 
 /// Title and artist to search the provider with.

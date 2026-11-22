@@ -108,6 +108,7 @@ export function useMarqueeInteraction({
   const [nativeEdge, setNativeEdge] = useState<MarqueeEdge>(0);
   const [domEdge, setDomEdge] = useState<MarqueeEdge>(0);
   const [dragging, setDragging] = useState(false);
+  const [transportPressed, setTransportPressed] = useState(false);
   const pressRef = useRef<Press | null>(null);
   const moveRafRef = useRef(0);
   const pendingMoveRef = useRef<{ x: number; y: number; width?: number; height?: number } | null>(null);
@@ -204,6 +205,7 @@ export function useMarqueeInteraction({
       dragging: false,
     };
     pressRef.current = press;
+    setTransportPressed(press.action === 'toggle' && press.resizeEdge === null && caps.play_pause);
     if (!locked) {
       const win = getCurrentWindow();
       Promise.all([win.outerPosition(), win.outerSize(), win.scaleFactor()])
@@ -212,7 +214,7 @@ export function useMarqueeInteraction({
         })
         .catch(noop);
     }
-  }, [locked]);
+  }, [caps.play_pause, locked]);
 
   const onPointerMove = useCallback((event: PointerEvent<HTMLElement>) => {
     if (!NATIVE_HOVER) {
@@ -229,6 +231,7 @@ export function useMarqueeInteraction({
     if (!press.dragging) {
       if (locked || Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
       press.dragging = true;
+      setTransportPressed(false);
       setDragging(true);
     }
     if (!press.origin) return;
@@ -257,6 +260,7 @@ export function useMarqueeInteraction({
     const press = pressRef.current;
     if (!press || press.pointerId !== event.pointerId) return;
     pressRef.current = null;
+    setTransportPressed(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -311,11 +315,13 @@ export function useMarqueeInteraction({
     /** Side whose resize handle should show; 0 when the pointer is mid-marquee. */
     edge: hovered ? (NATIVE_HOVER ? nativeEdge : domEdge) : 0,
     dragging,
+    transportPressed,
     handlers: {
       onPointerDown,
       onPointerMove,
       onPointerUp,
       onPointerCancel,
+      onLostPointerCapture: onPointerCancel,
       onWheel,
       onPointerEnter: () => setDomHover(true),
       onPointerLeave: () => {

@@ -1,5 +1,7 @@
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { GlidingLine, type GlideClock } from '@/components/gliding-line';
+import { VocalCountdown } from '@/components/vocal-countdown';
+import type { VocalCue } from '@/types/tauri-contracts';
 import { TransportGlyph } from '@/components/transport-glyph';
 import {
   resolveLyricsSurfaceState,
@@ -18,7 +20,7 @@ import { useArtworkFallback } from '@/hooks/use-artwork-fallback';
 import { useSurfaceAutoHide } from '@/hooks/use-surface-auto-hide';
 import { useWordColouring } from '@/hooks/use-word-colouring';
 import { useMarqueeFrame } from '@/hooks/use-marquee-frame';
-import { makeWindowReady, applySurfaceVisible } from '@/utils/playback-sync';
+import { makeWindowReady } from '@/utils/playback-sync';
 import { useMarqueeInteraction } from './hooks/use-interaction';
 import { METER_REST_SCALE, useAudioVisualizer } from './hooks/use-audio-visualizer';
 import { useProgressRing } from './hooks/use-progress-ring';
@@ -31,12 +33,9 @@ const SURFACE_LABEL = 'marquee';
 const ensureMarqueeWindowReady = makeWindowReady(SURFACE_LABEL);
 const BAR_KEYS = ['bar-left-outer', 'bar-left-inner', 'bar-right-inner', 'bar-right-outer'] as const;
 
-applySurfaceVisible(false);
-
-
-
 function renderPanelContent({
   panelState,
+  vocalCue,
   showTrackIntro,
   activeContentKey,
   hasActiveLyric,
@@ -48,6 +47,7 @@ function renderPanelContent({
   trackArtist,
 }: Readonly<{
   panelState: LyricsPlaceholderState;
+  vocalCue: VocalCue | null;
   showTrackIntro: boolean;
   activeContentKey: string;
   hasActiveLyric: boolean;
@@ -58,6 +58,15 @@ function renderPanelContent({
   trackTitle: string;
   trackArtist: string;
 }>): ReactNode {
+  if (vocalCue) {
+    return (
+      <>
+        <div className="panel-lyric-active"><VocalCountdown seconds={vocalCue.seconds} /></div>
+        <div className="panel-lyric-next">{vocalCue.next_line}</div>
+      </>
+    );
+  }
+
   if (panelState === 'ready') {
     return (
       <>
@@ -104,6 +113,7 @@ export default function Marquee() {
 
   const {
     activeLine,
+    vocalCue,
     nextLine,
     artworkUrl,
     trackTitle,
@@ -184,7 +194,7 @@ export default function Marquee() {
 
   const frame = useMarqueeFrame(ensureMarqueeWindowReady);
 
-  const { hovered, edge, dragging, handlers } = useMarqueeInteraction({
+  const { hovered, edge, dragging, transportPressed, handlers } = useMarqueeInteraction({
     ensureWindowReady: ensureMarqueeWindowReady,
     frame,
     locked,
@@ -208,7 +218,7 @@ export default function Marquee() {
     booted: snapshotReady,
     hasTrack,
     lyricsStatus,
-    hasContent: hasVisibleLyrics,
+    hasContent: hasVisibleLyrics || vocalCue !== null,
   });
   const showTrackIntro = shouldShowTrackIntro({
     snapshotReady,
@@ -225,6 +235,7 @@ export default function Marquee() {
   const lineContent = renderLyricContent(activeLineWords, wordRefs, currentLineFallback);
   const panelContent = renderPanelContent({
     panelState,
+    vocalCue,
     showTrackIntro,
     activeContentKey,
     hasActiveLyric,
@@ -298,11 +309,10 @@ export default function Marquee() {
           {panelContent}
         </div>
 
-        {/* The meter doubles as the play/pause control: on hover its bars
-            fold away and the transport glyph takes their place. */}
         <div
           className={`marquee-meter ${canToggle ? 'can-toggle' : ''}`}
           data-marquee-action={canToggle ? 'toggle' : undefined}
+          data-pressed={transportPressed || undefined}
         >
           <div
             className={`audio-bars ${barsActive ? 'is-playing' : 'is-paused'}`}

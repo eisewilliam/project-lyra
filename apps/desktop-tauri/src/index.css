@@ -163,3 +163,27 @@ img {
   width: var(--source-icon-size, 16px);
   height: var(--source-icon-size, 16px);
 }
+.vocal-countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: .4em;
+  vertical-align: middle;
+}
+
+.vocal-countdown > span {
+  width: .32em;
+  height: .32em;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .3;
+}
+
+.vocal-countdown > [data-lit="true"] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .vocal-countdown > span {
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+}

@@ -166,6 +166,7 @@ if (!isTauri) {
   };
 
   const defaultUiState: UiState = {
+    global_shortcuts_enabled: false,
     marquee_visible: false,
     floating_visible: true,
     karaoke_visible: false,
@@ -274,7 +275,8 @@ if (!isTauri) {
   // --- Lyric choices (mirrors lyra-core's override layer) ---
   type MockTrack = (typeof MOCK_TRACKS)[number];
   type MockLine = MockTrack['lines'][number];
-  const mockChoices = new Map<string, { origin: LyricsOrigin; lines: MockLine[] }>();
+  type MockChoice = { origin: LyricsOrigin; lines: MockLine[]; plain?: string };
+  const mockChoices = new Map<string, MockChoice>();
   let mockRevision = 0;
   const linesFor = (trackData: MockTrack) => mockChoices.get(trackData.track.uri)?.lines ?? trackData.lines;
   const originFor = (uri: string): LyricsOrigin => mockChoices.get(uri)?.origin ?? { kind: 'automatic' };
@@ -284,7 +286,7 @@ if (!isTauri) {
       end_ms: line.end_ms + shiftMs,
       text: index === 1 ? `(${label}) ${line.text}` : line.text,
     }));
-  const setMockChoice = (uri: string, choice: { origin: LyricsOrigin; lines: MockLine[] } | null) => {
+  const setMockChoice = (uri: string, choice: MockChoice | null) => {
     if (choice) mockChoices.set(uri, choice);
     else mockChoices.delete(uri);
     mockRevision += 1;
@@ -293,7 +295,6 @@ if (!isTauri) {
   };
   const mockCandidates = (trackData: MockTrack, query: LyricSearchQuery): LyricCandidates => {
     const { track } = trackData;
-    const sung = trackData.lines.map((line) => line.text).filter((text) => text && !text.startsWith('♪'));
     const origin = originFor(track.uri);
     const make = (
       id: number,
@@ -307,7 +308,9 @@ if (!isTauri) {
       duration_ms: track.duration_ms,
       synced: true,
       fit: 'good',
-      preview: sung.slice(previewFrom, previewFrom + 3),
+      preview: (id === 102 ? markedLines(trackData.lines, 'match 102', 1000) : trackData.lines)
+        .slice(previewFrom)
+        .map((line) => ({ start_ms: overrides.synced === false ? null : line.start_ms, text: line.text })),
       current: origin.kind === 'picked' ? origin.id === id : origin.kind === 'automatic' && id === 101,
       ...overrides,
     });
@@ -325,6 +328,14 @@ if (!isTauri) {
     };
   };
   const mockDelay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const mockGlobalShortcutStatus = () => ({
+    available: true,
+    enabled: uiState.global_shortcuts_enabled,
+    bindings: [
+      ['M', 'Toggle Marquee'], ['K', 'Toggle Karaoke'], ['C', 'Turn off click-through'],
+      ['[', 'Show lyrics earlier'], [']', 'Show lyrics later'],
+    ].map(([key, label]) => ({ key, label, registered: uiState.global_shortcuts_enabled })),
+  });
 
   // --- Compute Render Snapshot ---
   const computeRenderSnapshot = (): RenderSnapshot => {
@@ -346,6 +357,8 @@ if (!isTauri) {
         line_progress: null,
         visible_lines: [],
         active_line_words: null,
+        vocal_cue: null,
+        lyric_offset_ms: 0,
         lyrics_origin: { kind: 'automatic' },
         lyrics_revision: mockRevision,
       };
@@ -367,6 +380,13 @@ if (!isTauri) {
 
     let activeIdx: number | null = null;
     const lines = linesFor(trackData);
+    const nextVocal = lines.find((line) => line.start_ms > adjustedPos && !line.text.startsWith('♪'));
+    const previousVocal = lines.findLast((line) => line.start_ms <= adjustedPos && !line.text.startsWith('♪'));
+    const untilVocal = nextVocal === undefined ? 0 : nextVocal.start_ms - adjustedPos;
+    const vocalCue = nextVocal && playbackState === 'Playing' && untilVocal > 0 && untilVocal <= 3000
+      && nextVocal.start_ms - (previousVocal?.end_ms ?? 0) >= 5000
+      ? { seconds: Math.ceil(untilVocal / 1000), next_line: nextVocal.text }
+      : null;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (line && line.start_ms <= adjustedPos) {
@@ -423,11 +443,13 @@ if (!isTauri) {
 
     return {
       playback,
-      lyrics_status: 'Ready',
+      lyrics_status: mockChoices.get(trackData.track.uri)?.plain === undefined ? 'Ready' : 'Unsynced',
       active_line_index: activeIdx,
       line_progress: lineProgress,
       visible_lines: visibleLines,
       active_line_words: activeLineWords,
+      vocal_cue: vocalCue,
+      lyric_offset_ms: offset,
       lyrics_origin: originFor(trackData.track.uri),
       lyrics_revision: mockRevision,
     };
@@ -508,6 +530,16 @@ if (!isTauri) {
 
       case 'get_discord_presence_status':
         return { available: true, connected: false };
+
+      case 'set_global_shortcuts_enabled': {
+        const { enabled } = args as { enabled: boolean };
+        uiState.global_shortcuts_enabled = enabled;
+        saveUiState();
+        return mockGlobalShortcutStatus();
+      }
+
+      case 'get_global_shortcuts_status':
+        return mockGlobalShortcutStatus();
 
       case 'get_touch_bar_support':
         return { present: true, control_strip: true };
@@ -633,6 +665,11 @@ if (!isTauri) {
 
       case 'get_all_lines':
         return get_all_lines();
+
+      case 'get_plain_lyrics': {
+        const track = MOCK_TRACKS[currentTrackIdx];
+        return track ? mockChoices.get(track.track.uri)?.plain ?? null : null;
+      }
 
       case 'get_settings':
         return settings;
@@ -824,7 +861,9 @@ if (!isTauri) {
         await mockDelay(400);
         setMockChoice(trackKey, {
           origin: { kind: 'picked', id },
-          lines: markedLines(trackData.lines, `match ${id}`, id === 102 ? 1000 : 0),
+          ...(id === 103
+            ? { lines: [], plain: trackData.lines.slice(1).map((line) => line.text).join('\n') }
+            : { lines: markedLines(trackData.lines, `match ${id}`, id === 102 ? 1000 : 0) }),
         });
         return;
       }

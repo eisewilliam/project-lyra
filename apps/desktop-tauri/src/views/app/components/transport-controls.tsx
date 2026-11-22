@@ -36,7 +36,9 @@ export function TransportControls({
           playbackPlayPause().catch(noop);
         }}
       >
-        <TransportGlyph playing={isPlaying} />
+        <span className="transport-button-glyph">
+          <TransportGlyph playing={isPlaying} />
+        </span>
       </button>
       <button
         className="btn-icon skip"

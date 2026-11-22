@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState, type RefObject } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState, type ReactNode, type RefObject } from 'react';
 import { LyricsPlaceholder } from '@/components/lyrics-placeholder';
 import type { BrowserLyrics, IgnoredMedia, LyricWord } from '@/types/tauri-contracts';
 import type { LyricsPlaceholderState, NotFoundReason } from '@/utils/lyrics-state';
@@ -36,7 +36,11 @@ export const MainLyricsPane = memo(function MainLyricsPane({
   onChooseLyrics,
   onAddLyricsFile,
   chooser,
+  finder,
+  vocalCue,
 }: Readonly<{
+  finder: ReactNode;
+  vocalCue: ReactNode;
   activeLine: number | null;
   activeLineWords: ReadonlyArray<LyricWord>;
   karaokeMode: boolean;
@@ -112,7 +116,7 @@ export const MainLyricsPane = memo(function MainLyricsPane({
   }, [activeLine, hasLyrics, keyboardLineIndex]);
 
   const handleLyricsPaneKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
-    if (!hasLyrics || selectedLineIndex === null) return;
+    if (finder || !hasLyrics || selectedLineIndex === null) return;
 
     if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
       event.preventDefault();
@@ -142,7 +146,7 @@ export const MainLyricsPane = memo(function MainLyricsPane({
       event.preventDefault();
       seekToLine(selectedLineIndex, event.timeStamp);
     }
-  }, [hasLyrics, lyrics.length, moveKeyboardLine, seekToLine, selectedLineIndex]);
+  }, [finder, hasLyrics, lyrics.length, moveKeyboardLine, seekToLine, selectedLineIndex]);
 
   const handleContextMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
     if (lyricsViewState !== 'ready' && lyricsViewState !== 'unsynced') return;
@@ -154,13 +158,13 @@ export const MainLyricsPane = memo(function MainLyricsPane({
 
   return (
     <section
-      className={`lyrics-pane ${lyricsViewState === 'unsynced' ? 'is-unsynced' : ''} ${lyricsViewState === 'ready' || lyricsViewState === 'unsynced' ? '' : 'is-placeholder'} ${isBrowsing ? 'is-browsing' : ''} ${switching ? 'is-switching' : ''} ${chooser ? 'is-choosing' : ''}`}
+      className={`lyrics-pane ${lyricsViewState === 'unsynced' ? 'is-unsynced' : ''} ${lyricsViewState === 'ready' || lyricsViewState === 'unsynced' ? '' : 'is-placeholder'} ${isBrowsing ? 'is-browsing' : ''} ${switching ? 'is-switching' : ''} ${chooser ? 'is-choosing' : ''} ${finder ? 'is-finding' : ''}`}
       aria-label="Lyrics"
       onFocus={handleLyricsPaneFocus}
       onKeyDown={handleLyricsPaneKeyDown}
       onContextMenu={handleContextMenu}
       ref={lyricsPaneRef}
-      tabIndex={!chooser && ((lyricsViewState === 'ready' && hasLyrics) || lyricsViewState === 'unsynced') ? 0 : undefined}
+      tabIndex={!chooser && !finder && ((lyricsViewState === 'ready' && hasLyrics) || lyricsViewState === 'unsynced') ? 0 : undefined}
     >
       {chooser ?? (lyricsViewState === 'unsynced' ? (
         <div className="plain-lyrics">
@@ -210,7 +214,9 @@ export const MainLyricsPane = memo(function MainLyricsPane({
           {...placeholderProps}
         />
       ))}
-      {isBrowsing && lyricsViewState === 'ready' && !chooser && (
+      {finder}
+      {!chooser && !finder && vocalCue}
+      {isBrowsing && lyricsViewState === 'ready' && !chooser && !finder && (
         <button type="button" className="lyrics-return" onClick={onReturnToCurrent}>
           Back to current line
         </button>

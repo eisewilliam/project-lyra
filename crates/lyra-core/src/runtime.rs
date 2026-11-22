@@ -170,6 +170,12 @@ impl LyraRuntime {
             .unwrap_or(0)
     }
 
+    pub fn has_synced_lyrics(&self) -> bool {
+        self.current_doc
+            .as_ref()
+            .is_some_and(|doc| !doc.lines.is_empty())
+    }
+
     /// Persist a new offset for the current track; the next render reflects it.
     pub fn set_current_offset(&mut self, offset_ms: i64) {
         if let Some(key) = self.last_track_key.clone() {
@@ -577,7 +583,10 @@ impl LyraRuntime {
         };
 
         // Convert the next lyric transition time back to playback time
-        next_lyric_ms.map(|t| (t as i64 + offset_ms).max(0) as u64)
+        let next_line = next_lyric_ms.map(|t| t.saturating_add_signed(offset_ms));
+        let next_cue =
+            crate::sync::next_vocal_cue_transition_ms(&doc.lines, current_pos_ms, offset_ms);
+        next_line.into_iter().chain(next_cue).min()
     }
 }
 

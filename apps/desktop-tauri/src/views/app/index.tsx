@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { AmbientBackground } from './components/ambient-background';
 import { ChooseLyricsPanel } from './components/choose-lyrics-panel';
+import { FindLyricsPanel } from './components/find-lyrics-panel';
+import { VocalCountdown } from '@/components/vocal-countdown';
 import { FirstRunCard } from './components/first-run-card';
 import { MainLyricsPane } from './components/main-lyrics-pane';
 import { PlayerSidebar } from './components/player-sidebar';
@@ -26,10 +28,7 @@ import { usePageVisible } from '@/utils/use-page-visible';
 import { useArtworkFallback } from '@/hooks/use-artwork-fallback';
 import { useSurfaceAutoHide } from '@/hooks/use-surface-auto-hide';
 import { useSurfaceSettings } from '@/hooks/use-surface-settings';
-import {
-  makeWindowReady,
-  applySurfaceVisible,
-} from '@/utils/playback-sync';
+import { makeWindowReady } from '@/utils/playback-sync';
 import {
   completeOnboarding,
   forceRefreshLyrics,
@@ -60,8 +59,6 @@ function applyFloatingFont(scale: number) {
   document.documentElement.style.setProperty('--font-scale', String(Number.isFinite(scale) ? scale : 1));
 }
 
-applySurfaceVisible(false);
-
 const NO_LINES: [] = [];
 const AUTOMATION_CHECK_MS = 5000;
 
@@ -89,7 +86,7 @@ function App() {
     setPositionMs,
     activeLineWords,
     lyricOffsetMs,
-    setLyricOffsetMs,
+    vocalCountdown,
     baselineRef,
     lyricsRef,
     wordRefs,
@@ -109,13 +106,17 @@ function App() {
   // never flash the first-run card.
   const [onboarded, setOnboarded] = useState(true);
   const [automationDenied, setAutomationDenied] = useState<string[]>([]);
-  const [showDelayControl, setShowDelayControl] = useState(false);
+  const [syncTrackUri, setSyncTrackUri] = useState<string | null>(null);
   // The track the lyrics chooser was opened for; it closes when that track
   // stops playing.
   const [chooserUri, setChooserUri] = useState<string | null>(null);
+  const [finderUri, setFinderUri] = useState<string | null>(null);
+  const [finderFocus, setFinderFocus] = useState(0);
   const [screenEdgeMotion, setScreenEdgeMotion] = useState<ScreenEdgeMotionMap>({});
 
   const lyricsPaneRef = useRef<HTMLElement | null>(null);
+  const trackActionsRef = useRef<HTMLButtonElement>(null);
+  const lyricsPanelOpenerRef = useRef<HTMLElement | null>(null);
   const lyricsContainerRef = useRef<HTMLDivElement | null>(null);
   const reelUriRef = useRef('');
   const refreshedUriForRetry = useRef('');
@@ -124,6 +125,41 @@ function App() {
   const autoHiddenRef = useRef(false);
 
   const trackUri = track?.uri ?? '';
+  if (syncTrackUri !== null && (syncTrackUri !== trackUri || lyricsStatus !== 'Ready')) setSyncTrackUri(null);
+  if (chooserUri !== null && chooserUri !== trackUri) setChooserUri(null);
+  const chooserOpen = chooserUri === trackUri;
+  if (finderUri !== null && finderUri !== trackUri) setFinderUri(null);
+  const canFind = Boolean(trackUri) && (
+    (lyricsStatus === 'Ready' && lyrics.length > 0) || (lyricsStatus === 'Unsynced' && Boolean(plainLyrics))
+  );
+  const rememberLyricsPanelOpener = useCallback((opener?: HTMLElement | null) => {
+    const focused = opener ?? document.activeElement;
+    lyricsPanelOpenerRef.current = focused instanceof HTMLElement && focused !== document.body
+      ? focused
+      : lyricsPaneRef.current;
+  }, []);
+  const restoreLyricsPanelFocus = useCallback(() => {
+    const opener = lyricsPanelOpenerRef.current;
+    lyricsPanelOpenerRef.current = null;
+    requestAnimationFrame(() => {
+      if (document.activeElement === document.body) {
+        const target = opener?.isConnected ? opener : lyricsPaneRef.current;
+        target?.focus({ preventScroll: true });
+      }
+    });
+  }, []);
+  const openFinder = useCallback((opener?: HTMLElement | null) => {
+    if (finderUri !== trackUri) rememberLyricsPanelOpener(opener);
+    setSyncTrackUri(null);
+    setChooserUri(null);
+    setFinderUri(trackUri);
+    setFinderFocus((previous) => previous + 1);
+  }, [finderUri, rememberLyricsPanelOpener, trackUri]);
+  const openFinderFromTrack = useCallback(() => openFinder(trackActionsRef.current), [openFinder]);
+  const closeFinder = useCallback(() => {
+    setFinderUri(null);
+    restoreLyricsPanelFocus();
+  }, [restoreLyricsPanelFocus]);
   const durationMs = track?.duration_ms ?? 0;
   const { artworkError, setArtworkError } = useArtworkFallback(trackUri);
 
@@ -163,7 +199,7 @@ function App() {
   const { paintRange, isBrowsing, returnToCurrent } = useMainLyricReel({
     activeLine,
     karaokeMode,
-    lyricsCount: lyrics.length,
+    lyricsCount: chooserOpen ? 0 : lyrics.length,
     lyricsPaneRef,
     lyricsContainerRef,
     lyricsRef,
@@ -188,6 +224,7 @@ function App() {
     setPositionMs,
     onSkip: skip,
     onFeedback: showShortcutHud,
+    onFind: canFind && chooserUri === null && onboarded ? openFinder : null,
   });
 
   // Skips sent from the macOS menu bar (⌘←/⌘→, Playback menu) or the
@@ -299,16 +336,32 @@ function App() {
     completeOnboarding().catch(noop);
   }, []);
 
-  // Forget the chooser once its track stops playing, so it does not open
-  // again if that track comes back.
-  if (chooserUri !== null && chooserUri !== trackUri) setChooserUri(null);
-  const chooserOpen = chooserUri !== null;
-  const openChooser = useCallback(() => {
+  const openChooser = useCallback((opener?: HTMLElement | null) => {
     if (!trackUri) return;
-    setShowDelayControl(false);
+    rememberLyricsPanelOpener(opener);
+    setSyncTrackUri(null);
+    setFinderUri(null);
+    returnToCurrent();
     setChooserUri(trackUri);
+  }, [rememberLyricsPanelOpener, returnToCurrent, trackUri]);
+  const openChooserFromTrack = useCallback(() => openChooser(trackActionsRef.current), [openChooser]);
+  const closeChooser = useCallback(() => {
+    setChooserUri(null);
+    restoreLyricsPanelFocus();
+  }, [restoreLyricsPanelFocus]);
+
+  const openSyncLyrics = useCallback(() => {
+    setChooserUri(null);
+    setFinderUri(null);
+    setSyncTrackUri(trackUri);
   }, [trackUri]);
-  const closeChooser = useCallback(() => setChooserUri(null), []);
+
+  const closeSyncLyrics = useCallback(() => {
+    setSyncTrackUri(null);
+    requestAnimationFrame(() => {
+      if (document.activeElement === document.body) trackActionsRef.current?.focus({ preventScroll: true });
+    });
+  }, []);
 
   const addLyricsFile = useCallback(() => {
     importLyricsFile()
@@ -344,21 +397,18 @@ function App() {
 
   const nudgeOffset = useCallback((deltaMs: number) => {
     nudgeLyricOffset(deltaMs)
-      .then((ms) => setLyricOffsetMs(ms))
       .catch(noop);
-  }, [setLyricOffsetMs]);
+  }, []);
 
   const resetOffset = useCallback(() => {
     setLyricOffset(0)
-      .then((ms) => setLyricOffsetMs(ms))
       .catch(noop);
-  }, [setLyricOffsetMs]);
+  }, []);
 
   const setOffset = useCallback((offsetMs: number) => {
     setLyricOffset(offsetMs)
-      .then((ms) => setLyricOffsetMs(ms))
       .catch(noop);
-  }, [setLyricOffsetMs]);
+  }, []);
 
   return (
     <main className="lyra-window">
@@ -385,11 +435,14 @@ function App() {
         lyricsOrigin={lyricsOrigin}
         onAddLyricsFile={addLyricsFile}
         onArtworkError={handleArtworkError}
-        onChooseLyrics={openChooser}
+        onChooseLyrics={openChooserFromTrack}
+        onCloseSyncLyrics={closeSyncLyrics}
+        onFindLyrics={canFind ? openFinderFromTrack : null}
         onNudgeOffset={nudgeOffset}
         onResetOffset={resetOffset}
         onRetryLyrics={retryLyrics}
         onSetOffset={setOffset}
+        onSyncLyrics={openSyncLyrics}
         onUseAutomaticLyrics={useAutomaticLyrics}
         positionLabelRef={positionLabelRef}
         progressFillRef={progressFillRef}
@@ -398,10 +451,10 @@ function App() {
         togglePlaying={togglePlaying}
         onMarkNotMusic={markNotMusic}
         setPositionMs={setPositionMs}
-        setShowDelayControl={setShowDelayControl}
-        showDelayControl={showDelayControl && lyricsStatus === 'Ready'}
+        showDelayControl={syncTrackUri === trackUri && lyricsStatus === 'Ready'}
         snapshotReady={snapshotReady}
         track={track}
+        trackActionsRef={trackActionsRef}
         lyrics={syncedLyrics}
         onSkip={skip}
       />
@@ -431,6 +484,17 @@ function App() {
         switching={switching}
         onLineMenu={openLineMenu}
         automationDenied={automationDenied}
+        vocalCue={vocalCountdown !== null && <div className="lyrics-vocal-cue"><VocalCountdown seconds={vocalCountdown} /></div>}
+        finder={canFind && finderUri === trackUri && (
+          <FindLyricsPanel
+            focusRequest={finderFocus}
+            lyrics={syncedLyrics}
+            plainLyrics={lyricsStatus === 'Unsynced' ? plainLyrics : null}
+            canSeek={caps.seek}
+            onSeek={seekFromLine}
+            onClose={closeFinder}
+          />
+        )}
         onOpenAutomationSettings={openPrivacySettings}
         {...(hasTrack ? { onChooseLyrics: openChooser, onAddLyricsFile: addLyricsFile } : {})}
         {...(chooser ? { chooser } : {})}
