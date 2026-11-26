@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { GlidingLine, type GlideClock } from '@/components/gliding-line';
 import { VocalCountdown } from '@/components/vocal-countdown';
 import {
@@ -36,6 +36,8 @@ function renderKaraokeContent({
   activeLineProgress,
   glideClock,
   lineContent,
+  outgoingLine,
+  onOutgoingDone,
   lines,
   nextLine,
   trackTitle,
@@ -49,6 +51,8 @@ function renderKaraokeContent({
   activeLineProgress: number;
   glideClock: GlideClock;
   lineContent: ReactNode;
+  outgoingLine: { key: string; text: string } | null;
+  onOutgoingDone: () => void;
   lines: number;
   nextLine: string | null;
   trackTitle: string;
@@ -57,8 +61,10 @@ function renderKaraokeContent({
   if (vocalCue) {
     return (
       <>
-        <div className="karaoke-current"><VocalCountdown seconds={vocalCue.seconds} /></div>
-        {lines >= 2 && <div className="karaoke-next">{vocalCue.next_line}</div>}
+        <div className="karaoke-current is-vocal-cue"><VocalCountdown seconds={vocalCue.seconds} /></div>
+        {lines >= 2 && vocalCue.next_line && (
+          <div className="karaoke-next" key={vocalCue.next_line}>{vocalCue.next_line}</div>
+        )}
       </>
     );
   }
@@ -66,17 +72,29 @@ function renderKaraokeContent({
   if (karaokeState === 'ready') {
     return (
       <>
-        <GlidingLine
-          key={activeContentKey}
-          className={`karaoke-current ${activeLineWords.length > 0 ? 'has-word-sync' : ''}`}
-          contentClassName="karaoke-lyric-content"
-          contentKey={activeContentKey}
-          syncProgress={activeLineProgress}
-          clock={glideClock}
-        >
-          {lineContent}
-        </GlidingLine>
-        {lines >= 2 && (
+        <div className="karaoke-current-stage">
+          {outgoingLine && (
+            <div
+              key={outgoingLine.key}
+              className="karaoke-current karaoke-outgoing"
+              aria-hidden="true"
+              onAnimationEnd={onOutgoingDone}
+            >
+              {outgoingLine.text}
+            </div>
+          )}
+          <GlidingLine
+            key={activeContentKey}
+            className={`karaoke-current ${activeLineWords.length > 0 ? 'has-word-sync' : ''}`}
+            contentClassName="karaoke-lyric-content"
+            contentKey={activeContentKey}
+            syncProgress={activeLineProgress}
+            clock={glideClock}
+          >
+            {lineContent}
+          </GlidingLine>
+        </div>
+        {lines >= 2 && nextLine !== null && (
           <div className="karaoke-next" key={nextLine || 'none'}>
             {getNextLineText(nextLine)}
           </div>
@@ -170,6 +188,43 @@ export default function Karaoke() {
 
   const activeContentKey = getActiveContentKey(activeLineWords, activeLine);
   const currentLineFallback = getCurrentLineFallback(activeLine, nextLine);
+  const showingLyricLine = karaokeState === 'ready' && vocalCue === null;
+  const currentActiveText = showingLyricLine ? currentLineFallback : '';
+  const [lineSwap, setLineSwap] = useState({
+    key: activeContentKey,
+    text: currentActiveText,
+    outgoingKey: '',
+    outgoingText: '',
+  });
+  if (lineSwap.key !== activeContentKey || (!showingLyricLine && (lineSwap.text || lineSwap.outgoingText))) {
+    const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const lowPower = document.documentElement.dataset.lowPower === 'true';
+    const hidden = document.documentElement.dataset.surfaceVisible === 'false';
+    const canHandoff = showingLyricLine
+      && Boolean(lineSwap.text)
+      && Boolean(currentActiveText)
+      && lineSwap.text !== currentActiveText
+      && !reduce
+      && !lowPower
+      && !hidden;
+    setLineSwap({
+      key: activeContentKey,
+      text: currentActiveText,
+      outgoingKey: canHandoff ? `${lineSwap.key}-out` : '',
+      outgoingText: canHandoff ? lineSwap.text : '',
+    });
+  } else if (lineSwap.text !== currentActiveText) {
+    setLineSwap((cur) => ({ ...cur, text: currentActiveText }));
+  }
+
+  useEffect(() => {
+    if (!lineSwap.outgoingText) return;
+    const timer = globalThis.setTimeout(() => {
+      setLineSwap((cur) => (cur.outgoingText ? { ...cur, outgoingKey: '', outgoingText: '' } : cur));
+    }, 240);
+    return () => globalThis.clearTimeout(timer);
+  }, [lineSwap.outgoingKey, lineSwap.outgoingText]);
+
   const lineContent = renderLyricContent(activeLineWords, wordRefs, currentLineFallback);
   const panelContent = renderKaraokeContent({
     karaokeState,
@@ -185,6 +240,10 @@ export default function Karaoke() {
       running: pageVisible && surfaceVisible,
     },
     lineContent,
+    outgoingLine: lineSwap.outgoingText
+      ? { key: lineSwap.outgoingKey, text: lineSwap.outgoingText }
+      : null,
+    onOutgoingDone: () => setLineSwap((cur) => (cur.outgoingText ? { ...cur, outgoingKey: '', outgoingText: '' } : cur)),
     lines,
     nextLine,
     trackTitle,

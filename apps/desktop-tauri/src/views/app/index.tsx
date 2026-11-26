@@ -18,6 +18,7 @@ import { useMainLyricReel } from './hooks/use-main-lyric-reel';
 import { useMainProgressAndWordAnimation } from './hooks/use-main-progress-and-word-animation';
 import { useTrackSkip, type SkipDirection } from './hooks/use-track-skip';
 import { useLineMenu } from './hooks/use-line-menu';
+import { useMainWindowReveal } from './hooks/use-main-window-reveal';
 import {
   canSearchLyricsAgain,
   getNotFoundReason,
@@ -118,16 +119,22 @@ function App() {
   const [maker, setMaker] = useState<{ track: TrackRef; plain: string; saved: boolean } | null>(null);
   const [makerDirty, setMakerDirty] = useState(false);
   const [chooserUri, setChooserUri] = useState<string | null>(null);
+  const [pendingChooserUri, setPendingChooserUri] = useState<string | null>(null);
   const [finderUri, setFinderUri] = useState<string | null>(null);
   const [finderFocus, setFinderFocus] = useState(0);
   const [screenEdgeMotion, setScreenEdgeMotion] = useState<ScreenEdgeMotionMap>({});
 
+  const windowRef = useRef<HTMLElement | null>(null);
+  const revealRimRef = useRef<HTMLDivElement | null>(null);
   const lyricsPaneRef = useRef<HTMLElement | null>(null);
   const trackActionsRef = useRef<HTMLButtonElement>(null);
   const lyricsPanelOpenerRef = useRef<HTMLElement | null>(null);
   const lyricsContainerRef = useRef<HTMLDivElement | null>(null);
+  const pendingChooserTimerRef = useRef<number | null>(null);
   const reelUriRef = useRef('');
   const refreshedUriForRetry = useRef('');
+
+  useMainWindowReveal({ windowRef, rimRef: revealRimRef });
 
   const desiredVisibleRef = useRef(true);
   const autoHiddenRef = useRef(false);
@@ -136,6 +143,13 @@ function App() {
   if (maker && maker.track.uri !== trackUri && !makerDirty) setMaker(null);
   if (syncTrackUri !== null && (syncTrackUri !== trackUri || lyricsStatus !== 'Ready')) setSyncTrackUri(null);
   if (chooserUri !== null && chooserUri !== trackUri) setChooserUri(null);
+  if (pendingChooserUri !== null && onboarded && pendingChooserUri === trackUri) {
+    setPendingChooserUri(null);
+    setSyncTrackUri(null);
+    setFinderUri(null);
+    setMaker(null);
+    setChooserUri(trackUri);
+  }
   const chooserOpen = chooserUri === trackUri;
   if (finderUri !== null && finderUri !== trackUri) setFinderUri(null);
   const canFind = Boolean(trackUri) && (
@@ -162,6 +176,7 @@ function App() {
     rememberLyricsPanelOpener(saved ? trackActionsRef.current : opener);
     setSyncTrackUri(null);
     setChooserUri(null);
+    setPendingChooserUri(null);
     setFinderUri(null);
     setMakerDirty(false);
     setMaker({ track, plain: plainLyrics ?? '', saved });
@@ -171,6 +186,7 @@ function App() {
     if (finderUri !== trackUri) rememberLyricsPanelOpener(opener);
     setSyncTrackUri(null);
     setChooserUri(null);
+    setPendingChooserUri(null);
     setFinderUri(trackUri);
     setFinderFocus((previous) => previous + 1);
   }, [finderUri, rememberLyricsPanelOpener, trackUri]);
@@ -267,6 +283,35 @@ function App() {
       unlisten?.();
     };
   }, [markSkip, showShortcutHud]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void listen<string>('open-choose-lyrics', (event) => {
+      const target = event.payload;
+      if (!target) return;
+      returnToCurrent();
+      setPendingChooserUri(target);
+      if (pendingChooserTimerRef.current !== null) {
+        globalThis.clearTimeout(pendingChooserTimerRef.current);
+      }
+      pendingChooserTimerRef.current = globalThis.setTimeout(() => {
+        pendingChooserTimerRef.current = null;
+        setPendingChooserUri((current) => (current === target ? null : current));
+      }, 3000);
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+      if (pendingChooserTimerRef.current !== null) {
+        globalThis.clearTimeout(pendingChooserTimerRef.current);
+        pendingChooserTimerRef.current = null;
+      }
+    };
+  }, [returnToCurrent]);
 
   const syncedLyrics = lyricsStatus === 'Ready' ? lyrics : NO_LINES;
 
@@ -389,11 +434,13 @@ function App() {
   }, [rememberLyricsPanelOpener, returnToCurrent, trackUri]);
   const openChooserFromTrack = useCallback(() => openChooser(trackActionsRef.current), [openChooser]);
   const closeChooser = useCallback(() => {
+    setPendingChooserUri(null);
     setChooserUri(null);
     restoreLyricsPanelFocus();
   }, [restoreLyricsPanelFocus]);
 
   const openSyncLyrics = useCallback(() => {
+    setPendingChooserUri(null);
     setChooserUri(null);
     setFinderUri(null);
     setMaker(null);
@@ -464,7 +511,8 @@ function App() {
   const syncing = syncTrackUri === trackUri && lyricsStatus === 'Ready';
 
   return (
-    <main className="lyra-window">
+    <main ref={windowRef} className="lyra-window">
+      <div ref={revealRimRef} className="window-reveal-rim" aria-hidden="true" />
       {drawsWindowControls && <WindowControls />}
 
       <AmbientBackground

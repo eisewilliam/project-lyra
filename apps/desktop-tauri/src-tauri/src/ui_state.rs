@@ -25,6 +25,10 @@ pub struct UiState {
     /// `None` keeps it in its default place (see `marquee_size`).
     #[serde(default, alias = "island_pos")]
     pub marquee_pos: Option<(i32, i32)>,
+    /// Screen edges the marquee is attached to (any combination of top/right/
+    /// bottom/left for edge and corner attachment).
+    #[serde(default)]
+    pub marquee_dock: marquee_size::DockEdges,
     /// `marquee_pos` has been checked for the top-centre starting place that
     /// earlier versions saved as though the user had chosen it. States saved
     /// before the check existed get it once; a fresh install needs none.
@@ -177,6 +181,7 @@ impl Default for UiState {
             marquee_locked: false,
             marquee_click_through: false,
             marquee_pos: None,
+            marquee_dock: marquee_size::DockEdges::default(),
             marquee_pos_checked: true,
             marquee_hide_when_idle: true,
             marquee_scale: None,
@@ -285,6 +290,26 @@ mod tests {
         assert!(!state.marquee_locked);
         assert!(state.marquee_hide_when_idle);
         assert_eq!(state.marquee_pos, None);
+        assert_eq!(state.marquee_dock, marquee_size::DockEdges::default());
+    }
+
+    #[test]
+    fn marquee_dock_round_trips_and_defaults_for_older_states() {
+        let legacy: UiState = serde_json::from_str(r#"{"marquee_visible":true}"#).unwrap();
+        assert_eq!(legacy.marquee_dock, marquee_size::DockEdges::default());
+
+        let docked = UiState {
+            marquee_dock: marquee_size::DockEdges {
+                top: false,
+                right: true,
+                bottom: true,
+                left: false,
+            },
+            ..UiState::default()
+        };
+        let saved = serde_json::to_string(&docked).unwrap();
+        let reloaded: UiState = serde_json::from_str(&saved).unwrap();
+        assert_eq!(reloaded.marquee_dock, docked.marquee_dock);
     }
 
     #[test]

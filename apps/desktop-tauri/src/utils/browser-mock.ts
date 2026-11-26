@@ -1,8 +1,10 @@
 import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
 import { emit } from '@tauri-apps/api/event';
-import { marqueeBaseHeight } from '@/constants/marquee-size';
+import { MARQUEE_MAX_BASE_WIDTH, MARQUEE_MIN_BASE_WIDTH, marqueeBaseHeight } from '@/constants/marquee-size';
 import type {
   AppSettings,
+  MarqueeDock,
+  MarqueeDragFeedback,
   MarqueeFrame,
   MarqueeSettingsPatch,
   KaraokeSettingsPatch,
@@ -174,6 +176,7 @@ if (!isTauri) {
     marquee_locked: false,
     marquee_click_through: false,
     marquee_pos: null,
+    marquee_dock: { top: false, right: false, bottom: false, left: false },
     marquee_hide_when_idle: true,
     marquee_scale: null,
     marquee_base_width: 600,
@@ -191,10 +194,10 @@ if (!isTauri) {
     theme: 'dark',
     karaoke_position: 'bottom',
     karaoke_alignment: 'center',
-    karaoke_width_pct: 80,
-    karaoke_offset_px: 20,
+    karaoke_width_pct: 100,
+    karaoke_offset_px: 24,
     karaoke_lines: 2,
-    karaoke_bg_opacity: 0.5,
+    karaoke_bg_opacity: 0,
     karaoke_bold: true,
     autostart_enabled: false,
     preferred_monitor: null,
@@ -233,19 +236,47 @@ if (!isTauri) {
     localStorage.setItem(LOCAL_STORAGE_UI_KEY, JSON.stringify(uiState));
   };
   /** The host's fit (`marquee_size.rs`) for a 1512-point laptop display. */
-  const mockMarqueeFrame = (): MarqueeFrame => {
+  const mockMarqueeFrame = (overrides?: Partial<MarqueeFrame>): MarqueeFrame => {
     const scale = uiState.marquee_scale ?? 0.85;
     const maxWidth = 680;
+    const dock: MarqueeDock = overrides?.dock ?? uiState.marquee_dock ?? {
+      top: false,
+      right: false,
+      bottom: false,
+      left: false,
+    };
+    const docked = dock.top || dock.right || dock.bottom || dock.left;
     return {
       scale,
       auto_scale: uiState.marquee_scale == null,
       width: Math.round(Math.min((uiState.marquee_base_width ?? 600) * scale, maxWidth)),
       height: Math.round(marqueeBaseHeight(uiState.marquee_lines ?? 2) * scale),
       notch_inset: 0,
-      docked: false,
+      docked,
+      dock,
       max_width: maxWidth,
+      ...overrides,
     };
   };
+
+  Object.assign(window, {
+    __lyraMockMarquee: {
+      setDock(dock: Partial<MarqueeDock>, extra?: Partial<MarqueeFrame>) {
+        const nextDock: MarqueeDock = {
+          top: false,
+          right: false,
+          bottom: false,
+          left: false,
+          ...dock,
+        };
+        uiState.marquee_dock = nextDock;
+        void emit('marquee-frame', mockMarqueeFrame({ dock: nextDock, ...extra }));
+      },
+      emitFeedback(feedback: MarqueeDragFeedback) {
+        void emit('marquee-drag-feedback', feedback);
+      },
+    },
+  });
 
   // --- Word Interpolation ---
   const interpolateWords = (text: string, startMs: number, endMs: number): LyricWord[] => {
@@ -521,7 +552,34 @@ if (!isTauri) {
       }
 
       case 'open_main_window':
+        uiState.floating_visible = true;
+        saveUiState();
+        void emit('ui-settings-changed', uiState);
+        void emit('main-window-reveal', {
+          from_x: 0,
+          from_y: -1,
+          was_hidden: true,
+          from_marquee: true,
+        });
         return;
+
+      case 'open_choose_lyrics': {
+        uiState.floating_visible = true;
+        saveUiState();
+        void emit('ui-settings-changed', uiState);
+        void emit('main-window-reveal', {
+          from_x: 0,
+          from_y: -1,
+          was_hidden: true,
+          from_marquee: true,
+        });
+        const uri = MOCK_TRACKS[currentTrackIdx]?.track.uri;
+        if (uri) {
+          void emit('open-choose-lyrics', uri);
+        }
+        Object.assign(window, { __lyraMockOpenedChooser: true });
+        return;
+      }
 
       case 'get_automation_denied':
         return [];
@@ -552,6 +610,7 @@ if (!isTauri) {
       case 'show_native_menu': {
         // Dev aid: set `window.__lyraMockMenuChoice` to a row id to pick it
         // the next time a native menu opens.
+        Object.assign(window, { __lyraMockLastMenu: args });
         const pick = window as { __lyraMockMenuChoice?: string | null };
         const chosen = pick.__lyraMockMenuChoice ?? null;
         pick.__lyraMockMenuChoice = null;
@@ -580,7 +639,10 @@ if (!isTauri) {
         return;
 
       case 'open_automation_settings':
+        return;
+
       case 'copy_text':
+        Object.assign(window, { __lyraMockLastCopied: (args as { text: string }).text });
         return;
 
       case 'complete_onboarding': {
@@ -648,13 +710,35 @@ if (!isTauri) {
         return;
       }
 
+      case 'resize_marquee': {
+        const { width, done } = args as { width: number; done: boolean };
+        const frame = mockMarqueeFrame();
+        const baseWidth = Math.round(Math.min(width, frame.max_width) / frame.scale);
+        const clampedBase = Math.min(MARQUEE_MAX_BASE_WIDTH, Math.max(MARQUEE_MIN_BASE_WIDTH, baseWidth));
+        if (done) {
+          uiState.marquee_base_width = clampedBase;
+          saveUiState();
+          void emit('ui-settings-changed', uiState);
+        }
+        void emit('marquee-frame', {
+          ...frame,
+          width: Math.round(Math.min(clampedBase * frame.scale, frame.max_width)),
+        });
+        return;
+      }
+
+      case 'begin_marquee_drag':
+      case 'move_marquee_drag':
+      case 'end_marquee_drag':
       case 'settle_marquee_position':
         return;
 
       case 'reset_marquee_position': {
         uiState.marquee_pos = null;
+        uiState.marquee_dock = { top: false, right: false, bottom: false, left: false };
         saveUiState();
         void emit('ui-settings-changed', uiState);
+        void emit('marquee-frame', mockMarqueeFrame());
         return;
       }
 
@@ -830,7 +914,10 @@ if (!isTauri) {
       case 'set_pinned_app':
       case 'set_only_music':
       case 'set_app_rule':
+        return { pinned_app: null, only_music: true, app_rules: {} } satisfies MediaPolicyView;
+
       case 'set_track_override':
+        Object.assign(window, { __lyraMockLastTrackOverride: args });
         return { pinned_app: null, only_music: true, app_rules: {} } satisfies MediaPolicyView;
 
       case 'playback_raise':
@@ -924,6 +1011,10 @@ if (!isTauri) {
 
       case 'set_preferred_monitor': {
         const { name } = args as { name: string | null };
+        if (uiState.preferred_monitor !== name) {
+          uiState.marquee_pos = null;
+          uiState.marquee_dock = { top: false, right: false, bottom: false, left: false };
+        }
         uiState.preferred_monitor = name;
         saveUiState();
         void emit('ui-settings-changed', uiState);
@@ -932,6 +1023,15 @@ if (!isTauri) {
 
       case 'window_ready':
         return;
+
+      case 'plugin:window|current_monitor':
+        return {
+          name: 'Mock Monitor',
+          size: { width: 1920, height: 1080 },
+          position: { x: 0, y: 0 },
+          workArea: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1080 } },
+          scaleFactor: 1,
+        };
 
       case 'get_autostart_status':
         return uiState.autostart_enabled ? 'enabled' : 'disabled';

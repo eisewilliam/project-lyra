@@ -71,6 +71,10 @@ export function openMainWindow(): Promise<void> {
   return invoke('open_main_window');
 }
 
+export function openChooseLyrics(): Promise<void> {
+  return invoke('open_choose_lyrics');
+}
+
 export function completeOnboarding(): Promise<void> {
   return invoke('complete_onboarding');
 }
@@ -93,6 +97,24 @@ export function updateKaraokeSettings(patch: KaraokeSettingsPatch): Promise<void
 
 export function setOverlayPosition(label: OverlayLabel, x: number, y: number): Promise<void> {
   return invoke('set_overlay_position', { label, x, y });
+}
+
+export function beginMarqueeDrag(): Promise<void> {
+  return invoke('begin_marquee_drag');
+}
+
+export function moveMarqueeDrag(dx: number, dy: number): Promise<void> {
+  return invoke('move_marquee_drag', { dx, dy });
+}
+
+export function endMarqueeDrag(): Promise<void> {
+  return invoke('end_marquee_drag');
+}
+
+export function resizeMarquee(
+  edge: 'left' | 'right', anchorX: number | null, width: number, pointerX: number, done: boolean,
+): Promise<void> {
+  return invoke('resize_marquee', { edge, anchorX, width, pointerX, done });
 }
 
 /** After a drag: the host settles the marquee into its display's safe area

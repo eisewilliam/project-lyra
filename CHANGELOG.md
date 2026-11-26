@@ -12,6 +12,9 @@ offered it as an update.
 
 ### Added
 
+- Attach the Marquee to any screen edge or corner (top, bottom, left, or right),
+  morphing its corners and hugging the edge cleanly even past the menu bar,
+  Dock, or taskbar.
 - Time plain or pasted lyrics by tapping each line as it starts. Save them for this track on your device, then optionally share them with LRCLIB.
 
 - Choose Lyrics shows the line each match would display at the current
@@ -23,6 +26,10 @@ offered it as an update.
 - Find a phrase in the current song with Find in Lyrics in the track menu
   or with Command-F (Ctrl-F on Windows and Linux). Select a result to jump
   to it when the lyrics are timed and the player supports seeking.
+- Right-click the Marquee for quick actions (sync lyrics earlier or
+  later, choose lyrics, copy the current line, lock position, or mark a track
+  as not music), and scroll vertically on the Marquee to peek ahead or back
+  through lyrics before returning to the live line.
 
 ### Changed
 
@@ -37,6 +44,23 @@ offered it as an update.
   that button. Playback buttons respond as soon as you press them.
 - Marquee gives immediate feedback when you press its play button and
   releases it when you start dragging the panel.
+- Dragging, attaching, and pulling away from screen edges on the Marquee now
+  animate with smooth liquid surface-tension morphing and spring settling.
+- Trackpad swipe skips and track artwork swaps in the Marquee now show
+  smooth directional feedback and crossfades.
+- Hovering a lyric line charges a subtle seek indicator before arming; scrubbing,
+  keyboard seeks, sync taps, offset nudges, copying lines, Karaoke
+  transitions, and panel dismissals respond with crisper feedback and motion.
+- Opening or focusing the main window from the Marquee plays a coordinated
+  launch pulse and directional unfold transition across macOS, Windows, and
+  Linux.
+- Unified plain-lyrics, timing offset ("Adjust Timing…"), and line-timing
+  ("Sync lyrics…") labels, controls, and focus indicators across the Main
+  Window, Marquee, Karaoke, and Settings.
+- The Marquee and Karaoke overlays now display concise status labels instead
+  of placeholder bars when lyrics are missing, untimed, blocked by permissions,
+  or unavailable, and the Marquee's cover and meter controls support keyboard
+  activation.
 - Settings previews now reflect Battery saver, lyric blur, font family, and
   Karaoke edge distance live, and Settings displays failed save feedback
   directly in its footer.
@@ -44,6 +68,8 @@ offered it as an update.
 ### Fixed
 
 - The Marquee uses its compact one- or two-line height on Linux.
+- On macOS, opening, closing, or minimizing the main window no longer pauses the
+  Marquee or lyric sync during the transition.
 - Choose Lyrics marks one match as Showing when several share the same
   lyrics, so the others stay choosable, and every row lines up whether its
   preview is open or closed.
@@ -51,6 +77,15 @@ offered it as an update.
   lyrics are shared.
 - Settings buttons stay aligned while showing feedback, the Marquee preview
   fits in smaller windows, and switching panes opens them at the top.
+- Marquee: the progress ring and keyboard focus ring follow the artwork's
+  rounded corners, and long status messages wrap to two lines instead of
+  being cut off.
+- Karaoke stays readable over light desktops, its shadows no longer show as
+  boxes, the vocal countdown sits level with the lyrics, and long titles end
+  in an ellipsis.
+- The Marquee and Karaoke say "Plain lyrics only" when a song has untimed
+  lyrics, instead of the same "No synced lyrics" shown when there are none,
+  with their own icon instead of the loading one.
 - Lyric errors in the main window tint their message like the Marquee and
   Karaoke do.
 - On macOS, clicking the player mark or the Marquee artwork brings Spotify
@@ -63,8 +98,14 @@ offered it as an update.
 - In Settings → Players, buttons on macOS match the pop-up menus, remembered
   players use full-width menus with Forget beside them, and the now-playing
   row's hover no longer runs to its edges.
+- The Marquee resizes smoothly from either edge, keeps the opposite edge in
+  place, and highlights the handle while you drag.
 - On macOS 26, the Settings sidebar keeps its album-art tint when the window
   loses focus.
+- Fixed Karaoke overlay sizing and edge offset scaling on HiDPI/Retina displays.
+- Unsaved drafts in Sync lyrics now stay intact across track changes until saved,
+  shared, or discarded, and Settings stays in sync when app-level preferences
+  change elsewhere.
 
 ## [0.3.0-beta.2] - 2026-11-16
 

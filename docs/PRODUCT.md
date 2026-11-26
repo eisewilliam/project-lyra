@@ -36,7 +36,7 @@ Each display mode has its own settings. You can control:
 - Font size for each surface independently
 - Which surfaces are visible
 - Whether the Marquee shows album art, and whether it spins
-- Karaoke position (top, center, bottom), text alignment, width, and background opacity
+- Karaoke position (top or bottom), text alignment, width, and background opacity
 - Whether to hide all surfaces when music is paused
 - Which monitor to use on multi-monitor setups
 - Whether Lyra launches automatically at login

@@ -27,20 +27,74 @@ html, body {
      the native glass. */
   --u: calc(1px * var(--marquee-scale, 1));
   --panel-wash: 0.65;
+  /* Per-edge roundness factor (1 free, 0 flush when attached; ramps smoothly
+     toward 0.35 as the user peels away from a docked edge). */
+  --edge-top: 1;
+  --edge-right: 1;
+  --edge-bottom: 1;
+  --edge-left: 1;
   background: rgb(var(--panel-tint-rgb) / calc(var(--panel-tint) * var(--marquee-body) + (1 - var(--panel-tint)) * var(--marquee-solid)));
-  border-radius: 20px;
+  border-top-left-radius: calc(min(var(--edge-top), var(--edge-left)) * 20px);
+  border-top-right-radius: calc(min(var(--edge-top), var(--edge-right)) * 20px);
+  border-bottom-right-radius: calc(min(var(--edge-bottom), var(--edge-right)) * 20px);
+  border-bottom-left-radius: calc(min(var(--edge-bottom), var(--edge-left)) * 20px);
   width: 100%;
   height: 100%;
   color: white;
   display: flex;
   align-items: center;
   cursor: default;
-  /* A clearer panel gets a slightly brighter rim so its edge still reads. */
-  border: 1px solid rgba(255, 255, 255, calc(0.1 + 0.08 * var(--marquee-clear)));
   user-select: none;
   position: relative;
   overflow: hidden;
-  transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  transition:
+    background 180ms ease,
+    border-top-left-radius 240ms var(--ease-standard),
+    border-top-right-radius 240ms var(--ease-standard),
+    border-bottom-right-radius 240ms var(--ease-standard),
+    border-bottom-left-radius 240ms var(--ease-standard);
+}
+
+/* Hairline edge rim painted as an inset overlay so hiding docked edges never
+   shifts layout by 1px or leaves a hairline gap against the screen bezel. */
+.floating-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 4;
+  border: 1px solid rgba(255, 255, 255, calc(0.1 + 0.08 * var(--marquee-clear)));
+  transition: border-color 200ms var(--ease-standard);
+}
+
+.floating-panel.is-dragging::after {
+  border-color: rgba(255, 255, 255, calc(0.18 + 0.08 * var(--marquee-clear)));
+}
+
+/* Attached edges flatten flush to the display edge (and peel smoothly while
+   being pulled away); corners inherit the smaller adjacent roundness. */
+.floating-panel[data-dock-top="true"] {
+  --edge-top: calc(0.35 * var(--pull-top, 0));
+}
+.floating-panel[data-dock-right="true"] {
+  --edge-right: calc(0.35 * var(--pull-right, 0));
+}
+.floating-panel[data-dock-bottom="true"] {
+  --edge-bottom: calc(0.35 * var(--pull-bottom, 0));
+}
+.floating-panel[data-dock-left="true"] {
+  --edge-left: calc(0.35 * var(--pull-left, 0));
+}
+
+.floating-panel[data-dock-top="true"]::after { border-top-color: transparent; }
+.floating-panel[data-dock-right="true"]::after { border-right-color: transparent; }
+.floating-panel[data-dock-bottom="true"]::after { border-bottom-color: transparent; }
+.floating-panel[data-dock-left="true"]::after { border-left-color: transparent; }
+
+/* Live surface-tension peeling tracks the pointer with 0ms lag. */
+.floating-panel[data-pulling="true"] {
+  transition: background 180ms ease;
 }
 
 /* The desktop blur behind the marquee is native glass on macOS
@@ -65,16 +119,58 @@ html, body {
 :root[data-reduced-transparency="true"] .floating-panel { background: rgb(18, 18, 22); }
 :root[data-reduced-transparency="true"] .marquee-bg-img { opacity: 0.2; }
 
-/* Docked against the top edge of the screen (the user's choice, never the
-   default): flush with the edge, so only the bottom corners are rounded. */
-.floating-panel.docked {
-  border-radius: 0 0 20px 20px;
-  border-top: none;
+/* Subtle directional liquid bezel sheen pulsed via WAAPI on edge attachment. */
+.marquee-dock-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0;
+}
+
+.marquee-dock-sheen[data-sheen-edge="top"] {
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.16) 0%, transparent 45%);
+}
+
+.marquee-dock-sheen[data-sheen-edge="bottom"] {
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.16) 0%, transparent 45%);
+}
+
+.marquee-dock-sheen[data-sheen-edge="left"] {
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.16) 0%, transparent 28%);
+}
+
+.marquee-dock-sheen[data-sheen-edge="right"] {
+  background: linear-gradient(to left, rgba(255, 255, 255, 0.16) 0%, transparent 28%);
+}
+
+.marquee-dock-sheen[data-sheen-edge="launch"] {
+  background: radial-gradient(
+    90% 130% at 50% 50%,
+    rgba(255, 255, 255, 0.24) 0%,
+    rgba(255, 255, 255, 0.08) 46%,
+    transparent 76%
+  );
+}
+
+:root[data-low-power="true"] .marquee-dock-sheen,
+:root[data-low-power="true"] .marquee-swipe-cue {
+  display: none;
+}
+
+:root[data-low-power="true"] .panel-cover.is-entering,
+:root[data-low-power="true"] .marquee-bg-img.is-entering {
+  animation-duration: 1ms !important;
 }
 
 /* Click opens Lyra; dragging (when unlocked) moves the marquee. */
 .floating-panel.is-dragging {
   cursor: grabbing;
+}
+
+.floating-panel[data-resize-edge] {
+  cursor: ew-resize;
 }
 
 .marquee-background {
@@ -103,7 +199,17 @@ html, body {
   will-change: transform;
 }
 
+.marquee-bg-img.marquee-bg-previous {
+  z-index: 0;
+}
+
+.marquee-bg-img.is-entering {
+  z-index: 1;
+  animation: marquee-art-crossfade 360ms var(--ease-standard) both;
+}
+
 .marquee-bg-dimmer {
+  z-index: 2;
   /* Appearance → Background darkness (`--bg-darkness`, 0..1) scales the dim.
      The default 0.6 reproduces the original gradient exactly; 0 lets the
      artwork wash show fully, 1 deepens it (alpha caps at 1). */
@@ -158,9 +264,54 @@ html, body {
   padding: var(--marquee-notch-inset, 0px) calc(20 * var(--u)) 0;
   box-sizing: border-box;
   gap: calc(16 * var(--u));
+  translate: calc(var(--pull-x, 0) * 5px + var(--swipe-x, 0px)) calc(var(--pull-y, 0) * 5px);
+  transition:
+    translate 220ms var(--ease-standard),
+    padding 220ms var(--ease-standard);
+}
+
+.floating-panel[data-pulling="true"] .panel-content,
+.floating-panel[data-swiping] .panel-content {
+  transition: padding 220ms var(--ease-standard);
+}
+
+.marquee-swipe-cue {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.85);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-50%) scale(0.9);
+  transition:
+    opacity 180ms var(--ease-standard),
+    transform 180ms var(--ease-standard);
+}
+
+.marquee-swipe-cue.is-prev { left: calc(8 * var(--u)); }
+.marquee-swipe-cue.is-next { right: calc(8 * var(--u)); }
+
+.floating-panel[data-swiping="previous"] .marquee-swipe-cue.is-prev,
+.floating-panel[data-swiping="next"] .marquee-swipe-cue.is-next {
+  opacity: calc(0.25 + 0.65 * var(--swipe-progress, 0));
+  transform: translateY(-50%) scale(calc(0.9 + 0.14 * var(--swipe-progress, 0)));
+  transition: none;
+}
+
+.floating-panel[data-dock-left="true"] .panel-content {
+  padding-left: calc(16 * var(--u));
+}
+
+.floating-panel[data-dock-right="true"] .panel-content {
+  padding-right: calc(16 * var(--u));
 }
 
 .panel-art {
+  position: relative;
+  overflow: hidden;
   width: calc(40 * var(--u));
   height: calc(40 * var(--u));
   border-radius: calc(12 * var(--u));
@@ -196,6 +347,22 @@ html, body {
   border-radius: inherit;
 }
 
+.panel-cover-previous {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.panel-cover.is-entering {
+  position: relative;
+  z-index: 1;
+  animation: marquee-art-crossfade 360ms var(--ease-standard) both;
+}
+
+@keyframes marquee-art-crossfade {
+  from { opacity: 0; }
+}
+
 .panel-cover.placeholder {
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.05)),
@@ -226,7 +393,7 @@ html, body {
   transition: color 220ms ease, opacity 220ms ease, text-shadow 220ms ease;
   /* Re-keyed per line in the view, so this enter animation replays on every
      line change — a fade + gentle rise instead of an instant text swap. */
-  animation: lyric-line-enter 360ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: lyric-line-enter 360ms var(--ease-standard);
 }
 
 .panel-lyric-active.is-preroll {
@@ -246,7 +413,7 @@ html, body {
   min-width: max-content;
   max-width: none;
   will-change: transform;
-  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 260ms var(--ease-standard);
 }
 
 /* Registered --word-progress is animated natively and resynced to playback;
@@ -293,13 +460,41 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
   letter-spacing: -0.01em;
-  animation: lyric-line-enter 360ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: lyric-line-enter 360ms var(--ease-standard);
 }
 
 /* Shared line-change enter: fade up. Distance is in em so it tracks font size. */
 @keyframes lyric-line-enter {
   from { opacity: 0; transform: translateY(0.5em); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes lyric-peek-down {
+  from { opacity: 0; transform: translateY(0.42em); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes lyric-peek-up {
+  from { opacity: 0; transform: translateY(-0.42em); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.panel-lyric-active.is-peeking {
+  color: rgba(255, 255, 255, 0.94);
+}
+
+.panel-lyric-active.is-peek-down,
+.panel-lyric-next.is-peek-down,
+.panel-lyric-active.is-peek-return-down,
+.panel-lyric-next.is-peek-return-down {
+  animation: lyric-peek-down 220ms var(--ease-standard);
+}
+
+.panel-lyric-active.is-peek-up,
+.panel-lyric-next.is-peek-up,
+.panel-lyric-active.is-peek-return-up,
+.panel-lyric-next.is-peek-return-up {
+  animation: lyric-peek-up 220ms var(--ease-standard);
 }
 
 .panel-lyric-next.is-track-intro {
@@ -323,13 +518,34 @@ html, body {
   align-items: center;
   justify-content: center;
   color: rgba(255, 255, 255, 0.78);
-  background: rgba(255, 255, 255, 0.08);
+  background: radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .panel-placeholder-icon {
   width: calc(14 * var(--u));
   height: calc(14 * var(--u));
+}
+
+.panel-placeholder-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: calc(13.6 * var(--u) * var(--font-scale, 1));
+  font-weight: 600;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.floating-panel.is-clear .panel-placeholder-label {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.panel-placeholder.is-error .panel-placeholder-label {
+  color: rgba(255, 200, 196, 0.94);
 }
 
 .panel-placeholder-lines {
@@ -363,12 +579,12 @@ html, body {
 }
 
 .panel-placeholder.is-loading .panel-placeholder-indicator {
-  animation: marquee-pulse 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  animation: marquee-pulse 1.8s var(--ease-standard) infinite;
 }
 
 .panel-placeholder.is-error .panel-placeholder-indicator {
   color: rgba(255, 184, 178, 0.96);
-  background: rgba(255, 69, 58, 0.16);
+  background: radial-gradient(circle at 30% 20%, rgba(255, 69, 58, 0.28), rgba(255, 69, 58, 0.08));
 }
 
 .audio-bars {
@@ -448,9 +664,25 @@ html, body {
   .panel-lyric-content,
   .panel-lyric-active,
   .panel-lyric-next,
-  .floating-panel {
+  .marquee-peek-pill,
+  .marquee-status-pill,
+  .marquee-peek-pill-timer,
+  .floating-panel,
+  .floating-panel::after,
+  .panel-content {
     animation: none !important;
     transition: none;
+  }
+  .panel-content {
+    translate: none !important;
+  }
+  .marquee-dock-sheen,
+  .marquee-swipe-cue {
+    display: none;
+  }
+  .panel-cover.is-entering,
+  .marquee-bg-img.is-entering {
+    animation-duration: 1ms !important;
   }
   .audio-bars .bar {
     transition: transform 180ms linear, border-radius 180ms linear, opacity 180ms linear;
@@ -469,11 +701,17 @@ html, body {
 .floating-panel.is-compact .panel-art {
   width: calc(30 * var(--u)) !important;
   height: calc(30 * var(--u)) !important;
-  border-radius: calc(8 * var(--u)) !important;
+  border-radius: calc(9 * var(--u)) !important;
 }
 .floating-panel.is-compact .panel-content {
   padding: var(--marquee-notch-inset, 0px) calc(12 * var(--u)) 0 !important;
   gap: calc(10 * var(--u)) !important;
+}
+.floating-panel.is-compact[data-dock-left="true"] .panel-content {
+  padding-left: calc(10 * var(--u)) !important;
+}
+.floating-panel.is-compact[data-dock-right="true"] .panel-content {
+  padding-right: calc(10 * var(--u)) !important;
 }
 .floating-panel.is-compact .panel-placeholder-indicator {
   width: calc(24 * var(--u)) !important;
@@ -482,6 +720,9 @@ html, body {
 .floating-panel.is-compact .panel-placeholder-icon {
   width: calc(12 * var(--u)) !important;
   height: calc(12 * var(--u)) !important;
+}
+.floating-panel.is-compact .panel-placeholder-label {
+  font-size: calc(12.5 * var(--u) * var(--font-scale, 1));
 }
 .floating-panel.is-compact .panel-placeholder-lines {
   gap: calc(4 * var(--u)) !important;
@@ -528,8 +769,8 @@ html, body {
 }
 
 .rect-fill {
-  stroke-dasharray: 146.27;
-  stroke-dashoffset: calc(146.27 * (1 - var(--track-progress, 0)));
+  stroke-dasharray: 139.4;
+  stroke-dashoffset: calc(139.4 * (1 - var(--track-progress, 0)));
 }
 
 /* ── Hover controls ─────────────────────────────────────────────────────────
@@ -571,19 +812,49 @@ html, body {
     transform var(--duration-base) var(--ease-standard);
 }
 
+.panel-art-container[role="button"]:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+}
+
+.panel-art-container {
+  border-radius: calc(12 * var(--u));
+}
+
+.panel-art-container.is-circle {
+  border-radius: 50%;
+}
+
+.floating-panel.is-compact .panel-art-container {
+  border-radius: calc(9 * var(--u));
+}
+
+.floating-panel.is-compact .panel-art-container.is-circle {
+  border-radius: 50%;
+}
+
 .floating-panel.is-hovered .marquee-meter.can-toggle::before,
+.marquee-meter.can-toggle:focus-visible::before,
 .marquee-meter.can-toggle[data-pressed]::before {
   opacity: 1;
 }
 
 .floating-panel.is-hovered .marquee-meter.can-toggle .audio-bars,
+.marquee-meter.can-toggle:focus-visible .audio-bars,
 .marquee-meter.can-toggle[data-pressed] .audio-bars {
   opacity: 0;
 }
 
 .floating-panel.is-hovered .marquee-meter.can-toggle .marquee-glyph,
+.marquee-meter.can-toggle:focus-visible .marquee-glyph,
 .marquee-meter.can-toggle[data-pressed] .marquee-glyph {
   opacity: 1;
+}
+
+.marquee-meter.can-toggle:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+  border-radius: 50%;
 }
 
 .marquee-meter.can-toggle[data-pressed]::before {
@@ -599,8 +870,6 @@ html, body {
 }
 
 
-/* Edge handles (unlocked only): drag to resize the marquee around its centre.
-   Each appears only while the pointer is near its edge. */
 .marquee-resize-handle {
   position: absolute;
   top: 50%;
@@ -622,13 +891,129 @@ html, body {
   left: 50%;
   width: 3px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.75);
   transform: translateX(-50%);
   opacity: 0;
-  transition: opacity var(--duration-base) var(--ease-standard);
+  transition: opacity var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
 }
 
-.marquee-resize-handle.is-near::after,
-.floating-panel.is-dragging .marquee-resize-handle.is-near::after {
+.marquee-resize-handle.is-near::after {
+  opacity: 0.6;
+}
+
+.floating-panel[data-resize-edge="left"] .marquee-resize-handle.is-left::after,
+.floating-panel[data-resize-edge="right"] .marquee-resize-handle.is-right::after {
   opacity: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .floating-panel[data-resize-edge="left"] .marquee-resize-handle.is-left::after,
+  .floating-panel[data-resize-edge="right"] .marquee-resize-handle.is-right::after {
+    transform: translateX(-50%) scaleY(1.16);
+  }
+}
+
+/* ── Peek & menu action pills ─────────────────────────────────────────────── */
+
+.floating-panel.is-peeking::after {
+  border-color: rgba(255, 255, 255, calc(0.18 + 0.08 * var(--marquee-clear)));
+}
+
+.marquee-peek-pill,
+.marquee-status-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  padding: calc(4.5 * var(--u)) calc(8 * var(--u));
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: calc(10.5 * var(--u));
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.marquee-peek-pill {
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+.marquee-peek-pill:hover {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.marquee-peek-pill:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+}
+
+.marquee-peek-pill-label {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes marquee-peek-countdown {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+.marquee-peek-pill-timer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.65);
+  transform-origin: left center;
+  animation: marquee-peek-countdown 3000ms linear forwards;
+  pointer-events: none;
+}
+
+.floating-panel[data-menu-open="true"] .marquee-peek-pill-timer {
+  animation-play-state: paused;
+}
+
+@keyframes marquee-pill-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.marquee-status-pill {
+  pointer-events: none;
+  animation: marquee-pill-in 160ms var(--ease-standard) both;
+}
+
+.floating-panel.is-clear .marquee-peek-pill,
+.floating-panel.is-clear .marquee-status-pill {
+  background: rgba(18, 18, 22, 0.56);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.floating-panel.is-compact .marquee-peek-pill,
+.floating-panel.is-compact .marquee-status-pill {
+  padding: calc(3.5 * var(--u)) calc(6.5 * var(--u));
+  font-size: calc(9.5 * var(--u));
+}
+
+:root[data-low-power="true"] .marquee-peek-pill-timer {
+  display: none;
+}
+
+:root[data-low-power="true"] .marquee-status-pill {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-peek-pill-timer {
+    display: none;
+  }
 }

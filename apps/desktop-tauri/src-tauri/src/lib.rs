@@ -429,7 +429,8 @@ pub(crate) fn apply_preferred_monitor_positioning(app: &tauri::AppHandle, ui: &U
     // Karaoke: anchored to the top or bottom edge of the target monitor.
     if let Some(karaoke_win) = app.get_webview_window("karaoke") {
         if let Ok(size) = karaoke_win.outer_size() {
-            let offset = ui.karaoke_offset_px as i32;
+            let scale_factor = monitor.scale_factor().max(0.5);
+            let offset = (f64::from(ui.karaoke_offset_px) * scale_factor).round() as i32;
             let kh = size.height as i32;
             // Fill the monitor's full width.
             let kx = mon_x;
@@ -526,7 +527,7 @@ impl PollContext {
 /// True if something is showing playback: one of the three lyric surfaces,
 /// the Touch Bar, or Discord. Used as a fast pre-check to skip the
 /// player-poll roundtrip entirely when nothing would consume the result.
-fn any_surface_visible(handle: &tauri::AppHandle) -> bool {
+pub(crate) fn any_surface_visible(handle: &tauri::AppHandle) -> bool {
     let Some(app_state) = handle.try_state::<AppState>() else {
         return true; // fail open — better to poll than to stall
     };
@@ -542,6 +543,10 @@ fn any_surface_visible(handle: &tauri::AppHandle) -> bool {
         || app_state
             .surface_visibility
             .is_visible("karaoke", karaoke_cfg)
+}
+
+pub(crate) fn should_request_poll_on_unocclude(was_any_visible: bool) -> bool {
+    !was_any_visible
 }
 
 fn process_tick(
@@ -1268,6 +1273,7 @@ pub fn run() {
             commands::set_marquee_locked,
             commands::set_marquee_click_through,
             commands::open_main_window,
+            commands::open_choose_lyrics,
             commands::marquee_pointer_inside,
             commands::set_settings_sidebar_glass,
             commands::get_touch_bar_support,
@@ -1283,6 +1289,10 @@ pub fn run() {
             commands::update_karaoke_settings,
             commands::update_marquee_settings,
             commands::set_overlay_position,
+            commands::begin_marquee_drag,
+            commands::move_marquee_drag,
+            commands::end_marquee_drag,
+            commands::resize_marquee,
             commands::settle_marquee_position,
             commands::reset_marquee_position,
             commands::get_marquee_frame,
@@ -1410,7 +1420,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{main_window_on_top, RuntimeSurfaceVisibility};
+    use super::{main_window_on_top, should_request_poll_on_unocclude, RuntimeSurfaceVisibility};
 
     #[test]
     fn runtime_surfaces_start_hidden_until_marked_visible() {
@@ -1466,5 +1476,27 @@ mod tests {
         assert!(!main_window_on_top(true, true, false));
         assert!(!main_window_on_top(true, false, true));
         assert!(!main_window_on_top(false, false, false));
+    }
+
+    #[test]
+    fn unocclude_requests_poll_only_when_no_surface_was_visible() {
+        let visibility = RuntimeSurfaceVisibility::new_all_hidden();
+        visibility.set_ready("marquee");
+        visibility.set_visible("marquee", true);
+        visibility.set_ready("main");
+        visibility.set_visible("main", true);
+
+        // Main is minimized/occluded while Marquee remains visible:
+        // restoring Main must not force an extra player poll.
+        visibility.set_occluded("main", true);
+        let marquee_still_visible = visibility.is_visible("marquee", true);
+        assert!(marquee_still_visible);
+        assert!(!should_request_poll_on_unocclude(marquee_still_visible));
+
+        // When every surface was occluded, becoming visible requests a poll.
+        visibility.set_occluded("marquee", true);
+        let any_visible = visibility.is_visible("marquee", true) || visibility.is_visible("main", true);
+        assert!(!any_visible);
+        assert!(should_request_poll_on_unocclude(any_visible));
     }
 }

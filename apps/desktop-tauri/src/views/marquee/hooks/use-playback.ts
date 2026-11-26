@@ -8,8 +8,8 @@ import {
   wordsKey,
   type PositionBaseline,
 } from '@/utils/playback-sync';
-import type { LyricWord, PlaybackCaps, RenderSnapshot } from '@/types/tauri-contracts';
-import { refreshLyrics } from '@/utils/tauri-commands';
+import type { LyricLineSlim, LyricWord, PlaybackCaps, RenderSnapshot } from '@/types/tauri-contracts';
+import { getAllLines, refreshLyrics } from '@/utils/tauri-commands';
 import type { LyricsStatus } from '@/utils/lyrics-state';
 
 const noop = (...args: unknown[]) => { if (args) return; };
@@ -38,10 +38,15 @@ export function useMarqueePlayback({
   const [hasActiveLyric, setHasActiveLyric] = useState(false);
   const [activeLineWords, setActiveLineWords] = useState<LyricWord[]>([]);
   const [activeLineProgress, setActiveLineProgress] = useState(0);
+  const [activeLineIndex, setActiveLineIndex] = useState<number | null>(null);
+  const [lyricOffsetMs, setLyricOffsetMs] = useState(0);
+  const [lyricsRevision, setLyricsRevision] = useState(0);
+  const [allLines, setAllLines] = useState<LyricLineSlim[]>([]);
   const [durationMs, setDurationMs] = useState(0);
   const [trackKey, setTrackKey] = useState('');
 
   const refreshedUriRef = useRef('');
+  const linesLoadedKeyRef = useRef('');
   const lastUriRef = useRef('');
   const activeWordsKeyRef = useRef('');
   const baselineRef = useRef<PositionBaseline>({ ms: 0, at: 0, targetMs: 0, targetAt: 0, blendDur: 1 });
@@ -56,9 +61,13 @@ export function useMarqueePlayback({
 
     if (uriChanged) {
       lastUriRef.current = uri;
+      linesLoadedKeyRef.current = '';
       setActiveLine(null);
       setNextLine(null);
       setHasActiveLyric(false);
+      setActiveLineIndex(null);
+      setLyricOffsetMs(0);
+      setAllLines([]);
       activeWordsKeyRef.current = '';
       setActiveLineWords([]);
       setActiveLineProgress(0);
@@ -81,6 +90,10 @@ export function useMarqueePlayback({
     setTrackArtist(track?.artist ?? '');
     setTrackKey(track?.uri ?? '');
     setDurationMs(track?.duration_ms ?? 0);
+    setActiveLineIndex(snap.active_line_index ?? null);
+    setLyricOffsetMs(snap.lyric_offset_ms ?? 0);
+    const revision = snap.lyrics_revision ?? 0;
+    setLyricsRevision(revision);
     const nextWords = snap.active_line_words ?? [];
     const nextWordsKey = wordsKey(nextWords);
     if (nextWordsKey !== activeWordsKeyRef.current) {
@@ -113,6 +126,24 @@ export function useMarqueePlayback({
       // A settled status re-arms the request, so a track played again (core
       // forgets its earlier failure) is looked up instead of left loading.
       refreshedUriRef.current = '';
+    }
+
+    const linesKey = `${uri}:${revision}`;
+    if (uri && snap.lyrics_status === 'Ready') {
+      if (linesLoadedKeyRef.current !== linesKey) {
+        linesLoadedKeyRef.current = linesKey;
+        getAllLines()
+          .then((lines) => {
+            if (lastUriRef.current !== uri || linesLoadedKeyRef.current !== linesKey) return;
+            setAllLines(lines);
+          })
+          .catch(() => {
+            if (linesLoadedKeyRef.current === linesKey) linesLoadedKeyRef.current = '';
+          });
+      }
+    } else {
+      linesLoadedKeyRef.current = '';
+      setAllLines((prev) => (prev.length === 0 ? prev : []));
     }
 
     setHasActiveLyric(hasActiveLine);
@@ -155,6 +186,10 @@ export function useMarqueePlayback({
     hasActiveLyric,
     activeLineWords,
     activeLineProgress,
+    activeLineIndex,
+    lyricOffsetMs,
+    lyricsRevision,
+    allLines,
     durationMs,
     trackKey,
     baselineRef,

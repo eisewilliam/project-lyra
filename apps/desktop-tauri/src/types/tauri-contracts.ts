@@ -231,6 +231,8 @@ export type UiState = {
   /** Where the user left the marquee (physical px); null keeps its default
       place. The host owns it: it settles and saves it after a drag. */
   marquee_pos: [number, number] | null;
+  /** Screen edges the marquee is attached to. */
+  marquee_dock: MarqueeDock;
   /** Hide while no player has a track; a paused track still shows. */
   marquee_hide_when_idle: boolean;
   /** Size as a multiple of the base design; null matches the display. */
@@ -345,6 +347,40 @@ export type MarqueeSettingsPatch = Partial<{
   hide_when_idle: boolean;
 }>;
 
+/** Screen edges the Marquee is attached to. */
+export type MarqueeDock = {
+  top: boolean;
+  right: boolean;
+  bottom: boolean;
+  left: boolean;
+};
+
+/** Discrete liquid attach/detach momentum impulse from the host. */
+export type DockImpulse =
+  | 'attach_top'
+  | 'attach_bottom'
+  | 'attach_left'
+  | 'attach_right'
+  | 'detach_top'
+  | 'detach_bottom'
+  | 'detach_left'
+  | 'detach_right';
+
+/** Transition hint emitted when revealing or focusing the main window. */
+export type MainWindowReveal = {
+  from_x: number;
+  from_y: number;
+  was_hidden: boolean;
+  from_marquee: boolean;
+};
+
+/** Live surface-tension feedback emitted during a Marquee drag. */
+export type MarqueeDragFeedback = {
+  pull_x: number;
+  pull_y: number;
+  impulse: DockImpulse | null;
+};
+
 /** The Marquee's size on its current display, as fitted by the host
     (`marquee_size.rs`). Lengths are in points. */
 export type MarqueeFrame = {
@@ -355,8 +391,10 @@ export type MarqueeFrame = {
   height: number;
   /** Extra height at the top that sits behind a MacBook notch. */
   notch_inset: number;
-  /** Docked against the top edge of the display: square top corners. */
+  /** Docked against any screen edge or corner. */
   docked: boolean;
+  /** Exact screen edges attached. */
+  dock: MarqueeDock;
   /** The widest the Marquee may be dragged on this display. */
   max_width: number;
 };

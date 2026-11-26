@@ -13,14 +13,22 @@ use objc2::runtime::{AnyClass, AnyObject, Bool, Imp, Sel};
 use objc2::{define_class, msg_send, sel, AllocAnyThread, MainThreadMarker, MainThreadOnly};
 #[cfg(target_os = "macos")]
 use objc2_app_kit::{
-    NSAppearance, NSAppearanceCustomization, NSAppearanceNameDarkAqua, NSEvent, NSTrackingArea,
-    NSTrackingAreaOptions, NSWindow, NSWindowCollectionBehavior, NSWindowStyleMask, NSWorkspace,
+    NSAnimatablePropertyContainer, NSAnimationContext, NSAppearance, NSAppearanceCustomization,
+    NSAppearanceNameDarkAqua, NSApplication, NSApplicationActivationPolicy, NSEvent, NSScreen,
+    NSTrackingArea, NSTrackingAreaOptions, NSWindow, NSWindowAnimationBehavior,
+    NSWindowCollectionBehavior, NSWindowStyleMask, NSWorkspace,
     NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification,
 };
 #[cfg(target_os = "macos")]
-use objc2_foundation::{NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect};
+use objc2_foundation::{ns_string, NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect};
 #[cfg(target_os = "macos")]
-use std::sync::atomic::{AtomicBool, Ordering};
+use objc2_quartz_core::CAMediaTimingFunction;
+#[cfg(target_os = "macos")]
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+#[cfg(target_os = "macos")]
+use std::sync::Mutex;
+#[cfg(target_os = "macos")]
+use std::time::Duration;
 #[cfg(target_os = "macos")]
 use tauri_nspanel::{ManagerExt, WebviewWindowExt};
 
@@ -28,16 +36,27 @@ use tauri_nspanel::{ManagerExt, WebviewWindowExt};
 #[cfg(target_os = "macos")]
 const NS_FLOATING_WINDOW_LEVEL: i64 = 3;
 // kCGUtilityWindowLevel, one below the Dock (20): the marquee's level
-// anywhere below the menu bar. Above every app's windows, including other
-// floating panels, but under the Dock, menu bar and menus, so a Dock or menu
-// bar that slides out over the Marquee is never hidden behind it.
+// anywhere below the menu bar and clear of a pinned Dock. Above every app's
+// windows, including other floating panels, but under the Dock, menu bar and
+// menus, so an auto-hidden Dock or menu bar slides out over it.
 #[cfg(target_os = "macos")]
 const UTILITY_WINDOW_LEVEL: i64 = 19;
+// One above the Dock (20): the marquee's level when attached to or dragged
+// past a visible, pinned Dock on the bottom, left, or right edge.
+#[cfg(target_os = "macos")]
+const ABOVE_DOCK_LEVEL: i64 = 21;
 // One above the status items (NSStatusWindowLevel, 25): the marquee's level
 // while it overlaps the menu bar, docked against the top edge or being
 // dragged there. Above the menu bar and its status items, still under menus.
 #[cfg(target_os = "macos")]
 const ABOVE_MENU_BAR_LEVEL: i64 = 26;
+
+#[cfg(target_os = "macos")]
+const LEVEL_UTILITY: u8 = 0;
+#[cfg(target_os = "macos")]
+const LEVEL_ABOVE_DOCK: u8 = 1;
+#[cfg(target_os = "macos")]
+const LEVEL_ABOVE_MENU_BAR: u8 = 2;
 
 /// The NSPanel subclass the marquee and karaoke windows become. The macro
 /// brings its own imports, so it lives in a module of its own.
@@ -71,9 +90,21 @@ fn overlay_collection_behavior(show_on_fullscreen: bool) -> NSWindowCollectionBe
 #[cfg(target_os = "macos")]
 fn overlay_level(label: &str) -> i64 {
     match label {
-        "marquee" if MARQUEE_OVER_MENU_BAR.load(Ordering::Acquire) => ABOVE_MENU_BAR_LEVEL,
-        "marquee" => UTILITY_WINDOW_LEVEL,
+        "marquee" => match MARQUEE_LEVEL.load(Ordering::Acquire) {
+            LEVEL_ABOVE_MENU_BAR => ABOVE_MENU_BAR_LEVEL,
+            LEVEL_ABOVE_DOCK => ABOVE_DOCK_LEVEL,
+            _ => UTILITY_WINDOW_LEVEL,
+        },
         _ => NS_FLOATING_WINDOW_LEVEL,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn set_marquee_level(app: &AppHandle, level: u8) {
+    if MARQUEE_LEVEL.swap(level, Ordering::AcqRel) != level {
+        if let Ok(panel) = app.get_webview_panel("marquee") {
+            panel.set_level(overlay_level("marquee"));
+        }
     }
 }
 
@@ -86,9 +117,68 @@ fn ns_window(window: &tauri::WebviewWindow) -> Option<Retained<NSWindow>> {
 }
 
 #[cfg(target_os = "macos")]
+#[link(name = "CoreFoundation", kind = "framework")]
+extern "C" {
+    fn CFRunLoopGetMain() -> *mut std::ffi::c_void;
+    fn CFRunLoopAddCommonMode(rl: *mut std::ffi::c_void, mode: *const std::ffi::c_void);
+}
+
+/// CoreDock spins the private `dockmsg-mode` run-loop mode while minimizing or
+/// restoring a window. Registering it as a common mode keeps Tao's event/IPC
+/// observers and WebKit's timers responsive on other windows during the Dock
+/// Genie/Scale animation.
+#[cfg(target_os = "macos")]
+fn enable_runloop_during_dock_animation() {
+    let mode: &objc2_foundation::NSString = ns_string!("dockmsg-mode");
+    // SAFETY: `CFRunLoopGetMain()` returns the process main run loop, and
+    // `ns_string!` yields a valid toll-free-bridged `CFStringRef`.
+    unsafe {
+        let main_rl = CFRunLoopGetMain();
+        if !main_rl.is_null() {
+            CFRunLoopAddCommonMode(main_rl, std::ptr::from_ref(mode).cast());
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn set_can_hide_false(window: &tauri::WebviewWindow) {
+    let apply = |win: &tauri::WebviewWindow| {
+        if let Some(native) = ns_window(win) {
+            native.setCanHide(false);
+        }
+    };
+    if MainThreadMarker::new().is_some() {
+        apply(window);
+    } else {
+        let win = window.clone();
+        let _ = window.run_on_main_thread(move || apply(&win));
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn disable_implicit_window_animation(window: &tauri::WebviewWindow) {
+    let apply = |win: &tauri::WebviewWindow| {
+        if let Some(native) = ns_window(win) {
+            native.setAnimationBehavior(NSWindowAnimationBehavior::None);
+        }
+    };
+    if MainThreadMarker::new().is_some() {
+        apply(window);
+    } else {
+        let win = window.clone();
+        let _ = window.run_on_main_thread(move || apply(&win));
+    }
+}
+
+#[cfg(target_os = "macos")]
 pub fn init_overlay_panels(app: &AppHandle, marquee_glass: bool) -> tauri::Result<()> {
+    enable_runloop_during_dock_animation();
+    if let Some(window) = app.get_webview_window("main") {
+        disable_implicit_window_animation(&window);
+    }
     if let Some(window) = app.get_webview_window("marquee") {
         let _ = window.to_panel::<LyraOverlayPanel>()?;
+        set_can_hide_false(&window);
         unconstrain_from_screen(&window);
         keep_glass_active(&window);
         track_marquee_hover(app, &window);
@@ -97,6 +187,7 @@ pub fn init_overlay_panels(app: &AppHandle, marquee_glass: bool) -> tauri::Resul
     }
     if let Some(window) = app.get_webview_window("karaoke") {
         let _ = window.to_panel::<LyraOverlayPanel>()?;
+        set_can_hide_false(&window);
         unconstrain_from_screen(&window);
     }
     Ok(())
@@ -251,20 +342,24 @@ pub fn set_overlay_position(app: &AppHandle, label: &str, x: i32, y: i32) -> tau
 
             if window_clone.label() == "marquee" {
                 let docked = top_offset_points.abs() < 0.5;
-                if MARQUEE_DOCKED.swap(docked, Ordering::AcqRel) != docked {
-                    fit_marquee_glass(&ns_window, docked);
+                let bleed = crate::marquee_size::GlassBleed {
+                    top: if docked { MARQUEE_GLASS_RADIUS } else { 0.0 },
+                    ..crate::marquee_size::GlassBleed::ZERO
+                };
+                if set_marquee_bleed(bleed) {
+                    fit_marquee_glass(&ns_window, bleed);
                 }
                 // Over the menu bar (or, with it hidden, docked under the
                 // notch) the marquee rises above it; anywhere else it sits
                 // under the Dock and menu bar again.
                 let visible = screen.visibleFrame();
                 let menu_bar = screen_top - (visible.origin.y + visible.size.height);
-                let over_menu_bar = top_offset_points < menu_bar.max(0.5);
-                if MARQUEE_OVER_MENU_BAR.swap(over_menu_bar, Ordering::AcqRel) != over_menu_bar {
-                    if let Ok(panel) = window_clone.app_handle().get_webview_panel("marquee") {
-                        panel.set_level(overlay_level("marquee"));
-                    }
-                }
+                let level = if top_offset_points < menu_bar.max(0.5) {
+                    LEVEL_ABOVE_MENU_BAR
+                } else {
+                    LEVEL_UTILITY
+                };
+                set_marquee_level(window_clone.app_handle(), level);
             }
         });
     }
@@ -511,17 +606,33 @@ fn track_marquee_hover(app: &AppHandle, window: &tauri::WebviewWindow) {
 
 /// Corner radius of the glass; matches `.floating-panel` in marquee.css.
 #[cfg(target_os = "macos")]
-const MARQUEE_GLASS_RADIUS: f64 = 20.0;
+pub(crate) const MARQUEE_GLASS_RADIUS: f64 = 20.0;
 
-/// Whether the marquee sits flush with the top of its screen. Docked, it has
-/// square top corners, so its glass reaches one corner radius above the window
-/// and the window edge cuts those corners off.
+/// Current 4-edge glass bleed in points. Docked edges bleed past the window
+/// edge so the OS window clips those rounded corners square; peeling reduces
+/// the bleed smoothly in lockstep with the CSS border radius.
 #[cfg(target_os = "macos")]
-static MARQUEE_DOCKED: AtomicBool = AtomicBool::new(false);
+static MARQUEE_BLEED: Mutex<crate::marquee_size::GlassBleed> =
+    Mutex::new(crate::marquee_size::GlassBleed::ZERO);
 
-/// Whether the marquee overlaps the menu bar, and so sits above it.
+/// Current macOS overlay level bucket for the marquee.
 #[cfg(target_os = "macos")]
-static MARQUEE_OVER_MENU_BAR: AtomicBool = AtomicBool::new(false);
+static MARQUEE_LEVEL: AtomicU8 = AtomicU8::new(LEVEL_UTILITY);
+
+#[cfg(target_os = "macos")]
+fn current_bleed() -> crate::marquee_size::GlassBleed {
+    *MARQUEE_BLEED.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+#[cfg(target_os = "macos")]
+fn set_marquee_bleed(bleed: crate::marquee_size::GlassBleed) -> bool {
+    let mut slot = MARQUEE_BLEED.lock().unwrap_or_else(|e| e.into_inner());
+    if *slot == bleed {
+        return false;
+    }
+    *slot = bleed;
+    true
+}
 
 /// The marquee is always styled dark, so its glass should be too. Set on this
 /// window only: Tauri's `set_theme` changes the appearance of the whole app.
@@ -562,7 +673,7 @@ pub fn set_marquee_glass(app: &AppHandle, enabled: bool) {
     let window_clone = window.clone();
     let _ = window.run_on_main_thread(move || {
         if let Some(ns_window) = ns_window(&window_clone) {
-            fit_marquee_glass(&ns_window, MARQUEE_DOCKED.load(Ordering::Acquire));
+            fit_marquee_glass(&ns_window, current_bleed());
             sync_marquee_glass_state(&window_clone);
         }
     });
@@ -588,10 +699,10 @@ pub fn sync_marquee_glass_state(window: &tauri::WebviewWindow) {
     ));
 }
 
-/// Size the glass view to the marquee, reaching above it while docked. Call on
-/// the main thread.
+/// Size the glass view to the marquee, bleeding past any docked edges so the
+/// window clips those corners square. Call on the main thread.
 #[cfg(target_os = "macos")]
-fn fit_marquee_glass(ns_window: &NSWindow, docked: bool) {
+fn fit_marquee_glass(ns_window: &NSWindow, bleed: crate::marquee_size::GlassBleed) {
     let Some(content_view) = ns_window.contentView() else {
         return;
     };
@@ -599,11 +710,15 @@ fn fit_marquee_glass(ns_window: &NSWindow, docked: bool) {
         .into_iter()
         .filter_map(AnyClass::get)
         .collect();
-    let lift = if docked { MARQUEE_GLASS_RADIUS } else { 0.0 };
+    let flipped = content_view.isFlipped();
     let mut frame = content_view.bounds();
-    frame.size.height += lift;
-    if content_view.isFlipped() {
-        frame.origin.y -= lift;
+    frame.origin.x -= bleed.left;
+    frame.size.width += bleed.left + bleed.right;
+    frame.size.height += bleed.top + bleed.bottom;
+    if flipped {
+        frame.origin.y -= bleed.top;
+    } else {
+        frame.origin.y -= bleed.bottom;
     }
     for view in content_view.subviews().iter() {
         if glass_classes.iter().any(|class| view.isKindOfClass(class)) {
@@ -729,10 +844,12 @@ pub fn sync_marquee_glass_state(_window: &tauri::WebviewWindow) {}
 
 #[cfg(not(target_os = "macos"))]
 pub fn set_overlay_position(app: &AppHandle, label: &str, x: i32, y: i32) -> tauri::Result<()> {
-    if let Some(window) = app.get_webview_window(label) {
-        let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
-            x, y,
-        )));
+    if !crate::linux::native_wayland() {
+        if let Some(window) = app.get_webview_window(label) {
+            let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+                x, y,
+            )));
+        }
     }
     Ok(())
 }
@@ -749,12 +866,8 @@ pub fn apply_overlay_visibility(
 
 // ── Marquee geometry ────────────────────────────────────────────────────────────
 
-/// The notch of the display `window` is on, if it has one. Call on the main
-/// thread.
 #[cfg(target_os = "macos")]
-pub fn display_notch(window: &tauri::WebviewWindow) -> Option<crate::marquee_size::Notch> {
-    let screen = ns_window(window)?.screen()?;
-    // The safe area and the areas beside the notch arrived in macOS 12.
+fn notch_for_screen(screen: &NSScreen) -> Option<crate::marquee_size::Notch> {
     if !screen.respondsToSelector(sel!(safeAreaInsets)) {
         return None;
     }
@@ -769,9 +882,437 @@ pub fn display_notch(window: &tauri::WebviewWindow) -> Option<crate::marquee_siz
     (height > 0.0 && beside_left > 0.0 && notch.right > notch.left).then_some(notch)
 }
 
+/// The notch of the display `window` is on, if it has one. Call on the main
+/// thread.
+#[cfg(target_os = "macos")]
+pub fn display_notch(window: &tauri::WebviewWindow) -> Option<crate::marquee_size::Notch> {
+    let screen = ns_window(window)?.screen()?;
+    notch_for_screen(&screen)
+}
+
 #[cfg(not(target_os = "macos"))]
 pub fn display_notch(_window: &tauri::WebviewWindow) -> Option<crate::marquee_size::Notch> {
     None
+}
+
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub struct MacScreen {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub work_left: f64,
+    pub work_top: f64,
+    pub work_right: f64,
+    pub work_bottom: f64,
+    pub notch: Option<crate::marquee_size::Notch>,
+}
+
+#[cfg(target_os = "macos")]
+fn primary_screen_height(mtm: MainThreadMarker) -> Option<f64> {
+    NSScreen::screens(mtm)
+        .iter()
+        .next()
+        .map(|s| s.frame().size.height)
+}
+
+/// All macOS displays in global Y-down logical points. Call on the main thread.
+#[cfg(target_os = "macos")]
+pub fn macos_screens() -> Vec<MacScreen> {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return Vec::new();
+    };
+    let Some(primary_h) = primary_screen_height(mtm) else {
+        return Vec::new();
+    };
+    NSScreen::screens(mtm)
+        .iter()
+        .map(|screen| {
+            let frame = screen.frame();
+            let visible = screen.visibleFrame();
+            let x = frame.origin.x;
+            let y = primary_h - (frame.origin.y + frame.size.height);
+            let work_left = visible.origin.x - frame.origin.x;
+            let work_top =
+                (frame.origin.y + frame.size.height) - (visible.origin.y + visible.size.height);
+            MacScreen {
+                x,
+                y,
+                width: frame.size.width,
+                height: frame.size.height,
+                work_left,
+                work_top,
+                work_right: work_left + visible.size.width,
+                work_bottom: work_top + visible.size.height,
+                notch: notch_for_screen(&screen),
+            }
+        })
+        .collect()
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn macos_screens() -> Vec<MacScreen> {
+    Vec::new()
+}
+
+/// Global pointer position in Y-down logical points. Call on the main thread.
+#[cfg(target_os = "macos")]
+pub fn macos_mouse_location_y_down() -> Option<(f64, f64)> {
+    let mtm = MainThreadMarker::new()?;
+    let primary_h = primary_screen_height(mtm)?;
+    let location = NSEvent::mouseLocation();
+    Some((location.x, primary_h - location.y))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn macos_mouse_location_y_down() -> Option<(f64, f64)> {
+    None
+}
+
+#[cfg(target_os = "macos")]
+pub fn macos_pressed_mouse_location_y_down() -> Option<(f64, f64)> {
+    if NSEvent::pressedMouseButtons() & 1 == 0 {
+        return None;
+    }
+    macos_mouse_location_y_down()
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn macos_pressed_mouse_location_y_down() -> Option<(f64, f64)> {
+    None
+}
+
+/// Window frame `(x, y, width, height)` in global Y-down logical points.
+#[cfg(target_os = "macos")]
+pub fn window_frame_global_pt(window: &tauri::WebviewWindow) -> Option<(f64, f64, f64, f64)> {
+    let mtm = MainThreadMarker::new()?;
+    let primary_h = primary_screen_height(mtm)?;
+    let frame = ns_window(window)?.frame();
+    Some((
+        frame.origin.x,
+        primary_h - (frame.origin.y + frame.size.height),
+        frame.size.width,
+        frame.size.height,
+    ))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn window_frame_global_pt(_window: &tauri::WebviewWindow) -> Option<(f64, f64, f64, f64)> {
+    None
+}
+
+/// Marquee frame `(x, y, width, height)` in global Y-down logical points.
+pub fn marquee_frame_global_pt(window: &tauri::WebviewWindow) -> Option<(f64, f64, f64, f64)> {
+    window_frame_global_pt(window)
+}
+
+#[cfg(target_os = "macos")]
+pub fn reduce_motion() -> bool {
+    NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion()
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn reduce_motion() -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+const MAIN_REVEAL_DURATION_SECS: f64 = 0.18;
+
+/// Reveal a hidden, non-minimized main window with a pure GPU alpha fade
+/// (no frame change or `NSWindowAnimationBehavior` zoom) so `WKWebView` and the
+/// Marquee never stall during the reveal. Must be called on the main thread;
+/// returns `false` to fall back to standard show.
+#[cfg(target_os = "macos")]
+pub fn show_main_window_animated(window: &tauri::WebviewWindow) -> bool {
+    let Some(_mtm) = MainThreadMarker::new() else {
+        return false;
+    };
+    let Some(native) = ns_window(window) else {
+        return false;
+    };
+    if native.isMiniaturized() || native.isVisible() {
+        return false;
+    }
+
+    native.setAnimationBehavior(NSWindowAnimationBehavior::None);
+    native.setAlphaValue(0.0);
+
+    let _ = window.show();
+    let _ = window.set_focus();
+
+    NSAnimationContext::beginGrouping();
+    let ctx = NSAnimationContext::currentContext();
+    ctx.setDuration(MAIN_REVEAL_DURATION_SECS);
+    let timing = CAMediaTimingFunction::functionWithControlPoints(0.22, 1.0, 0.36, 1.0);
+    ctx.setTimingFunction(Some(&timing));
+    native.animator().setAlphaValue(1.0);
+    NSAnimationContext::endGrouping();
+
+    true
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn show_main_window_animated(_window: &tauri::WebviewWindow) -> bool {
+    false
+}
+
+/// Cancel any in-flight compositor reveal and restore full opacity.
+#[cfg(target_os = "macos")]
+pub fn reset_main_window_reveal(window: &tauri::WebviewWindow) {
+    fn apply(win: &tauri::WebviewWindow) {
+        let Some(native) = ns_window(win) else {
+            return;
+        };
+        NSAnimationContext::beginGrouping();
+        NSAnimationContext::currentContext().setDuration(0.0);
+        native.animator().setAlphaValue(1.0);
+        NSAnimationContext::endGrouping();
+        native.setAlphaValue(1.0);
+    }
+
+    if MainThreadMarker::new().is_some() {
+        apply(window);
+    } else {
+        let win = window.clone();
+        let _ = window.run_on_main_thread(move || apply(&win));
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn reset_main_window_reveal(_window: &tauri::WebviewWindow) {}
+
+#[cfg(target_os = "macos")]
+static DOCK_POLICY_GEN: AtomicU64 = AtomicU64::new(0);
+#[cfg(target_os = "macos")]
+const DOCK_HIDE_DEBOUNCE: Duration = Duration::from_millis(1000);
+#[cfg(target_os = "macos")]
+const DOCK_SHOW_AFTER_REVEAL: Duration = Duration::from_millis(220);
+
+#[cfg(target_os = "macos")]
+fn apply_dock_policy(app: &AppHandle, visible: bool, expected_gen: u64) {
+    if DOCK_POLICY_GEN.load(Ordering::Acquire) != expected_gen {
+        return;
+    }
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let ns_app = NSApplication::sharedApplication(mtm);
+    let target = if visible {
+        NSApplicationActivationPolicy::Regular
+    } else {
+        NSApplicationActivationPolicy::Accessory
+    };
+    if ns_app.activationPolicy() == target {
+        return;
+    }
+    if !visible {
+        for label in ["marquee", "karaoke"] {
+            if let Some(native) = app
+                .get_webview_window(label)
+                .and_then(|win| ns_window(&win))
+            {
+                native.setCanHide(false);
+            }
+        }
+    }
+    ns_app.setActivationPolicy(target);
+    if visible
+        && app
+            .get_webview_window("main")
+            .is_some_and(|w| w.is_visible().unwrap_or(false))
+    {
+        #[allow(deprecated)]
+        ns_app.activateIgnoringOtherApps(true);
+    }
+}
+
+/// Update Dock presence on macOS using `NSApplication::setActivationPolicy`,
+/// skipping redundant switches and optionally deferring past a transition so
+/// Dock/WindowServer IPC never stalls open/close animations or the Marquee.
+#[cfg(target_os = "macos")]
+pub fn sync_dock_visibility(app: &AppHandle, visible: bool, defer: bool) {
+    let gen = DOCK_POLICY_GEN.fetch_add(1, Ordering::AcqRel) + 1;
+    let target = if visible {
+        NSApplicationActivationPolicy::Regular
+    } else {
+        NSApplicationActivationPolicy::Accessory
+    };
+    if let Some(mtm) = MainThreadMarker::new() {
+        if NSApplication::sharedApplication(mtm).activationPolicy() == target {
+            return;
+        }
+    }
+    if !defer {
+        if MainThreadMarker::new().is_some() {
+            apply_dock_policy(app, visible, gen);
+        } else {
+            let handle = app.clone();
+            let _ = app.run_on_main_thread(move || apply_dock_policy(&handle, visible, gen));
+        }
+        return;
+    }
+
+    let delay = if visible {
+        DOCK_SHOW_AFTER_REVEAL
+    } else {
+        DOCK_HIDE_DEBOUNCE
+    };
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(delay).await;
+        if DOCK_POLICY_GEN.load(Ordering::Acquire) != gen {
+            return;
+        }
+        let main_handle = handle.clone();
+        let _ = handle.run_on_main_thread(move || apply_dock_policy(&main_handle, visible, gen));
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn sync_dock_visibility(_app: &AppHandle, _visible: bool, _defer: bool) {}
+
+/// Atomically apply Marquee frame, 4-edge glass bleed, and window level.
+/// On macOS this computes the unclamped AppKit `NSRect` directly and calls
+/// `setFrame_display` once so dragging/docking near the menu bar or Dock
+/// never flickers. Call on the main thread.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_marquee_frame(
+    app: &AppHandle,
+    window: &tauri::WebviewWindow,
+    screen_origin_pt: (f64, f64),
+    local_origin_pt: (f64, f64),
+    phys_origin: (i32, i32),
+    size_pt: (f64, f64),
+    bleed: crate::marquee_size::GlassBleed,
+    dock: crate::marquee_size::DockEdges,
+    bounds: crate::marquee_size::DisplayBounds,
+) -> tauri::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = phys_origin;
+        if let (Some(mtm), Some(native)) = (MainThreadMarker::new(), ns_window(window)) {
+            if let Some(primary_h) = primary_screen_height(mtm) {
+                let global_x = screen_origin_pt.0 + local_origin_pt.0;
+                let global_y = screen_origin_pt.1 + local_origin_pt.1;
+                let ns_y = primary_h - (global_y + size_pt.1);
+                let next = NSRect::new(
+                    NSPoint::new(global_x, ns_y),
+                    objc2_foundation::NSSize::new(size_pt.0, size_pt.1),
+                );
+                let old = native.frame();
+                let origin_changed = (old.origin.x - next.origin.x).abs() > 0.05
+                    || (old.origin.y - next.origin.y).abs() > 0.05;
+                let size_changed = (old.size.width - next.size.width).abs() > 0.05
+                    || (old.size.height - next.size.height).abs() > 0.05;
+                let bleed_changed = set_marquee_bleed(bleed);
+                if size_changed {
+                    native.setFrame_display(next, false);
+                } else if origin_changed {
+                    native.setFrameOrigin(next.origin);
+                }
+                if size_changed || bleed_changed {
+                    fit_marquee_glass(&native, bleed);
+                }
+
+                let menu_bar_inset = bounds.work_safe.top;
+                let dock_bottom_inset = (bounds.height - bounds.work_safe.bottom).max(0.0);
+                let dock_left_inset = bounds.work_safe.left;
+                let dock_right_inset = (bounds.width - bounds.work_safe.right).max(0.0);
+                let over_menu_bar = dock.top || local_origin_pt.1 < menu_bar_inset.max(0.5);
+                let over_visible_dock = (dock_bottom_inset >= 16.0
+                    && (dock.bottom || local_origin_pt.1 + size_pt.1 > bounds.work_safe.bottom + 0.5))
+                    || (dock_left_inset >= 16.0
+                        && (dock.left || local_origin_pt.0 < bounds.work_safe.left - 0.5))
+                    || (dock_right_inset >= 16.0
+                        && (dock.right || local_origin_pt.0 + size_pt.0 > bounds.work_safe.right + 0.5));
+                let level = if over_menu_bar {
+                    LEVEL_ABOVE_MENU_BAR
+                } else if over_visible_dock {
+                    LEVEL_ABOVE_DOCK
+                } else {
+                    LEVEL_UTILITY
+                };
+                set_marquee_level(app, level);
+                return Ok(());
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, screen_origin_pt, local_origin_pt, bleed);
+        let sf = window.scale_factor().unwrap_or(1.0).max(0.5);
+        let cur_size = window.outer_size().ok().map(|s| (f64::from(s.width) / sf, f64::from(s.height) / sf));
+        if cur_size.is_none_or(|(w, h)| (w - size_pt.0).abs() >= 0.5 || (h - size_pt.1).abs() >= 0.5) {
+            window.set_size(tauri::LogicalSize::new(size_pt.0, size_pt.1))?;
+        }
+        if !crate::linux::native_wayland() {
+            window.set_position(tauri::PhysicalPosition::new(phys_origin.0, phys_origin.1))?;
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let over_taskbar = (dock.top && bounds.work_safe.top > 0.5)
+                || (dock.bottom && bounds.height - bounds.work_safe.bottom > 0.5)
+                || (dock.left && bounds.work_safe.left > 0.5)
+                || (dock.right && bounds.width - bounds.work_safe.right > 0.5);
+            if over_taskbar {
+                let _ = window.set_always_on_top(true);
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        let _ = (dock, bounds);
+    }
+
+    Ok(())
+}
+
+pub fn marquee_resize_pointer_x() -> Option<f64> {
+    #[cfg(target_os = "macos")]
+    if NSEvent::pressedMouseButtons() & 1 != 0 {
+        return Some(NSEvent::mouseLocation().x);
+    }
+    None
+}
+
+pub fn resize_marquee_window(
+    window: &tauri::WebviewWindow,
+    width: u32,
+    height: u32,
+    position: Option<(i32, i32)>,
+    anchor_bottom: bool,
+) -> tauri::Result<()> {
+    #[cfg(target_os = "macos")]
+    if let Some(native) = ns_window(window) {
+        let old = native.frame();
+        let mut x = old.origin.x;
+        if let Some((new_x, _)) = position {
+            let current_x = window.outer_position()?.x;
+            x += (f64::from(new_x) - f64::from(current_x)) / window.scale_factor()?;
+        }
+        let size = objc2_foundation::NSSize::new(f64::from(width), f64::from(height));
+        let y = if anchor_bottom {
+            old.origin.y
+        } else {
+            old.origin.y + old.size.height - size.height
+        };
+        let origin = NSPoint::new(x, y);
+        let next = NSRect::new(origin, size);
+        if next != old {
+            native.setFrame_display(next, false);
+            fit_marquee_glass(&native, current_bleed());
+        }
+        return Ok(());
+    }
+
+    window.set_size(tauri::LogicalSize::new(width, height))?;
+    if let Some((x, y)) = position {
+        if !crate::linux::native_wayland() {
+            window.set_position(tauri::PhysicalPosition::new(x, y))?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -781,6 +1322,9 @@ pub fn set_marquee_size(app: &AppHandle, width: u32, height: u32) -> tauri::Resu
             width as f64,
             height as f64,
         )))?;
+        if let Some(native) = ns_window(&window) {
+            fit_marquee_glass(&native, current_bleed());
+        }
     }
     Ok(())
 }

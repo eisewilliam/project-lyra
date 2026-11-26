@@ -5,9 +5,10 @@
   flex-direction: column;
   align-items: stretch;
   justify-content: center;
-  gap: 6px;
-  padding: 0 64px;
+  gap: calc(0.45rem * var(--font-scale, 1));
+  padding: 0 clamp(24px, 4vw, 64px);
   box-sizing: border-box;
+  border-radius: var(--karaoke-radius, 0px);
   user-select: none;
   -webkit-user-select: none;
   background: rgba(10, 10, 12, var(--karaoke-bg, 0));
@@ -15,8 +16,15 @@
   text-align: var(--karaoke-align, center);
 }
 
-.karaoke-root.is-placeholder {
-  gap: 12px;
+.karaoke-current-stage {
+  position: relative;
+  width: 100%;
+  /* Applied on the stage rather than .karaoke-current so overflow:hidden and
+     --glide-mask on GlidingLine never clip the drop-shadow into a rectangle. */
+  filter:
+    drop-shadow(0 1px 2px rgba(0, 0, 0, 0.72))
+    drop-shadow(0 2px 10px rgba(0, 0, 0, 0.52))
+    drop-shadow(0 4px 22px rgba(0, 0, 0, 0.38));
 }
 
 .karaoke-current {
@@ -24,15 +32,18 @@
   font-weight: var(--karaoke-weight, 800);
   letter-spacing: -0.03em;
   color: var(--lyric-color, #fff);
-  text-shadow:
-    0 2px 12px rgba(0, 0, 0, 0.85),
-    0 4px 28px rgba(0, 0, 0, 0.65),
-    0 0 1px rgba(0, 0, 0, 0.9);
   white-space: nowrap;
   overflow: hidden;
-  line-height: 1.1;
-  /* Re-keyed per line in the view → enter animation replays on each change. */
-  animation: karaoke-line-enter var(--duration-enter) var(--ease-standard);
+  line-height: 1.15;
+  animation: karaoke-line-enter 220ms var(--ease-standard);
+}
+
+.karaoke-outgoing {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  animation: karaoke-line-exit 150ms var(--ease-standard) forwards;
 }
 
 .karaoke-lyric-content {
@@ -43,70 +54,113 @@
   transition: transform var(--duration-base) var(--ease-standard);
 }
 
-.karaoke-current.has-word-sync {
-  text-shadow: none;
-  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.55)) drop-shadow(0 4px 22px rgba(0, 0, 0, 0.38));
+.karaoke-current.is-vocal-cue {
+  display: flex;
+  align-items: center;
+  justify-content: var(--karaoke-placeholder-align, center);
+  min-height: 1.15em;
+}
+
+.karaoke-current .vocal-countdown {
+  filter:
+    drop-shadow(0 1px 2px rgba(0, 0, 0, 0.75))
+    drop-shadow(0 2px 10px rgba(0, 0, 0, 0.58));
+}
+
+.karaoke-current .vocal-countdown > span {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
 
 .karaoke-current.is-track-intro {
   font-size: calc(3.25rem * var(--font-scale, 1));
+  text-overflow: ellipsis;
+  /* Bleed room so text-shadow is not sliced at the overflow:hidden box. */
+  padding: 16px 14px;
+  margin: -16px -14px;
   text-shadow:
-    0 2px 12px rgba(0, 0, 0, 0.78),
-    0 4px 24px rgba(0, 0, 0, 0.58);
+    0 1px 2px rgba(0, 0, 0, 0.8),
+    0 2px 12px rgba(0, 0, 0, 0.72),
+    0 4px 24px rgba(0, 0, 0, 0.52);
 }
 
 /* Registered --word-progress is animated natively and resynced to playback;
    older webviews receive the same values through the shared frame loop. */
 .karaoke-current .lyric-word {
+  --unsung: color-mix(
+    in srgb,
+    var(--lyric-color, #ffffff) calc(68% - 13% * min(1, var(--karaoke-bg, 0) / 0.5)),
+    transparent
+  );
   display: inline;
   color: transparent;
   background-image: linear-gradient(
     to right,
     var(--lyric-color, #ffffff) 0%,
     var(--lyric-color, #ffffff) calc(var(--word-progress, 0) * 100%),
-    color-mix(in srgb, var(--lyric-color, #ffffff) 50%, transparent) calc(var(--word-progress, 0) * 100%),
-    color-mix(in srgb, var(--lyric-color, #ffffff) 50%, transparent) 100%
+    var(--unsung) calc(var(--word-progress, 0) * 100%),
+    var(--unsung) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  will-change: background-image;
 }
 
 .karaoke-next {
   font-size: calc(1.5rem * var(--font-scale, 1));
   font-weight: 600;
+  line-height: 1.3;
   letter-spacing: -0.01em;
-  color: rgba(255, 255, 255, 0.55);
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+  color: rgba(255, 255, 255, 0.58);
+  padding: 12px 14px;
+  margin: -12px -14px;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.85),
+    0 2px 10px rgba(0, 0, 0, 0.68);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  animation: karaoke-line-enter var(--duration-enter) var(--ease-standard);
+  animation: karaoke-line-enter 220ms var(--ease-standard);
 }
 
-/* Line-change enter: fade up. em-based so the rise scales with font size. */
 @keyframes karaoke-line-enter {
-  from { opacity: 0; transform: translateY(0.3em); }
+  from { opacity: 0.15; transform: translateY(0.16em); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes karaoke-line-exit {
+  from { opacity: 0.75; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-0.18em); }
+}
+
 .karaoke-next.is-track-intro {
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.74);
 }
 
 .karaoke-placeholder {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   width: 100%;
   align-items: var(--karaoke-placeholder-align, center);
 }
 
+.karaoke-placeholder.is-compact {
+  flex-direction: row;
+  align-items: center;
+  justify-content: var(--karaoke-placeholder-align, center);
+  gap: 14px;
+}
+
 .karaoke-placeholder-orb {
   position: relative;
-  width: 76px;
-  height: 76px;
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+}
+
+.karaoke-placeholder.is-compact .karaoke-placeholder-orb {
+  width: 40px;
+  height: 40px;
 }
 
 .karaoke-placeholder-ring,
@@ -117,7 +171,8 @@
 }
 
 .karaoke-placeholder-ring {
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22);
   transform: scale(1.06);
 }
 
@@ -125,27 +180,39 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255, 255, 255, 0.84);
-  background: radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.92);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.06)),
+    rgba(16, 16, 20, 0.58);
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 
 .karaoke-placeholder-icon {
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+.karaoke-placeholder.is-compact .karaoke-placeholder-icon {
+  width: 18px;
+  height: 18px;
 }
 
 .karaoke-placeholder-dots {
   display: flex;
-  align-items: var(--karaoke-placeholder-align, center);
+  align-items: center;
   gap: 10px;
+  min-height: 22px;
 }
 
 .karaoke-placeholder-dot {
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.36);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.48);
   animation: karaoke-dot-bounce 1s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
@@ -161,26 +228,44 @@
   animation: karaoke-pulse 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
-.karaoke-placeholder-spacer {
-  height: 10px;
+.karaoke-placeholder-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(1.0625rem * var(--font-scale, 1));
+  font-weight: 600;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.92);
+  padding: 6px 10px;
+  margin: -6px -10px;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.85),
+    0 2px 10px rgba(0, 0, 0, 0.72);
 }
 
 .karaoke-placeholder.is-error .karaoke-placeholder-core {
-  color: rgba(255, 184, 178, 0.96);
-  background: radial-gradient(circle at 30% 20%, rgba(255, 69, 58, 0.28), rgba(255, 69, 58, 0.08));
+  color: rgba(255, 196, 190, 0.98);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 69, 58, 0.36), rgba(255, 69, 58, 0.14)),
+    rgba(24, 14, 16, 0.64);
+}
+
+.karaoke-placeholder.is-error .karaoke-placeholder-label {
+  color: rgba(255, 200, 196, 0.96);
 }
 
 @keyframes karaoke-dot-bounce {
   0%,
   80%,
   100% {
-    opacity: 0.28;
+    opacity: 0.36;
     transform: translateY(0) scale(0.9);
   }
 
   40% {
     opacity: 1;
-    transform: translateY(-5px) scale(1);
+    transform: translateY(-4px) scale(1);
   }
 }
 
@@ -192,8 +277,23 @@
 
   50% {
     opacity: 1;
-    transform: scale(1.14);
+    transform: scale(1.12);
   }
+}
+
+:root[data-low-power="true"] .karaoke-outgoing {
+  display: none;
+}
+
+:root[data-low-power="true"] .karaoke-current-stage {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.72));
+}
+
+:root[data-low-power="true"] .karaoke-placeholder-dot,
+:root[data-low-power="true"] .karaoke-placeholder.is-loading .karaoke-placeholder-ring,
+:root[data-low-power="true"] .karaoke-current,
+:root[data-low-power="true"] .karaoke-next {
+  animation: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -205,7 +305,9 @@
     animation: none !important;
     transition: none;
   }
-  /* Show the new line in place, no rise. */
+  .karaoke-outgoing {
+    display: none;
+  }
   .karaoke-current,
   .karaoke-next {
     transform: none !important;

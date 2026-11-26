@@ -342,7 +342,13 @@ export function useSettings() {
       );
     },
     resetMarqueePosition: async () => {
-      await optimisticUiAction({ marquee_pos: null }, () => resetMarqueePosition());
+      await optimisticUiAction(
+        {
+          marquee_pos: null,
+          marquee_dock: { top: false, right: false, bottom: false, left: false },
+        },
+        () => resetMarqueePosition(),
+      );
     },
     setFont: async (surface: FloatingSurface | 'karaoke', scale: number) => {
       await optimisticUiAction(
