@@ -1141,6 +1141,17 @@ pub fn run() {
             // visibility. This prevents the empty-window flash that occurs
             // when the native frame becomes visible before React renders.
 
+            #[cfg(target_os = "linux")]
+            if let Some(container) = app
+                .get_webview_window("marquee")
+                .and_then(|window| window.default_vbox().ok())
+            {
+                use gtk::prelude::WidgetExt;
+                // A nonzero content size request bypasses GTK's 200 px
+                // fallback for a non-resizable window with empty content.
+                container.set_size_request(1, 1);
+            }
+
             // Size the marquee before placing it: the saved position is the
             // top-left corner of the sized window. Moves below refit it if
             // they take it to a display of another width.

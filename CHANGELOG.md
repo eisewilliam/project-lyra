@@ -37,6 +37,7 @@ offered it as an update.
 
 ### Fixed
 
+- The Marquee uses its compact one- or two-line height on Linux.
 - On macOS 26, the Settings sidebar keeps its album-art tint when the window
   loses focus.
 

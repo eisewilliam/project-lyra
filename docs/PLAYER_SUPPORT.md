@@ -186,8 +186,12 @@ Notes:
   `CanGoPrevious` and `CanSeek`; seeking falls back to relative `Seek` when a
   player has no usable track ID. `file://` artwork is served via `lyra-art://`.
 - Apple Music has no Linux app; its web player is covered by the browser row.
-- Type-checked with `cargo clippy --target x86_64-unknown-linux-gnu` (native
-  library probes stubbed, nothing linked); not yet run on Linux.
+- On Fedora 45 Workstation (x86-64, GNOME in UTM), Lyra 0.3.0-beta.2 followed
+  Rhythmbox over MPRIS, showed the track title and artist, and controlled
+  pause, resume, and seek. The published RPM needed Fedora's `openssl3-libs`
+  package before it could launch on the clean guest.
+- On the same guest, the local build's Marquee measured 48 px with one line
+  and 61 px with two lines at the tested display size, using XWayland.
 
 ## Discord presence
 

@@ -1,12 +1,12 @@
 # Lyra
 
-Lyra is a desktop app for macOS and Windows that shows synchronized lyrics for whatever you're playing on Spotify — automatically, in real time, with no manual searching required.
+Lyra is a desktop app for macOS, Windows, and Linux that shows synchronized lyrics for whatever you're playing — automatically, in real time, with no manual searching required.
 
 ---
 
 ## What It Does
 
-As soon as you start playing a song in Spotify, Lyra finds the lyrics and highlights the current line as the music plays. When the song changes, the lyrics change. You never have to do anything.
+As soon as you start playing a song in a supported player (such as Apple Music, Spotify, or browser media), Lyra finds the lyrics and highlights the current line as the music plays. When the song changes, the lyrics change. You never have to do anything.
 
 Beyond just displaying lyrics, Lyra highlights individual words inside each line as they're sung — giving you a true karaoke-style wipe effect, not just a line jumping around.
 
@@ -51,4 +51,4 @@ If no synchronized lyrics exist for a track, Lyra says so clearly rather than sh
 
 ## Platforms
 
-Lyra runs on macOS and Windows.
+Lyra runs on macOS, Windows, and Linux.
