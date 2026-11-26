@@ -326,7 +326,8 @@ mod tests {
             .contains("400"));
         refresh.publish_timed(&rt, key).await.unwrap();
         let requests = peer.join().unwrap();
-        for (pair, token) in requests.chunks_exact(2).zip(["first:0", "next:0"]) {
+        let (pairs, _) = requests.as_chunks::<2>();
+        for (pair, token) in pairs.iter().zip(["first:0", "next:0"]) {
             assert!(pair[0].0.starts_with("post /request-challenge "));
             assert!(pair[0].1.is_empty());
             assert!(pair[1].0.starts_with("post /publish "));
