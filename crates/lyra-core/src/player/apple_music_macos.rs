@@ -12,7 +12,7 @@ use crate::player::applescript::{
 };
 use crate::player::metadata::MetaRefresh;
 use crate::player::{
-    now_ms, sniff_image_mime, ArtworkBytes, ControlError, PlayerAdapter, PlayerCommand,
+    macos_open, now_ms, sniff_image_mime, ArtworkBytes, ControlError, PlayerAdapter, PlayerCommand,
     SessionObservation,
 };
 
@@ -105,20 +105,6 @@ with timeout of 4 seconds
         end try
     end tell
 end timeout
-"#,
-);
-
-/// Select the playing track in Music's window and bring Music forward.
-static REVEAL: Script = Script::new(
-    r#"
-if application "Music" is not running then return "false"
-tell application "Music"
-    try
-        reveal current track
-    end try
-    activate
-end tell
-return "true"
 "#,
 );
 
@@ -397,7 +383,7 @@ impl PlayerAdapter for AppleMusicMacOsAdapter {
             PlayerCommand::Next => NEXT_TRACK.run_command(),
             PlayerCommand::Previous => PREVIOUS_TRACK.run_command(),
             PlayerCommand::SeekMs(ms) => seek_to_seconds(ms as f64 / 1000.0),
-            PlayerCommand::Raise => REVEAL.run_command(),
+            PlayerCommand::Raise => macos_open(&["-b", MUSIC_BUNDLE_ID]),
         };
         if sent {
             Ok(())

@@ -38,6 +38,9 @@ offered it as an update.
 ### Fixed
 
 - The Marquee uses its compact one- or two-line height on Linux.
+- On macOS, clicking the player mark or the Marquee artwork brings Spotify
+  and Music forward as they were, like every other player, instead of
+  jumping to the playing track.
 - On macOS 26, the Settings sidebar keeps its album-art tint when the window
   loses focus.
 

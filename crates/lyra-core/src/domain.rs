@@ -144,7 +144,7 @@ pub struct PlaybackCaps {
     pub next: bool,
     pub previous: bool,
     pub seek: bool,
-    /// Lyra can bring the player to the front, showing the track.
+    /// Lyra can bring the player to the front.
     pub raise: bool,
 }
 

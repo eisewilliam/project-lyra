@@ -87,13 +87,12 @@ rules and the selected player can be changed while the app is closed.
 ## Opening the player from Lyra
 
 The main window shows the source's monochrome mark on the album art. Clicking it
-brings the player forward on the current track where the OS allows:
+brings the player forward as it was, without changing what it shows, where the
+OS allows:
 
 | OS | Player | What opens |
 |---|---|---|
-| macOS | Spotify | The track in Spotify (`spotify:track:` link) |
-| macOS | Music.app | Music, with the playing track selected |
-| macOS | Now Playing apps and installed web apps | The app (YouTube Music app, browser window) |
+| macOS | Spotify, Music.app, Now Playing apps and installed web apps | The app, by bundle ID (YouTube Music app, browser window) |
 | Windows | Packaged apps (Apple Music) | The app, through its app ID |
 | Windows | Spotify | Spotify (`spotify:` link) |
 | Windows | Browsers and other desktop apps | Not supported; the mark is not clickable |
