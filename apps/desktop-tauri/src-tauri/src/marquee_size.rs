@@ -765,8 +765,7 @@ pub fn evaluate_liquid_drag(
     prev_dock: DockEdges,
     raw_x: f64,
     raw_y: f64,
-    width: f64,
-    height: f64,
+    (width, height): (f64, f64),
 ) -> LiquidDragStep {
     if suppress.top && raw_y > bounds.work_safe.top + ENTRY_SUPPRESS_CLEARANCE_PT {
         suppress.top = false;
@@ -1897,8 +1896,7 @@ fn move_marquee_drag_now(app: &AppHandle, dx: f64, dy: f64) {
         prev_dock,
         local_raw_x,
         local_raw_y,
-        current_w,
-        current_h,
+        (current_w, current_h),
     );
 
     if let Some(edge) = step.cross_edge {
@@ -2883,32 +2881,14 @@ mod tests {
             right: false,
             bottom: false,
         };
-        let step = evaluate_liquid_drag(
-            bounds,
-            adj,
-            DockEdges::NONE,
-            corner,
-            0.0,
-            17.0,
-            MARQUEE.0,
-            MARQUEE.1,
-        );
+        let step = evaluate_liquid_drag(bounds, adj, DockEdges::NONE, corner, 0.0, 17.0, MARQUEE);
         assert_eq!(step.dock, corner);
         assert_eq!((step.target_x, step.target_y), (0.0, 0.0));
         assert!((step.pull_y - 0.5).abs() < 1e-6);
         assert_eq!(step.pull_x, 0.0);
 
         // Pulling past BREAKAWAY_PX vertically snaps off top while keeping left docked!
-        let step = evaluate_liquid_drag(
-            bounds,
-            adj,
-            DockEdges::NONE,
-            corner,
-            10.0,
-            40.0,
-            MARQUEE.0,
-            MARQUEE.1,
-        );
+        let step = evaluate_liquid_drag(bounds, adj, DockEdges::NONE, corner, 10.0, 40.0, MARQUEE);
         assert!(!step.dock.top);
         assert!(step.dock.left);
         assert_eq!(step.target_x, 0.0);
@@ -2928,8 +2908,7 @@ mod tests {
             right_dock,
             max_x - 17.0,
             400.0,
-            MARQUEE.0,
-            MARQUEE.1,
+            MARQUEE,
         );
         assert!(cling.dock.right);
         assert_eq!(cling.target_x, max_x);
@@ -2942,8 +2921,7 @@ mod tests {
             right_dock,
             max_x - BREAKAWAY_PX - 1.0,
             400.0,
-            MARQUEE.0,
-            MARQUEE.1,
+            MARQUEE,
         );
         assert!(!snap.dock.right);
         assert_eq!(snap.impulses, vec![DockImpulse::DetachRight]);
@@ -2961,8 +2939,7 @@ mod tests {
             bottom_dock,
             500.0,
             max_y - 17.0,
-            MARQUEE.0,
-            MARQUEE.1,
+            MARQUEE,
         );
         assert!(cling.dock.bottom);
         assert_eq!(cling.target_y, max_y);
@@ -2975,8 +2952,7 @@ mod tests {
             bottom_dock,
             500.0,
             max_y - BREAKAWAY_PX - 1.0,
-            MARQUEE.0,
-            MARQUEE.1,
+            MARQUEE,
         );
         assert!(!snap.dock.bottom);
         assert_eq!(snap.impulses, vec![DockImpulse::DetachBottom]);
@@ -3003,8 +2979,7 @@ mod tests {
             right_dock,
             max_x + 20.0,
             400.0,
-            MARQUEE.0,
-            MARQUEE.1,
+            MARQUEE,
         );
         assert!(detent.dock.right);
         assert_eq!(detent.cross_edge, None);
@@ -3017,8 +2992,7 @@ mod tests {
             right_dock,
             max_x + MULTI_MONITOR_BREAKAWAY_PX + 2.0,
             400.0,
-            MARQUEE.0,
-            MARQUEE.1,
+            MARQUEE,
         );
         assert!(!crossed.dock.right);
         assert_eq!(crossed.cross_edge, Some(ScreenEdge::Right));

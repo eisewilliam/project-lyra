@@ -74,18 +74,17 @@ fn trigger(app: &AppHandle, key: Code) {
         Code::KeyM => tray::toggle_surface(app, "marquee"),
         Code::KeyK => tray::toggle_surface(app, "karaoke"),
         Code::KeyC => commands::disable_click_through(app, state, ui.marquee_click_through),
-        Code::BracketLeft | Code::BracketRight => {
+        Code::BracketLeft | Code::BracketRight
             if [
                 ("main", ui.floating_visible),
                 ("marquee", ui.marquee_visible),
                 ("karaoke", ui.karaoke_visible),
             ]
             .into_iter()
-            .any(|(label, visible)| state.surface_visibility.is_visible(label, visible))
-            {
-                let delta = if key == Code::BracketLeft { -100 } else { 100 };
-                commands::nudge_lyric_offset(delta, state, app.clone());
-            }
+            .any(|(label, visible)| state.surface_visibility.is_visible(label, visible)) =>
+        {
+            let delta = if key == Code::BracketLeft { -100 } else { 100 };
+            commands::nudge_lyric_offset(delta, state, app.clone());
         }
         _ => {}
     }
