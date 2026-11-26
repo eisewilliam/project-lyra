@@ -10,6 +10,12 @@ offered it as an update.
 
 ## [Unreleased]
 
+## [0.3.0-rc.1] - 2026-11-26
+
+The final preview of 0.3.0 adds tap-to-sync lyric editing, Marquee edge docking
+and quick actions, and a compact Marquee on Linux. It includes the changes
+listed under both 0.3.0 betas.
+
 ### Added
 
 - Attach the Marquee to any screen edge or corner (top, bottom, left, or right),
@@ -413,7 +419,8 @@ The first pre-release, for internal testing ahead of 0.1.0.
 - As a pre-release, this build is not offered as an update; install each beta
   from its release page.
 
-[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.3.0-beta.2...HEAD
+[Unreleased]: https://github.com/eisewilliam/project-lyra/compare/v0.3.0-rc.1...HEAD
+[0.3.0-rc.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.3.0-rc.1
 [0.3.0-beta.2]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.3.0-beta.2
 [0.3.0-beta.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.3.0-beta.1
 [0.2.1]: https://github.com/eisewilliam/project-lyra/releases/tag/v0.2.1
