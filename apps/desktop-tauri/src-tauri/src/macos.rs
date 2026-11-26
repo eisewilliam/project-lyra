@@ -1313,6 +1313,9 @@ pub fn resize_marquee_window(
         return Ok(());
     }
 
+    #[cfg(not(target_os = "macos"))]
+    let _ = anchor_bottom;
+
     window.set_size(tauri::LogicalSize::new(width, height))?;
     if let Some((x, y)) = position {
         if !crate::linux::native_wayland() {
