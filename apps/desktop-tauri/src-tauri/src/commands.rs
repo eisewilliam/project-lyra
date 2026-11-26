@@ -77,6 +77,29 @@ pub fn set_marquee_click_through(enabled: bool, state: State<'_, AppState>, app:
     let _ = app.emit("ui-settings-changed", new_state);
 }
 
+pub(crate) fn disable_click_through(
+    app: &AppHandle,
+    state: State<'_, AppState>,
+    marquee_click_through: bool,
+) {
+    if marquee_click_through {
+        set_marquee_click_through(false, app.state(), app.clone());
+    }
+    let settings = {
+        let mut rt = lock_runtime(&state);
+        let mut settings = rt.settings().clone();
+        if !settings.window.click_through {
+            return;
+        }
+        settings.window.click_through = false;
+        rt.update_settings(settings.clone());
+        settings
+    };
+    crate::apply_main_window_settings(app, &settings.window);
+    let _ = app.emit("app-settings-changed", settings);
+    let _ = app.emit("main-click-through-restored", ());
+}
+
 /// Whether this Mac has a Touch Bar and Lyra can add its Control Strip
 /// button. Sync so it runs on the main thread.
 #[tauri::command]
@@ -168,7 +191,25 @@ pub fn set_settings_sidebar_glass(app: AppHandle, glass: Option<SidebarGlass>) -
 /// Show and focus the main window (from the marquee or the first-run card).
 #[tauri::command]
 pub fn open_main_window(app: AppHandle) {
-    tray::open_lyra(&app);
+    tray::open_lyra_from_marquee(&app);
+}
+
+/// Show and focus the main window from the marquee and open Choose Lyrics
+/// for the currently playing track.
+#[tauri::command]
+pub fn open_choose_lyrics(state: State<'_, AppState>, app: AppHandle) {
+    let track_key = {
+        let mut rt = lock_runtime(&state);
+        rt.tick().playback.track.map(|track| track.uri)
+    };
+    tray::open_lyra_from_marquee(&app);
+    if let Some(track_key) = track_key {
+        let _ = app.emit_to(
+            tauri::EventTarget::webview_window("main"),
+            "open-choose-lyrics",
+            track_key,
+        );
+    }
 }
 
 /// Record that the first-run explanation was acknowledged, then poll the
@@ -344,6 +385,33 @@ pub fn set_overlay_position(label: String, x: i32, y: i32, app: AppHandle) {
     let _ = crate::macos::set_overlay_position(&app, &label, x, y);
 }
 
+#[tauri::command]
+pub fn begin_marquee_drag(app: AppHandle) {
+    marquee_size::begin_marquee_drag(&app);
+}
+
+#[tauri::command]
+pub fn move_marquee_drag(dx: f64, dy: f64, app: AppHandle) {
+    marquee_size::move_marquee_drag(&app, dx, dy);
+}
+
+#[tauri::command]
+pub fn end_marquee_drag(app: AppHandle) {
+    marquee_size::end_marquee_drag(&app);
+}
+
+#[tauri::command]
+pub fn resize_marquee(
+    edge: marquee_size::ResizeEdge,
+    anchor_x: Option<i32>,
+    width: f64,
+    pointer_x: f64,
+    done: bool,
+    app: AppHandle,
+) {
+    marquee_size::resize_marquee(&app, edge, anchor_x, width, pointer_x, done);
+}
+
 /// Called by the marquee frontend when a drag ends: settles the marquee into
 /// the safe area of its display, on an edge or the centre line when it is
 /// close to one, and saves where it ends up.
@@ -355,7 +423,10 @@ pub fn settle_marquee_position(app: AppHandle) {
 /// Forget where the user put the marquee and return it to its default place.
 #[tauri::command]
 pub fn reset_marquee_position(state: State<'_, AppState>, app: AppHandle) {
-    let new_state = state.ui.mutate(|s| s.marquee_pos = None);
+    let new_state = state.ui.mutate(|s| {
+        s.marquee_pos = None;
+        s.marquee_dock = marquee_size::DockEdges::NONE;
+    });
     let _ = app.emit("ui-settings-changed", &new_state);
     crate::apply_preferred_monitor_positioning(&app, &new_state);
 }
@@ -421,13 +492,15 @@ pub fn set_lyric_offset(offset_ms: i64, state: State<'_, AppState>, app: AppHand
 /// Returns the new offset.
 #[tauri::command]
 pub fn nudge_lyric_offset(delta_ms: i64, state: State<'_, AppState>, app: AppHandle) -> i64 {
-    let new_offset = {
+    let (new_offset, render) = {
         let mut rt = lock_runtime(&state);
-        let next = (rt.current_offset() + delta_ms).clamp(-30_000, 30_000);
-        rt.set_current_offset(next);
-        next
+        let current = rt.current_offset();
+        let next = current.saturating_add(delta_ms).clamp(-30_000, 30_000);
+        if next != current && rt.has_synced_lyrics() {
+            rt.set_current_offset(next);
+        }
+        (rt.current_offset(), rt.tick())
     };
-    let render = lock_runtime(&state).tick();
     let _ = app.emit("playback-tick", render);
     new_offset
 }
@@ -557,6 +630,32 @@ pub async fn choose_lyric_candidate(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn save_timed_lyrics(
+    track_key: String,
+    lines: Vec<lyra_core::lyrics::maker::TimedLine>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = handle.state::<AppState>();
+        state.lyrics.save_timed(&state.runtime, &track_key, &lines)
+    })
+    .await
+    .map_err(|_| "Couldn't save synced lyrics.")??;
+    broadcast_render(&state, &app);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn publish_timed_lyrics(
+    track_key: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.lyrics.publish_timed(&state.runtime, &track_key).await
+}
+
 /// Ask for a lyrics file with the system's open panel and use it for the
 /// track playing now. A file Lyra can't use gets a native alert saying why.
 /// Returns false when the user cancels.
@@ -647,13 +746,13 @@ pub fn update_settings(patch: SettingsPatch, state: State<'_, AppState>, app: Ap
         let battery_saver_was = s.behavior.battery_saver;
 
         if let Some(w) = patch.window {
-            s.window = w;
+            w.merge_into(&mut s.window);
         }
         if let Some(a) = patch.appearance {
-            s.appearance = a;
+            a.merge_into(&mut s.appearance);
         }
         if let Some(b) = patch.behavior {
-            s.behavior = b;
+            b.merge_into(&mut s.behavior);
         }
 
         rt.update_settings(s.clone());
@@ -863,6 +962,7 @@ pub fn set_preferred_monitor(name: Option<String>, state: State<'_, AppState>, a
         // on the new display.
         if s.preferred_monitor != name {
             s.marquee_pos = None;
+            s.marquee_dock = marquee_size::DockEdges::NONE;
         }
         s.preferred_monitor = name;
     });
@@ -955,9 +1055,12 @@ pub fn set_surface_occluded(
         "{label} page reported {}",
         if occluded { "hidden" } else { "visible" }
     );
+    let was_any_visible = crate::any_surface_visible(&app);
     state.surface_visibility.set_occluded(&label, occluded);
     if !occluded {
-        state.poll.request_poll();
+        if crate::should_request_poll_on_unocclude(was_any_visible) {
+            state.poll.request_poll();
+        }
         emit_snapshot_to(&app, &state, &label);
     }
 }

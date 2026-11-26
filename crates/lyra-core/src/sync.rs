@@ -1,7 +1,10 @@
 use crate::domain::{
-    LyricDocument, LyricWord, LyricsStatus, NotFoundReason, PlaybackSnapshot, PlaybackState,
-    RenderSnapshot, VisibleLine,
+    LyricDocument, LyricLine, LyricWord, LyricsStatus, NotFoundReason, PlaybackSnapshot,
+    PlaybackState, RenderSnapshot, VisibleLine, VocalCue,
 };
+
+const MIN_VOCAL_GAP_MS: u64 = 5_000;
+const VOCAL_COUNTDOWN_MS: u64 = 3_000;
 
 /// Compute a `RenderSnapshot` from current playback + resolved lyrics.
 ///
@@ -29,6 +32,8 @@ pub fn compute_render(
             line_progress: None,
             visible_lines: vec![],
             active_line_words: None,
+            vocal_cue: None,
+            lyric_offset_ms: offset_ms,
             lyrics_origin: Default::default(),
             lyrics_revision: 0,
         };
@@ -42,6 +47,8 @@ pub fn compute_render(
             line_progress: None,
             visible_lines: vec![],
             active_line_words: None,
+            vocal_cue: None,
+            lyric_offset_ms: offset_ms,
             lyrics_origin: Default::default(),
             lyrics_revision: 0,
         };
@@ -55,6 +62,8 @@ pub fn compute_render(
             line_progress: None,
             visible_lines: vec![],
             active_line_words: None,
+            vocal_cue: None,
+            lyric_offset_ms: offset_ms,
             lyrics_origin: Default::default(),
             lyrics_revision: 0,
         };
@@ -106,6 +115,21 @@ pub fn compute_render(
     });
 
     let visible_lines = build_visible(doc, active_idx, context_above, context_below);
+    let vocal_cue = playback
+        .position_ms
+        .filter(|_| playback.state == PlaybackState::Playing && playback.rate > 0.0)
+        .and_then(|position_ms| upcoming_vocal(&doc.lines, position_ms, offset_ms))
+        .filter(|(line_start, _)| {
+            line_start - raw_pos <= VOCAL_COUNTDOWN_MS
+                && playback
+                    .track
+                    .as_ref()
+                    .is_some_and(|track| track.duration_ms == 0 || *line_start < track.duration_ms)
+        })
+        .map(|(line_start, line)| VocalCue {
+            seconds: (line_start - raw_pos).div_ceil(1_000) as u8,
+            next_line: line.text.clone(),
+        });
 
     RenderSnapshot {
         playback,
@@ -114,9 +138,64 @@ pub fn compute_render(
         line_progress,
         visible_lines,
         active_line_words,
+        vocal_cue,
+        lyric_offset_ms: offset_ms,
         lyrics_origin: Default::default(),
         lyrics_revision: 0,
     }
+}
+
+fn upcoming_vocal(
+    lines: &[LyricLine],
+    position_ms: u64,
+    offset_ms: i64,
+) -> Option<(u64, &LyricLine)> {
+    let is_vocal = |line: &&LyricLine| {
+        let text = line.text.trim_matches(|c: char| {
+            c.is_whitespace() || matches!(c, '♪' | '♫' | '♬' | '♩' | '[' | ']' | '(' | ')')
+        });
+        text.chars().any(char::is_alphanumeric)
+            && ![
+                "instrumental",
+                "instrumental intro",
+                "instrumental break",
+                "instrumental outro",
+                "intro",
+                "outro",
+            ]
+            .iter()
+            .any(|marker| text.eq_ignore_ascii_case(marker))
+    };
+    let to_playback = |time: u64| time.saturating_add_signed(offset_ms);
+    let split = lines.partition_point(|line| to_playback(line.start_ms) <= position_ms);
+    let next = lines[split..].iter().find(is_vocal)?;
+    let next_start = to_playback(next.start_ms);
+
+    let gap_start = lines[..split]
+        .iter()
+        .rev()
+        .find(is_vocal)
+        .map_or(0, |prev| {
+            let line_end = prev.end_ms.unwrap_or(next.start_ms).max(prev.start_ms);
+            let vocal_end = prev
+                .words
+                .as_ref()
+                .and_then(|words| words.iter().map(|word| word.end_ms).max())
+                .unwrap_or_else(|| smart_interp_end(&prev.text, prev.start_ms, line_end));
+            to_playback(vocal_end.clamp(prev.start_ms, line_end))
+        });
+    (next_start.saturating_sub(gap_start) >= MIN_VOCAL_GAP_MS).then_some((next_start, next))
+}
+
+pub(crate) fn next_vocal_cue_transition_ms(
+    lines: &[LyricLine],
+    position_ms: u64,
+    offset_ms: i64,
+) -> Option<u64> {
+    let (start, _) = upcoming_vocal(lines, position_ms, offset_ms)?;
+    let remaining = start - position_ms;
+    let seconds = (remaining - 1).min(VOCAL_COUNTDOWN_MS) / 1_000;
+    Some(start - seconds * 1_000)
 }
 
 /// Cap the interpolation window so words don't drag across long instrumental
@@ -287,6 +366,70 @@ mod tests {
         assert_eq!(visible[1].text, "Second");
         assert!(!visible[0].is_active);
         assert!(!visible[1].is_active);
+    }
+
+    #[test]
+    fn counts_down_on_the_playback_clock_after_a_long_intro() {
+        let doc = make_doc(&[(0, "♪ (Instrumental Intro) ♪"), (8000, "First words")]);
+        let render = |position_ms, state| {
+            compute_render(
+                PlaybackSnapshot {
+                    track: Some(crate::domain::TrackRef::fixture("test")),
+                    state,
+                    position_ms,
+                    rate: 1.0,
+                    ..PlaybackSnapshot::stopped(0)
+                },
+                Some(&doc),
+                LyricsStatus::Ready,
+                1,
+                1,
+                500,
+            )
+        };
+        for (at, expected) in [
+            (5499, None),
+            (5500, Some(3)),
+            (6500, Some(2)),
+            (7500, Some(1)),
+            (8500, None),
+        ] {
+            let cue = render(Some(at), PlaybackState::Playing).vocal_cue;
+            assert_eq!(cue.as_ref().map(|cue| cue.seconds), expected);
+            if let Some(cue) = cue {
+                assert_eq!(cue.next_line, "First words");
+            }
+        }
+        assert!(render(Some(6500), PlaybackState::Paused)
+            .vocal_cue
+            .is_none());
+        assert!(render(None, PlaybackState::Playing).vocal_cue.is_none());
+        assert_eq!(
+            next_vocal_cue_transition_ms(&doc.lines, 5499, 500),
+            Some(5500)
+        );
+        assert_eq!(
+            next_vocal_cue_transition_ms(&doc.lines, 5500, 500),
+            Some(6500)
+        );
+    }
+
+    #[test]
+    fn requires_an_instrumental_gap_after_the_last_sung_word() {
+        let mut doc = make_doc(&[(1000, "Last sung word"), (7000, "♪"), (9000, "Return")]);
+        doc.lines[0].words = Some(vec![LyricWord {
+            start_ms: 1000,
+            end_ms: 4500,
+            text: "Last sung word".into(),
+        }]);
+        assert_eq!(next_vocal_cue_transition_ms(&doc.lines, 7100, 0), None);
+
+        doc.lines[0].words.as_mut().unwrap()[0].end_ms = 3900;
+        assert_eq!(
+            next_vocal_cue_transition_ms(&doc.lines, 7100, 0),
+            Some(8000)
+        );
+        assert_eq!(next_vocal_cue_transition_ms(&doc.lines, 9000, 0), None);
     }
 
     #[test]

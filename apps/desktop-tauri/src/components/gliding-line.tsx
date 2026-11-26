@@ -47,6 +47,7 @@ export function GlidingLine({
   contentKey,
   syncProgress,
   clock,
+  freezeOverflow = false,
   children,
 }: Readonly<{
   className: string;
@@ -54,6 +55,7 @@ export function GlidingLine({
   contentKey: string;
   syncProgress: number;
   clock?: GlideClock;
+  freezeOverflow?: boolean;
   children: ReactNode;
 }>) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -63,7 +65,7 @@ export function GlidingLine({
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     const content = contentRef.current;
-    if (!viewport || !content) return;
+    if (freezeOverflow || !viewport || !content) return;
 
     const updateOverflow = () => {
       const nextOverflow = Math.max(0, Math.ceil(content.scrollWidth - viewport.clientWidth));
@@ -81,7 +83,7 @@ export function GlidingLine({
     observer.observe(viewport);
     observer.observe(content);
     return () => observer.disconnect();
-  }, [contentKey]);
+  }, [contentKey, freezeOverflow]);
 
   const isGliding = overflowPx > 0;
   const words = clock?.words;

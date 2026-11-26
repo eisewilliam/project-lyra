@@ -1,4 +1,4 @@
-import type { ReactNode, Ref } from 'react';
+import { type ReactNode, type Ref } from 'react';
 import { SETTINGS_SECTION_LABELS } from '../settings-sections';
 import type { Section } from '../types';
 
@@ -41,7 +41,7 @@ export function SettingsNav({
     <aside ref={ref} className="settings-sidebar flex shrink-0 flex-col z-[1]">
       {/* Clears the window controls and doubles as the sidebar's drag handle. */}
       <div className="sidebar-titlebar shrink-0" data-tauri-drag-region="deep" />
-      <nav className="flex flex-col" aria-label="Settings sections">
+      <nav className="settings-nav relative flex flex-col" aria-label="Settings sections">
         {NAV_GROUPS.map((group) => (
           <div className="nav-group flex flex-col" key={group.header || 'general-group'}>
             {group.header && <div className="nav-section">{group.header}</div>}

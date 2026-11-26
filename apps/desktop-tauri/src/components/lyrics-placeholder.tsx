@@ -27,6 +27,7 @@ export function LyricsPlaceholder({
   onOpenAutomationSettings,
   onChooseLyrics,
   onAddLyricsFile,
+  onTimeLyrics,
 }: Readonly<{
   state: LyricsPlaceholderState;
   notFoundReason?: NotFoundReason | null;
@@ -46,6 +47,8 @@ export function LyricsPlaceholder({
   onChooseLyrics?: () => void;
   /** Use a lyrics file the user has. */
   onAddLyricsFile?: () => void;
+  /** Paste and sync lyrics by hand. */
+  onTimeLyrics?: (opener: HTMLButtonElement) => void;
 }>) {
   const loading = state === 'booting' || state === 'loading';
   const ignoredNow = state === 'idle' ? ignored ?? null : null;
@@ -59,6 +62,7 @@ export function LyricsPlaceholder({
   // Lookups for browser media that the user turned off stay off by hand too.
   const canSearchByHand = state === 'empty' && notFoundReason !== 'LookupDisabled' ? onChooseLyrics : undefined;
   const canAddFile = state === 'empty' || state === 'error' ? onAddLyricsFile : undefined;
+  const canTimeLyrics = state === 'empty' || state === 'error' ? onTimeLyrics : undefined;
 
   return (
     <div className={`lyrics-placeholder is-${state} ${loading ? 'is-loading' : ''}`}>
@@ -149,7 +153,7 @@ export function LyricsPlaceholder({
           </div>
         ) : null}
 
-        {canSearchByHand || canAddFile ? (
+        {canSearchByHand || canAddFile || canTimeLyrics ? (
           <div className="lyrics-placeholder-actions">
             {onRetry ? (
               <button type="button" className="lyrics-placeholder-retry" onClick={onRetry}>
@@ -163,7 +167,16 @@ export function LyricsPlaceholder({
             ) : null}
             {canAddFile ? (
               <button type="button" className="lyrics-placeholder-retry is-secondary" onClick={canAddFile}>
-                Add lyrics file
+                Add lyrics file…
+              </button>
+            ) : null}
+            {canTimeLyrics ? (
+              <button
+                type="button"
+                className="lyrics-placeholder-retry is-secondary"
+                onClick={(event) => canTimeLyrics(event.currentTarget)}
+              >
+                Paste and sync lyrics…
               </button>
             ) : null}
           </div>

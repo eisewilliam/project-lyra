@@ -14,10 +14,17 @@ function seconds(ms: number): string {
   return `${(Math.abs(ms) / 1000).toFixed(ms % 100 === 0 ? 1 : 2)} s`;
 }
 
-/** "Original timing", "0.3 s later", "1.25 s earlier". */
+/** "Original sync", "0.3 s later", "1.25 s earlier". */
 export function describeOffset(ms: number): string {
-  if (ms === 0) return 'Original timing';
+  if (ms === 0) return 'Original sync';
   return `${seconds(ms)} ${ms > 0 ? 'later' : 'earlier'}`;
+}
+
+/** "+0.3", "−1.25" or "0.0": signed seconds without the unit. */
+export function formatOffsetNumber(ms: number): string {
+  const value = (Math.abs(ms) / 1000).toFixed(ms % 100 === 0 ? 1 : 2);
+  if (ms === 0) return value;
+  return `${ms > 0 ? '+' : '−'}${value}`;
 }
 
 /** "+0.3 s" or "−1.25 s", for the menu. */

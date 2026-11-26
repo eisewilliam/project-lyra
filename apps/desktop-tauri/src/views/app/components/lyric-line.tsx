@@ -3,11 +3,13 @@ import type { LyricWord } from '@/types/tauri-contracts';
 import type { ScreenEdgeMotion } from '../types';
 
 type LyricLineProps = Readonly<{
+  id: string;
   index: number;
   text: string;
   proximityClass: string;
   screenEdgeMotion: ScreenEdgeMotion | null;
   words: readonly LyricWord[] | null;
+  canSeek: boolean;
   isKeyboardFocused: boolean;
   isLastEmpty: boolean;
   isPaintCulled: boolean;
@@ -35,12 +37,18 @@ function splitLyricText(text: string) {
   return tokens;
 }
 
+const ARM_START_DELAY_MS = 120;
+const ARM_COMPLETE_DELAY_MS = 600;
+const SEEK_PULSE_MS = 280;
+
 export const LyricLine = memo(function LyricLine({
+  id,
   index,
   text,
   proximityClass,
   screenEdgeMotion,
   words,
+  canSeek,
   isKeyboardFocused,
   isLastEmpty,
   isPaintCulled,
@@ -48,40 +56,76 @@ export const LyricLine = memo(function LyricLine({
   lyricsRef,
   wordRefs,
 }: LyricLineProps) {
-  const [isArmed, setIsArmed] = useState(false);
-  const timerRef = useRef<number | null>(null);
+  const [armState, setArmState] = useState<'idle' | 'arming' | 'armed'>('idle');
+  const [isSeeking, setIsSeeking] = useState(false);
+  const armStartTimerRef = useRef<number | null>(null);
+  const armedTimerRef = useRef<number | null>(null);
+  const seekTimerRef = useRef<number | null>(null);
+
+  const clearArmTimers = () => {
+    if (armStartTimerRef.current !== null) {
+      globalThis.clearTimeout(armStartTimerRef.current);
+      armStartTimerRef.current = null;
+    }
+    if (armedTimerRef.current !== null) {
+      globalThis.clearTimeout(armedTimerRef.current);
+      armedTimerRef.current = null;
+    }
+  };
+
+  const triggerSeek = (eventTimeStamp: number) => {
+    if (!canSeek) return;
+    if (seekTimerRef.current !== null) globalThis.clearTimeout(seekTimerRef.current);
+    setIsSeeking(true);
+    seekTimerRef.current = globalThis.setTimeout(() => {
+      seekTimerRef.current = null;
+      setIsSeeking(false);
+    }, SEEK_PULSE_MS);
+    onSeek(index, eventTimeStamp);
+  };
 
   const handleMouseEnter = () => {
-    if (timerRef.current) globalThis.clearTimeout(timerRef.current);
-    timerRef.current = globalThis.setTimeout(() => {
-      setIsArmed(true);
-    }, 600);
+    clearArmTimers();
+    if (!canSeek) {
+      setArmState('idle');
+      return;
+    }
+    armStartTimerRef.current = globalThis.setTimeout(() => {
+      armStartTimerRef.current = null;
+      setArmState('arming');
+    }, ARM_START_DELAY_MS);
+    armedTimerRef.current = globalThis.setTimeout(() => {
+      armedTimerRef.current = null;
+      setArmState('armed');
+    }, ARM_COMPLETE_DELAY_MS);
   };
 
   const handleMouseLeave = () => {
-    if (timerRef.current) {
-      globalThis.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    setIsArmed(false);
+    clearArmTimers();
+    setArmState('idle');
   };
 
   useEffect(() => {
     return () => {
-      if (timerRef.current) globalThis.clearTimeout(timerRef.current);
+      clearArmTimers();
+      if (seekTimerRef.current !== null) globalThis.clearTimeout(seekTimerRef.current);
     };
   }, []);
 
+  const effectiveArmState = canSeek ? armState : 'idle';
+  const isArmed = effectiveArmState === 'armed';
+
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (isArmed) {
-      onSeek(index, event.timeStamp);
+    if (canSeek && isArmed) {
+      triggerSeek(event.timeStamp);
     }
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!canSeek) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      onSeek(index, event.timeStamp);
+      triggerSeek(event.timeStamp);
     }
   };
 
@@ -89,7 +133,9 @@ export const LyricLine = memo(function LyricLine({
     'lyric-line',
     proximityClass,
     screenEdgeMotion,
+    effectiveArmState === 'arming' ? 'is-arming' : '',
     isArmed ? 'is-armed' : '',
+    isSeeking ? 'is-seeking' : '',
     isKeyboardFocused ? 'is-keyboard-focus' : '',
     isPaintCulled ? 'is-paint-culled' : '',
   ].filter(Boolean).join(' ');
@@ -119,6 +165,7 @@ export const LyricLine = memo(function LyricLine({
 
   return (
     <button
+      id={id}
       ref={(el) => {
         if (lyricsRef.current) {
           lyricsRef.current[index] = el;
@@ -130,14 +177,18 @@ export const LyricLine = memo(function LyricLine({
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       tabIndex={-1}
-      title={isArmed ? "Click to seek here" : "Hover to arm seek"}
+      title={canSeek ? (isArmed ? 'Click to seek here' : 'Hover to arm seek') : undefined}
       type="button"
     >
-      <span className="seek-indicator" aria-hidden="true">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M8 5v14l11-7z" />
-        </svg>
-      </span>
+      {canSeek && (
+        <span className="seek-indicator" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <circle className="seek-ring-track" cx="12" cy="12" r="9.5" />
+            <circle className="seek-ring-progress" cx="12" cy="12" r="9.5" />
+            <path className="seek-play" d="M10 8.5v7l6-3.5z" fill="currentColor" />
+          </svg>
+        </span>
+      )}
       {lineContent}
     </button>
   );

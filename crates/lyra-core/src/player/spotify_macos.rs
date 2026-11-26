@@ -228,23 +228,6 @@ impl SpotifyMacOsAdapter {
     }
 }
 
-impl SpotifyMacOsAdapter {
-    /// Open the current track's `spotify:` URI, which brings Spotify forward
-    /// on that track; fall back to activating the app.
-    fn raise(&self) -> bool {
-        let uri = self.last.lock().ok().and_then(|sessions| {
-            sessions
-                .first()
-                .and_then(|s| s.snapshot.track.as_ref())
-                .and_then(|t| t.native_id.clone())
-        });
-        match uri {
-            Some(uri) if uri.starts_with("spotify:") => macos_open(&[&uri]),
-            _ => macos_open(&["-b", SPOTIFY_BUNDLE_ID]),
-        }
-    }
-}
-
 impl Default for SpotifyMacOsAdapter {
     fn default() -> Self {
         Self::new()
@@ -365,7 +348,7 @@ impl PlayerAdapter for SpotifyMacOsAdapter {
             PlayerCommand::Next => NEXT_TRACK.run_command(),
             PlayerCommand::Previous => PREVIOUS_TRACK.run_command(),
             PlayerCommand::SeekMs(ms) => seek_to_seconds(ms as f64 / 1000.0),
-            PlayerCommand::Raise => self.raise(),
+            PlayerCommand::Raise => macos_open(&["-b", SPOTIFY_BUNDLE_ID]),
         };
         if sent {
             Ok(())

@@ -8,8 +8,8 @@ import {
   wordsKey,
   type PositionBaseline,
 } from '@/utils/playback-sync';
-import type { LyricWord, PlaybackCaps, RenderSnapshot } from '@/types/tauri-contracts';
-import { refreshLyrics } from '@/utils/tauri-commands';
+import type { LyricLineSlim, LyricWord, PlaybackCaps, RenderSnapshot } from '@/types/tauri-contracts';
+import { getAllLines, refreshLyrics } from '@/utils/tauri-commands';
 import type { LyricsStatus } from '@/utils/lyrics-state';
 
 const noop = (...args: unknown[]) => { if (args) return; };
@@ -21,6 +21,7 @@ export function useMarqueePlayback({
   ensureWindowReady: () => Promise<void>;
 }) {
   const [activeLine, setActiveLine] = useState<string | null>(null);
+  const [vocalCue, setVocalCue] = useState<RenderSnapshot['vocal_cue']>(null);
   const [nextLine, setNextLine] = useState<string | null>(null);
   const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
   const [trackTitle, setTrackTitle] = useState('');
@@ -37,10 +38,15 @@ export function useMarqueePlayback({
   const [hasActiveLyric, setHasActiveLyric] = useState(false);
   const [activeLineWords, setActiveLineWords] = useState<LyricWord[]>([]);
   const [activeLineProgress, setActiveLineProgress] = useState(0);
+  const [activeLineIndex, setActiveLineIndex] = useState<number | null>(null);
+  const [lyricOffsetMs, setLyricOffsetMs] = useState(0);
+  const [lyricsRevision, setLyricsRevision] = useState(0);
+  const [allLines, setAllLines] = useState<LyricLineSlim[]>([]);
   const [durationMs, setDurationMs] = useState(0);
   const [trackKey, setTrackKey] = useState('');
 
   const refreshedUriRef = useRef('');
+  const linesLoadedKeyRef = useRef('');
   const lastUriRef = useRef('');
   const activeWordsKeyRef = useRef('');
   const baselineRef = useRef<PositionBaseline>({ ms: 0, at: 0, targetMs: 0, targetAt: 0, blendDur: 1 });
@@ -55,9 +61,13 @@ export function useMarqueePlayback({
 
     if (uriChanged) {
       lastUriRef.current = uri;
+      linesLoadedKeyRef.current = '';
       setActiveLine(null);
       setNextLine(null);
       setHasActiveLyric(false);
+      setActiveLineIndex(null);
+      setLyricOffsetMs(0);
+      setAllLines([]);
       activeWordsKeyRef.current = '';
       setActiveLineWords([]);
       setActiveLineProgress(0);
@@ -65,6 +75,8 @@ export function useMarqueePlayback({
     }
 
     setSnapshotReady(true);
+    setVocalCue((current) => current?.seconds === snap.vocal_cue?.seconds
+      && current?.next_line === snap.vocal_cue?.next_line ? current : snap.vocal_cue ?? null);
     setHasTrack(Boolean(track));
     setHasVisibleLyrics(hasActiveLine);
     const playingNow = snap.playback.state === 'Playing';
@@ -78,6 +90,10 @@ export function useMarqueePlayback({
     setTrackArtist(track?.artist ?? '');
     setTrackKey(track?.uri ?? '');
     setDurationMs(track?.duration_ms ?? 0);
+    setActiveLineIndex(snap.active_line_index ?? null);
+    setLyricOffsetMs(snap.lyric_offset_ms ?? 0);
+    const revision = snap.lyrics_revision ?? 0;
+    setLyricsRevision(revision);
     const nextWords = snap.active_line_words ?? [];
     const nextWordsKey = wordsKey(nextWords);
     if (nextWordsKey !== activeWordsKeyRef.current) {
@@ -112,6 +128,24 @@ export function useMarqueePlayback({
       refreshedUriRef.current = '';
     }
 
+    const linesKey = `${uri}:${revision}`;
+    if (uri && snap.lyrics_status === 'Ready') {
+      if (linesLoadedKeyRef.current !== linesKey) {
+        linesLoadedKeyRef.current = linesKey;
+        getAllLines()
+          .then((lines) => {
+            if (lastUriRef.current !== uri || linesLoadedKeyRef.current !== linesKey) return;
+            setAllLines(lines);
+          })
+          .catch(() => {
+            if (linesLoadedKeyRef.current === linesKey) linesLoadedKeyRef.current = '';
+          });
+      }
+    } else {
+      linesLoadedKeyRef.current = '';
+      setAllLines((prev) => (prev.length === 0 ? prev : []));
+    }
+
     setHasActiveLyric(hasActiveLine);
     if (hasActiveLine) {
       const currentLine = snap.visible_lines[activeIdx];
@@ -137,6 +171,7 @@ export function useMarqueePlayback({
 
   return {
     activeLine,
+    vocalCue,
     nextLine,
     artworkUrl,
     trackTitle,
@@ -151,6 +186,10 @@ export function useMarqueePlayback({
     hasActiveLyric,
     activeLineWords,
     activeLineProgress,
+    activeLineIndex,
+    lyricOffsetMs,
+    lyricsRevision,
+    allLines,
     durationMs,
     trackKey,
     baselineRef,

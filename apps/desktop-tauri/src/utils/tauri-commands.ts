@@ -5,6 +5,7 @@ import type {
   BrowserLyrics,
   DiscordPresenceStatus,
   FollowRule,
+  GlobalShortcutStatus,
   KnownPlayerInfo,
   MediaPolicyView,
   MarqueeFrame,
@@ -36,6 +37,14 @@ export function getUiState(): Promise<UiState> {
   return invoke('get_ui_state');
 }
 
+export function getGlobalShortcutsStatus(): Promise<GlobalShortcutStatus> {
+  return invoke('get_global_shortcuts_status');
+}
+
+export function setGlobalShortcutsEnabled(enabled: boolean): Promise<GlobalShortcutStatus> {
+  return invoke('set_global_shortcuts_enabled', { enabled });
+}
+
 export type SurfaceLabel = 'main' | 'marquee' | 'karaoke' | 'settings';
 export type OverlayLabel = 'marquee' | 'karaoke';
 
@@ -62,6 +71,10 @@ export function openMainWindow(): Promise<void> {
   return invoke('open_main_window');
 }
 
+export function openChooseLyrics(): Promise<void> {
+  return invoke('open_choose_lyrics');
+}
+
 export function completeOnboarding(): Promise<void> {
   return invoke('complete_onboarding');
 }
@@ -84,6 +97,24 @@ export function updateKaraokeSettings(patch: KaraokeSettingsPatch): Promise<void
 
 export function setOverlayPosition(label: OverlayLabel, x: number, y: number): Promise<void> {
   return invoke('set_overlay_position', { label, x, y });
+}
+
+export function beginMarqueeDrag(): Promise<void> {
+  return invoke('begin_marquee_drag');
+}
+
+export function moveMarqueeDrag(dx: number, dy: number): Promise<void> {
+  return invoke('move_marquee_drag', { dx, dy });
+}
+
+export function endMarqueeDrag(): Promise<void> {
+  return invoke('end_marquee_drag');
+}
+
+export function resizeMarquee(
+  edge: 'left' | 'right', anchorX: number | null, width: number, pointerX: number, done: boolean,
+): Promise<void> {
+  return invoke('resize_marquee', { edge, anchorX, width, pointerX, done });
 }
 
 /** After a drag: the host settles the marquee into its display's safe area
@@ -249,6 +280,14 @@ export function chooseLyricCandidate(trackKey: string, id: number): Promise<void
 /** Ask for a lyrics file with the system's open panel and use it for the
  * playing track. Resolves false when the user cancels. The host explains a
  * file it can't use in a native alert. */
+export function saveTimedLyrics(trackKey: string, lines: { start_ms: number; text: string }[]): Promise<void> {
+  return invoke('save_timed_lyrics', { trackKey, lines });
+}
+
+export function publishTimedLyrics(trackKey: string): Promise<void> {
+  return invoke('publish_timed_lyrics', { trackKey });
+}
+
 export function importLyricsFile(): Promise<boolean> {
   return invoke('import_lyrics_file');
 }

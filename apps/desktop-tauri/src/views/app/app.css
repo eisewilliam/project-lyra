@@ -1,4 +1,13 @@
 .lyra-window {
+  --main-focus-ring: rgba(255, 255, 255, 0.56);
+  --main-control-bg: rgba(255, 255, 255, 0.08);
+  --main-control-bg-hover: rgba(255, 255, 255, 0.14);
+  --main-control-bg-active: rgba(255, 255, 255, 0.2);
+  --main-control-border: rgba(255, 255, 255, 0.14);
+  --main-primary-bg: rgba(255, 255, 255, 0.92);
+  --main-primary-bg-hover: #fff;
+  --main-primary-ink: rgb(22, 22, 26);
+  --main-error-text: rgba(255, 184, 178, 0.94);
   width: 100%;
   height: 100%;
   box-sizing: border-box;
@@ -40,6 +49,11 @@ body[data-os="windows"] .lyra-window {
 .win-control-btn:hover {
   background: rgba(255, 255, 255, 0.12);
   color: white;
+}
+
+.win-control-btn:focus-visible {
+  outline: 2px solid var(--main-focus-ring);
+  outline-offset: -2px;
 }
 
 .win-control-btn.close:hover {
@@ -91,19 +105,8 @@ body[data-os="linux"] .win-control-btn.close:active {
  * macOS Activity Monitor reports "Significant energy" largely because of the
  * compositor work these rules generate; opting out drops the app from
  * High/Significant impact to Low on most hardware.
+ * Reduced-motion overrides are consolidated at the bottom of this file.
  */
-@media (prefers-reduced-motion: reduce) {
-  .lyra-window { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(18, 18, 22, 0.82); }
-  :root .scrub-preview { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(20, 20, 24, 0.86); }
-  .ambient-bg img { filter: none; transform: translate(-50%, -50%) scale(20); opacity: 0.2; }
-  /* Respect reduced motion: keep only colour/opacity fades — no scale,
-     translate, or enter animation. */
-  .lyric-line { will-change: auto !important; transform: none !important; animation: none !important; transition: color 0.25s ease, opacity 0.25s ease !important; }
-  .lyric-line.is-active { transform: none !important; }
-  .lyric-line.is-leaving-edge { animation: none !important; transform: none !important; }
-  .lyrics-container { transition: none !important; }
-  .lyrics-pane { scroll-behavior: auto; }
-}
 :root[data-low-power="true"] .lyra-window { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(18, 18, 22, 0.82); }
 :root[data-low-power="true"] .scrub-preview { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(20, 20, 24, 0.86); }
 /* The ambient wash keeps its look: it is already a blurred 80px thumbnail,
@@ -197,17 +200,22 @@ body[data-os="linux"] .win-control-btn.close:active {
 .album-art-frame {
   position: relative;
   width: 100%;
-  transition: transform 560ms cubic-bezier(0.34, 1.3, 0.64, 1);
+  transition: transform var(--duration-base) var(--ease-standard);
 }
 
-/* Paused: the cover settles back, like a record lifted off the platter, and
-   springs forward again on play. Readable from across the room. */
+@media (prefers-reduced-motion: no-preference) {
+  /* Keep cover sampling consistent when the Sync animation releases its transform. */
+  :root[data-surface-visible="true"]:not([data-low-power="true"]) .album-art-frame {
+    will-change: translate, scale;
+  }
+}
+
 .album-art-frame.is-paused {
-  transform: scale(0.92);
+  transform: scale(0.95);
 }
 
 .album-art-frame .album-cover {
-  transition: box-shadow 560ms var(--ease-standard);
+  transition: box-shadow var(--duration-base) var(--ease-standard);
 }
 
 /* Track change: the new cover fades in over the old one, which stays
@@ -274,18 +282,8 @@ button.source-badge:hover {
 }
 
 button.source-badge:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.7);
+  outline: 2px solid var(--main-focus-ring);
   outline-offset: 3px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  button.source-badge {
-    transition: none;
-  }
-
-  button.source-badge:hover {
-    transform: none;
-  }
 }
 
 /* Wide layout: the cover fits whichever of width/height is tighter, so a
@@ -332,6 +330,7 @@ button.source-badge:focus-visible {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
+  gap: 12px;
 }
 
 .track-info.is-placeholder .track-meta {
@@ -358,6 +357,11 @@ button.source-badge:focus-visible {
   animation: shimmer 1.6s linear infinite;
 }
 
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -20% 0; }
+}
+
 .track-skeleton-line.title {
   width: 182px;
   height: 22px;
@@ -373,6 +377,29 @@ button.source-badge:focus-visible {
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+}
+
+.track-meta-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.track-meta-text.is-entering.is-next {
+  animation: track-meta-in-next 220ms var(--ease-standard);
+}
+
+.track-meta-text.is-entering.is-prev {
+  animation: track-meta-in-prev 220ms var(--ease-standard);
+}
+
+@keyframes track-meta-in-next {
+  from { opacity: 0; transform: translateX(10px); }
+}
+
+@keyframes track-meta-in-prev {
+  from { opacity: 0; transform: translateX(-10px); }
 }
 
 /* Long titles stop at two lines and long artist lists at one, so the
@@ -441,7 +468,7 @@ button.source-badge:focus-visible {
 .sync-done-btn:focus-visible,
 .sync-tap-skip:focus-visible,
 .sync-nudge-btn:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.48);
+  outline: 2px solid var(--main-focus-ring);
   outline-offset: 4px;
   border-radius: 8px;
 }
@@ -531,32 +558,58 @@ button.source-badge:focus-visible {
   transition: opacity var(--duration-base) var(--ease-standard);
 }
 
-.progress-fill::after {
-  content: '';
+.progress-thumb {
   position: absolute;
-  right: -5px;
+  left: calc(var(--progress, 0) * 100%);
   top: 50%;
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
   background: #fff;
-  transform: translateY(-50%) scale(0);
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0);
   transition: transform var(--duration-fast) var(--ease-standard);
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.35);
 }
 
-.progress-track:hover .progress-fill::after,
-.progress-track:active .progress-fill::after,
-.progress-track.is-dragging .progress-fill::after {
-  transform: translateY(-50%) scale(1);
+.progress-track:hover .progress-thumb,
+.progress-track:active .progress-thumb,
+.progress-track:focus-visible .progress-thumb {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.progress-track:focus-visible {
+  outline: 2px solid var(--main-focus-ring);
+  outline-offset: 6px;
+  border-radius: 4px;
 }
 
 .progress-track.is-dragging {
   height: 6px;
 }
 
-.progress-track.is-readonly .progress-fill::after {
-  transform: translateY(-50%) scale(0);
+.progress-track.is-dragging .progress-thumb {
+  transform: translate(-50%, -50%) scale(1.22);
+}
+
+.progress-track.is-seek-pulse .progress-thumb {
+  animation: progress-thumb-pulse 300ms var(--ease-standard);
+}
+
+.progress-track.is-seek-pulse .progress-fill {
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.55));
+}
+
+@keyframes progress-thumb-pulse {
+  0% { transform: translate(-50%, -50%) scale(1); }
+  35% { transform: translate(-50%, -50%) scale(1.38); }
+  100% { transform: translate(-50%, -50%) scale(0); }
+}
+
+.progress-track.is-readonly .progress-thumb,
+.progress-track.is-placeholder .progress-thumb,
+.progress-track.is-indeterminate .progress-thumb {
+  transform: translate(-50%, -50%) scale(0);
 }
 
 .transport-controls {
@@ -568,6 +621,8 @@ button.source-badge:focus-visible {
 }
 
 .btn-icon {
+  position: relative;
+  isolation: isolate;
   background: transparent;
   border: none;
   outline: none;
@@ -579,23 +634,57 @@ button.source-badge:focus-visible {
   align-items: center;
   justify-content: center;
   padding: 0;
-  /* Release springs back with a slight overshoot; the press itself is quick
-     (see :active), so a click reads as a physical push. */
   transition:
     color var(--duration-fast) var(--ease-standard),
-    opacity var(--duration-fast) var(--ease-standard),
-    transform 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    opacity var(--duration-fast) var(--ease-standard);
+}
+
+.btn-icon::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-control);
 }
 
 .btn-icon:hover:not(:disabled) {
   color: #fff;
-  transform: scale(1.06);
 }
 
-.btn-icon:active:not(:disabled) {
-  transform: scale(0.86);
-  transition-duration: 90ms;
-  transition-timing-function: ease-out;
+.btn-icon:hover:not(:disabled)::before {
+  opacity: 1;
+}
+
+.btn-icon:active:not(:disabled)::before {
+  background: rgba(255, 255, 255, 0.16);
+  opacity: 1;
+  transition-duration: 0s;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn-icon > * {
+    scale: 1;
+    translate: 0 0;
+    transition:
+      scale 180ms var(--ease-standard),
+      translate 180ms var(--ease-standard);
+  }
+
+  .btn-icon:active:not(:disabled) > * {
+    scale: 0.9;
+    transition-duration: 65ms;
+  }
+
+  .btn-icon.skip.is-prev:active:not(:disabled) > * {
+    translate: -2.5px 0;
+  }
+
+  .btn-icon.skip.is-next:active:not(:disabled) > * {
+    translate: 2.5px 0;
+  }
 }
 
 .btn-icon:disabled {
@@ -619,6 +708,10 @@ button.source-badge:focus-visible {
 
 .btn-icon.play-pause .transport-glyph {
   --glyph-size: 34px;
+}
+
+.transport-button-glyph {
+  display: flex;
 }
 
 
@@ -658,7 +751,7 @@ button.source-badge:focus-visible {
 }
 
 .lyrics-pane:focus-visible .lyric-line.is-keyboard-focus {
-  outline: 2px solid rgba(255, 255, 255, 0.48);
+  outline: 2px solid var(--main-focus-ring);
   outline-offset: 6px;
   border-radius: 6px;
 }
@@ -693,7 +786,7 @@ button.lyric-line {
 }
 
 button.lyric-line:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.4);
+  outline: 2px solid var(--main-focus-ring);
   outline-offset: 4px;
   border-radius: 4px;
 }
@@ -801,7 +894,7 @@ button.lyric-line:focus-visible {
   display: inline;
   color: transparent;
   /* Sung portion uses the configured --lyric-color; the unsung tail is the
-     same colour at 32% so a custom colour applies to the whole karaoke wipe,
+     same colour at 55% so a custom colour applies to the whole karaoke wipe,
      not just the brief plain-text frame when the line ends. */
   background-image: linear-gradient(
     to right,
@@ -893,6 +986,10 @@ button.lyric-line:focus-visible {
   background: radial-gradient(circle at 30% 20%, rgba(255, 69, 58, 0.28), rgba(255, 69, 58, 0.08));
 }
 
+.lyrics-placeholder.is-error .lyrics-placeholder-label {
+  color: rgba(255, 200, 196, 0.94);
+}
+
 .lyrics-placeholder.is-empty .lyrics-placeholder-core {
   color: rgba(255, 255, 255, 0.7);
 }
@@ -912,9 +1009,9 @@ button.lyric-line:focus-visible {
 .lyrics-placeholder-retry {
   margin-top: 12px;
   padding: 6px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--main-control-border);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--main-control-bg);
   color: rgba(255, 255, 255, 0.92);
   font-size: 12px;
   font-weight: 500;
@@ -923,7 +1020,7 @@ button.lyric-line:focus-visible {
 }
 
 .lyrics-placeholder-retry:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--main-control-bg-hover);
   border-color: rgba(255, 255, 255, 0.32);
 }
 
@@ -932,7 +1029,7 @@ button.lyric-line:focus-visible {
 }
 
 .lyrics-placeholder-retry:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.48);
+  outline: 2px solid var(--main-focus-ring);
   outline-offset: 3px;
 }
 
@@ -942,8 +1039,15 @@ button.lyric-line:focus-visible {
   color: rgba(255, 255, 255, 0.7);
 }
 
+.lyrics-placeholder-retry.is-secondary:hover {
+  border-color: transparent;
+  background: var(--main-control-bg);
+  color: #fff;
+}
+
 .lyrics-placeholder-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: center;
 }
@@ -1020,9 +1124,10 @@ button.lyric-line:focus-visible {
   }
 
   .lyrics-pane {
+    --lyrics-edge-fade: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
     padding: 0 32px 32px;
-    mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+    mask-image: var(--lyrics-edge-fade);
+    -webkit-mask-image: var(--lyrics-edge-fade);
   }
 
   .lyrics-pane.is-placeholder {
@@ -1030,7 +1135,7 @@ button.lyric-line:focus-visible {
   }
 
   .lyric-line {
-    font-size: 2rem;
+    font-size: calc(2rem * var(--font-scale, 1));
   }
 
   .lyrics-placeholder-card {
@@ -1056,42 +1161,26 @@ button.lyric-line:focus-visible {
   }
 
   .lyric-line {
-    font-size: 1.6rem;
+    font-size: calc(1.6rem * var(--font-scale, 1));
   }
 
   .lyrics-placeholder-card {
     padding: 24px 22px;
-    border-radius: 22px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .btn-icon,
-  .lyric-line,
-  .lyrics-placeholder-dot {
-    animation: none;
-    transition: none;
-  }
-
-  .lyrics-pane {
-    scroll-behavior: auto;
   }
 }
 
 /* ── Track quick-options menu (three-dot) ────────────────────────────────────
    The menu itself is the system's; only its button is drawn here, held in
    its pressed look while the menu is open. */
-.track-action-btn.active {
+.track-action-btn:active:not(:disabled),
+.track-action-btn[aria-expanded="true"] {
   color: rgba(255, 255, 255, 0.95);
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.15);
+  transition-duration: 0s;
 }
 
 
-/* ── Sync lyrics ───────────────────────────────────────────────────────────
-   Takes the track title's place. Tap as a line is sung to line the lyrics up
-   with the singer, then nudge earlier or later to fine-tune. Monochrome like
-   the rest of the window; the only colour is the lyric colour in the tap
-   flash, since that is what is being aligned. */
+/* ── Sync lyrics ─────────────────────────────────────────────────────────── */
 .sync-panel {
   display: flex;
   flex-direction: column;
@@ -1162,19 +1251,24 @@ button.lyric-line:focus-visible {
   height: 28px;
   padding: 0 14px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.9);
-  color: rgb(22, 22, 26);
+  background: var(--main-primary-bg);
+  color: var(--main-primary-ink);
   font-size: 12.5px;
 }
 
 .sync-done-btn:hover {
-  background: #fff;
+  background: var(--main-primary-bg-hover);
+}
+
+.sync-done-btn:active {
+  background: rgba(255, 255, 255, 0.72);
+  transition-duration: 0s;
 }
 
 .sync-tap {
   position: relative;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--main-control-bg);
   box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12);
   transition: background-color var(--duration-fast) var(--ease-standard);
 }
@@ -1211,10 +1305,11 @@ button.lyric-line:focus-visible {
 
 .sync-tap-button:not([aria-disabled="true"]):active {
   background: rgba(255, 255, 255, 0.08);
+  transform: scale(0.985);
 }
 
 .sync-tap-button:focus-visible {
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.48);
+  box-shadow: inset 0 0 0 2px var(--main-focus-ring);
 }
 
 .sync-tap-prompt {
@@ -1285,59 +1380,110 @@ button.lyric-line:focus-visible {
   color: #fff;
 }
 
-.sync-nudge {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-}
-
-.sync-nudge-btn {
-  gap: 2px;
-  height: 32px;
-  padding: 0 12px 0 8px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 12.5px;
-  user-select: none;
-  touch-action: none;
-}
-
-.sync-nudge-btn.is-later {
-  padding: 0 8px 0 12px;
-}
-
-.sync-nudge-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
-}
-
-.sync-nudge-btn:active {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.sync-readout {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  min-width: 0;
-  text-align: center;
-}
-
-.sync-readout-value {
-  font-size: 13px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: #fff;
-  white-space: nowrap;
-}
-
 .sync-readout-note {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.45);
   white-space: nowrap;
+}
+
+.sync-panel-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sync-panel-heading .sync-readout-note {
+  margin: 0;
+}
+
+/* Earlier and Later sit in the lyrics' right gutter, level with the current
+   line, so a nudge and its effect are seen together. Same surface and
+   hairline as the tap card in the panel. */
+.sync-nudge {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  box-sizing: border-box;
+  width: 44px;
+  padding: 4px;
+  border-radius: 22px;
+  background: var(--main-control-bg);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+  translate: 0 -50%;
+}
+
+.sync-nudge-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.82);
+  user-select: none;
+  touch-action: none;
+}
+
+.sync-nudge-btn:hover {
+  background: var(--main-control-bg-hover);
+  color: #fff;
+}
+
+.sync-nudge-btn:active {
+  background: var(--main-control-bg-active);
+  transform: scale(0.92);
+}
+
+.sync-nudge-btn:focus-visible {
+  outline-offset: 1px;
+  border-radius: 50%;
+}
+
+.sync-nudge-value {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.sync-nudge-number {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.sync-nudge-unit {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sync-nudge {
+    animation: sync-nudge-enter var(--duration-fast) var(--ease-standard);
+  }
+}
+
+@keyframes sync-nudge-enter {
+  from { opacity: 0; transform: translateX(6px); }
+}
+
+/* Reserve space for the controls and keep the lyric edge fade off them. */
+@media (max-width: 900px) {
+  .lyrics-pane.is-syncing {
+    --sync-gutter: 68px;
+    padding-right: var(--sync-gutter);
+    mask: var(--lyrics-edge-fade),
+      linear-gradient(black, black) right / var(--sync-gutter) 100% no-repeat;
+  }
 }
 
 /* ── Choose lyrics: shown in the lyrics pane in place of the lyrics ─────────── */
@@ -1355,6 +1501,41 @@ button.lyric-line:focus-visible {
   min-height: 0;
   margin: 0 auto;
   outline: none;
+}
+
+.chooser {
+  animation: control-panel-enter var(--duration-fast) var(--ease-standard);
+}
+
+.chooser.is-closing {
+  pointer-events: none;
+  animation: control-panel-exit 130ms var(--ease-standard) forwards;
+}
+
+@keyframes control-panel-enter {
+  from { opacity: 0.8; }
+}
+
+@keyframes control-panel-exit {
+  to { opacity: 0; transform: translateY(4px); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sync-control-entry {
+    --sync-reveal-clip: inset(-6px -6px 68% -6px);
+    animation: sync-controls-reveal 220ms var(--ease-standard);
+  }
+}
+
+@media (min-width: 901px) {
+  .sync-control-entry {
+    --sync-reveal-clip: inset(68% -6px -6px);
+  }
+}
+
+@keyframes sync-controls-reveal {
+  from { opacity: 0.82; clip-path: var(--sync-reveal-clip); }
+  to { opacity: 1; clip-path: inset(-6px); }
 }
 
 .chooser-header {
@@ -1401,7 +1582,7 @@ button.lyric-line:focus-visible {
   padding: 0 16px;
   border: none;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--main-control-bg-hover);
   color: #fff;
   font-family: inherit;
   font-size: 12.5px;
@@ -1411,7 +1592,7 @@ button.lyric-line:focus-visible {
 }
 
 .chooser-search-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--main-control-bg-active);
 }
 
 .chooser-search-btn:disabled {
@@ -1419,8 +1600,9 @@ button.lyric-line:focus-visible {
 }
 
 .chooser-search-btn:focus-visible,
-.chooser-row:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.48);
+.chooser-row:focus-visible,
+.chooser-preview-toggle:focus-visible {
+  outline: 2px solid var(--main-focus-ring);
   outline-offset: 2px;
 }
 
@@ -1429,9 +1611,11 @@ button.lyric-line:focus-visible {
   min-height: 0;
   overflow-y: auto;
   margin: 0 -8px;
-  padding: 2px 8px;
+  padding: 2px 8px 24px;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
 }
 
 .chooser-list {
@@ -1441,6 +1625,23 @@ button.lyric-line:focus-visible {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* Rows, toggles and previews share one grid so every row ends at the same
+ * edge whichever label its toggle shows. */
+.chooser-list > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+}
+
+.chooser-match {
+  display: contents;
+}
+
+.chooser-preview-slot {
+  grid-column: 1;
 }
 
 .chooser-row {
@@ -1464,6 +1665,208 @@ button.lyric-line:focus-visible {
 
 .chooser-row:hover:not([aria-disabled="true"]) {
   background: rgba(255, 255, 255, 0.07);
+}
+
+.chooser-preview-toggle {
+  height: 28px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 14px;
+  appearance: none;
+  -webkit-appearance: none;
+  color: rgba(255, 255, 255, 0.72);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: var(--main-control-bg);
+  cursor: default;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+/* Both labels share one cell, so the button keeps the wider one's width in
+ * any font. */
+.chooser-toggle-labels {
+  display: grid;
+}
+
+.chooser-toggle-labels > span {
+  grid-area: 1 / 1;
+}
+
+.chooser-toggle-labels > span[hidden] {
+  display: block;
+  visibility: hidden;
+}
+
+.chooser-preview-toggle:hover,
+.chooser-preview-toggle[aria-expanded="true"] {
+  background: var(--main-control-bg-hover);
+  color: #fff;
+}
+
+.chooser-row-preview.is-live,
+.chooser-full-preview .is-live {
+  color: #fff;
+}
+
+.chooser-preview-position,
+.chooser-full-preview li > span,
+.lyrics-find-time {
+  margin-inline-end: .65em;
+  font-variant-numeric: tabular-nums;
+  opacity: .64;
+}
+
+.chooser-full-preview {
+  max-height: 10rem;
+  margin: 2px 0 8px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .06);
+  color: rgba(255, 255, 255, .72);
+  font-size: 13px;
+  line-height: 1.65;
+  list-style: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.lyrics-pane.is-finding {
+  overflow: hidden;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+.lyrics-pane.is-finding .lyrics-container,
+.lyrics-pane.is-finding .plain-lyrics {
+  visibility: hidden;
+}
+
+.lyrics-find {
+  position: absolute;
+  inset: 80px 64px 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(760px, calc(100% - 88px));
+  margin: 0 auto;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lyrics-find-bar {
+    animation: find-bar-reveal 180ms var(--ease-standard);
+  }
+}
+
+.lyrics-find.is-closing {
+  pointer-events: none;
+  animation: find-bar-exit 130ms var(--ease-standard) forwards;
+}
+
+@keyframes find-bar-reveal {
+  from { opacity: 0.55; transform: translateY(-5px); }
+}
+
+@keyframes find-bar-exit {
+  to { opacity: 0; transform: translateY(-5px); }
+}
+
+.lyrics-find-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lyrics-find-bar .sync-done-btn {
+  height: 32px;
+  border-radius: 16px;
+}
+
+.lyrics-find-bar input {
+  min-width: 0;
+  flex: 1;
+}
+
+.lyrics-find-status {
+  margin: 0;
+  font-size: 12.5px;
+  opacity: .8;
+}
+
+.lyrics-find-matches {
+  margin: 0;
+  padding: 2px;
+  overflow-y: auto;
+  list-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.lyrics-find-match {
+  display: flex;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: default;
+  overflow-wrap: anywhere;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+button.lyrics-find-match:hover,
+button.lyrics-find-match:focus-visible {
+  background-color: rgba(255, 255, 255, .1);
+}
+
+button.lyrics-find-match:focus-visible {
+  outline: 2px solid var(--main-focus-ring);
+  outline-offset: 2px;
+}
+
+.lyrics-find-match mark {
+  padding: 0 3px;
+  border-radius: 4px;
+  color: #fff;
+  background: color-mix(in srgb, var(--lyric-color, #ffffff) 26%, transparent);
+  font-weight: 600;
+}
+
+.lyrics-vocal-cue {
+  position: absolute;
+  inset: 28px auto auto 24px;
+  z-index: 2;
+  color: var(--lyric-color, #fff);
+  font-size: 1.25rem;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.45));
+  pointer-events: none;
+}
+
+@media (max-width: 900px) {
+  .lyrics-find {
+    inset: 8px 32px 16px;
+    width: min(760px, calc(100% - 64px));
+  }
+
+  .lyrics-vocal-cue {
+    inset: 12px auto auto 32px;
+  }
+}
+
+@media (max-width: 600px) {
+  .lyrics-find {
+    inset: 8px 24px 16px;
+    width: min(760px, calc(100% - 48px));
+  }
 }
 
 .chooser-row.is-current {
@@ -1606,13 +2009,7 @@ button.lyric-line:focus-visible {
 }
 
 .chooser-footer-note.is-error {
-  color: rgba(255, 184, 178, 0.94);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chooser-spinner {
-    animation-duration: 2.4s;
-  }
+  color: var(--main-error-text);
 }
 
 /* ── Karaoke mode (main window): show only active + next line, centered ────── */
@@ -1645,7 +2042,7 @@ button.lyric-line:focus-visible {
   align-items: center;
   justify-content: center;
   width: 0;
-  height: 12px;
+  height: 16px;
   opacity: 0;
   overflow: hidden;
   transition:
@@ -1657,23 +2054,102 @@ button.lyric-line:focus-visible {
   color: inherit;
 }
 
+.seek-ring-track {
+  stroke: currentColor;
+  stroke-width: 1.8;
+  opacity: 0.22;
+}
+
+.seek-ring-progress {
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-dasharray: 59.7;
+  stroke-dashoffset: 59.7;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  opacity: 0.9;
+}
+
+.seek-play {
+  transform-origin: center;
+  opacity: 0.6;
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.lyric-line.is-arming .seek-indicator {
+  width: 16px;
+  opacity: 0.72;
+  margin-right: 8px;
+}
+
+.lyric-line.is-arming .seek-ring-progress {
+  animation: seek-ring-charge 480ms linear forwards;
+}
+
 .lyric-line.is-armed {
   cursor: default;
 }
 
 .lyric-line.is-armed .seek-indicator {
-  width: 14px;
-  opacity: 0.8;
+  width: 16px;
+  opacity: 0.92;
   margin-right: 8px;
 }
 
-.plain-lyrics { padding: 32px; }
-.plain-lyrics-label { font-size: 0.8rem; opacity: 0.7; margin-bottom: 24px; }
+.lyric-line.is-armed .seek-ring-progress {
+  stroke-dashoffset: 0;
+}
+
+.lyric-line.is-armed .seek-play {
+  opacity: 1;
+  animation: seek-armed-pop 180ms var(--ease-standard);
+}
+
+.lyric-line.is-seeking {
+  animation: lyric-seek-confirm 260ms var(--ease-standard);
+}
+
+@keyframes seek-ring-charge {
+  from { stroke-dashoffset: 59.7; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes seek-armed-pop {
+  0% { transform: scale(0.85); }
+  55% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+@keyframes lyric-seek-confirm {
+  0% { opacity: 1; transform: translateX(0); }
+  35% { opacity: 1; transform: translateX(4px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+/* The pane already insets its content; the panels and lyric lines start at
+ * that same edge. The stacked layout fades the pane's top, so the header
+ * starts below the fade there. */
+.plain-lyrics { padding: 0 0 32px; }
+
+@media (max-width: 900px) {
+  .plain-lyrics { padding-top: 32px; }
+}
+.plain-lyrics-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.plain-lyrics-label { margin: 0; color: rgba(255, 255, 255, 0.6); font-size: 12.5px; }
 .plain-lyrics-text { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.8; }
 
 .lyrics-pane.is-unsynced { display: block; overflow-y: auto; scrollbar-width: thin; scrollbar-color: currentColor transparent; }
 .lyrics-pane.is-unsynced::-webkit-scrollbar { display: block; width: 6px; }
-.lyrics-pane.is-unsynced:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }
+.lyrics-pane.is-unsynced:focus-visible { outline: 2px solid var(--main-focus-ring); outline-offset: -4px; }
 
 /* ── Free scrolling ─────────────────────────────────────────────────────────
    While the reader scrolls away from the current line, every line sharpens so
@@ -1710,7 +2186,7 @@ button.lyric-line:focus-visible {
 }
 
 .lyrics-return:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline: 2px solid var(--main-focus-ring);
   outline-offset: 3px;
 }
 
@@ -1823,13 +2299,6 @@ button.lyric-line:focus-visible {
   100% { opacity: 0; transform: translate(-50%, 0) scale(1); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .album-art-frame,
-  .album-art-frame .album-cover {
-    transition: none;
-  }
-}
-
 /* Empty state: the players Lyra follows, as quiet marks under the note. */
 .lyrics-placeholder-players {
   display: flex;
@@ -1845,7 +2314,7 @@ button.lyric-line:focus-visible {
   width: 30px;
   height: 30px;
   border-radius: 9px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--main-control-bg);
 }
 
 /* ── First run (macOS) ──────────────────────────────────────────────────────
@@ -1895,24 +2364,25 @@ button.lyric-line:focus-visible {
 .first-run-continue {
   align-self: flex-end;
   margin-top: 6px;
-  padding: 7px 18px;
+  height: 32px;
+  padding: 0 18px;
   border: none;
-  border-radius: 8px;
-  background: #0a84ff;
-  color: #fff;
+  border-radius: 16px;
+  background: var(--main-primary-bg);
+  color: var(--main-primary-ink);
   font: inherit;
   font-size: 13px;
   font-weight: 600;
   cursor: default;
-  transition: filter var(--duration-fast) var(--ease-standard);
+  transition: background-color var(--duration-fast) var(--ease-standard);
 }
 
 .first-run-continue:hover {
-  filter: brightness(1.1);
+  background: var(--main-primary-bg-hover);
 }
 
 .first-run-continue:focus-visible {
-  outline: 2px solid rgba(10, 132, 255, 0.6);
+  outline: 2px solid var(--main-focus-ring);
   outline-offset: 3px;
 }
 
@@ -1921,9 +2391,126 @@ button.lyric-line:focus-visible {
   to { opacity: 1; }
 }
 
-/* Reduced motion: swap covers at once (a 1 ms animation, so the end event
-   still clears the outgoing layer). */
+.first-run.is-closing {
+  pointer-events: none;
+  animation: first-run-exit 140ms var(--ease-standard) forwards;
+}
+
+.first-run.is-closing .first-run-card {
+  animation: control-panel-exit 140ms var(--ease-standard) forwards;
+}
+
+@keyframes first-run-exit {
+  to { opacity: 0; }
+}
+
+.window-reveal-rim {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 150;
+  opacity: 0;
+}
+
+.window-reveal-rim[data-reveal-kind="unfold"] {
+  background: radial-gradient(
+    68% 46% at var(--reveal-origin-x, 50%) var(--reveal-origin-y, 0%),
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(255, 255, 255, 0.03) 48%,
+    transparent 100%
+  );
+}
+
+.window-reveal-rim[data-reveal-kind="focus"] {
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.28);
+  background: radial-gradient(
+    62% 40% at var(--reveal-origin-x, 50%) var(--reveal-origin-y, 0%),
+    rgba(255, 255, 255, 0.12) 0%,
+    transparent 75%
+  );
+}
+
+:root[data-low-power="true"] .window-reveal-rim {
+  display: none;
+}
+
+/* Consolidated reduced-motion policy across the Main Window. */
 @media (prefers-reduced-motion: reduce) {
+  .lyra-window {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(18, 18, 22, 0.82);
+  }
+  :root .scrub-preview {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(20, 20, 24, 0.86);
+  }
+  .ambient-bg img {
+    filter: none;
+    transform: translate(-50%, -50%) scale(20);
+    opacity: 0.2;
+  }
+  /* Keep only subtle colour/opacity transitions for the lyric reel. */
+  .lyric-line {
+    will-change: auto !important;
+    transform: none !important;
+    animation: none !important;
+    transition: color 0.25s ease, opacity 0.25s ease !important;
+  }
+  .lyric-line.is-active,
+  .lyric-line.is-leaving-edge {
+    transform: none !important;
+    animation: none !important;
+  }
+  .lyrics-container {
+    transition: none !important;
+  }
+  .lyrics-pane {
+    scroll-behavior: auto;
+  }
+  .album-art-frame,
+  .album-art-frame .album-cover,
+  button.source-badge,
+  .btn-icon {
+    transition: none;
+  }
+  .album-art-frame.is-paused,
+  button.source-badge:hover {
+    transform: none;
+  }
+  .track-info.is-loading .track-skeleton-line,
+  .track-meta-text.is-entering.is-next,
+  .track-meta-text.is-entering.is-prev,
+  .progress-track.is-seek-pulse .progress-thumb,
+  .lyrics-placeholder-dot,
+  .lyrics-placeholder.is-loading .lyrics-placeholder-ring,
+  .chooser,
+  .chooser.is-closing,
+  .lyrics-find-bar,
+  .lyrics-find.is-closing,
+  .lyrics-return,
+  .shortcut-hud,
+  .sync-tap-flash,
+  .lyric-line.is-armed .seek-play,
+  .lyric-line.is-seeking,
+  .first-run,
+  .first-run.is-closing,
+  .first-run.is-closing .first-run-card {
+    animation: none;
+  }
+  .lyric-line.is-arming .seek-ring-progress {
+    animation: none;
+    stroke-dashoffset: 30;
+  }
+  .chooser-spinner {
+    animation-duration: 2.4s;
+  }
+  .window-reveal-rim {
+    display: none;
+  }
+  /* Swap covers at once (1 ms so onAnimationEnd still clears the outgoing layer). */
   .album-cover.is-entering,
   .ambient-bg img.is-entering {
     animation-duration: 1ms;

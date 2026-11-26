@@ -225,15 +225,25 @@ export function useMainLyricReel({
       }
     }
 
+    const previousActiveTarget = activeLine !== null ? targetCacheRef.current[activeLine] : undefined;
     targetCacheRef.current = targets;
     lineMetricsCacheRef.current = lineMetrics;
     viewportMetricRef.current = { paneHeight, containerTop };
 
     const activeTarget = activeLine !== null ? targets[activeLine] : undefined;
-    publishPaintRange(activeTarget !== undefined && Number.isFinite(activeTarget) ? activeTarget : null);
+    const nextTarget = activeTarget !== undefined && Number.isFinite(activeTarget) ? activeTarget : null;
+    const browseTarget = browseTranslateRef.current;
+    // Recenter on reflow when the reel was already following this line.
+    if (!karaokeMode && browseTarget === null && nextTarget !== null
+      && previousActiveTarget === prevTargetRef.current && nextTarget !== previousActiveTarget) {
+      container.style.transform = `translate3d(0, ${nextTarget}px, 0)`;
+      prevTargetRef.current = nextTarget;
+    }
+    publishPaintRange(browseTarget ?? nextTarget);
   }, [
     activeLine,
     clearEdgeMotion,
+    karaokeMode,
     lyricsCount,
     lyricsContainerRef,
     lyricsPaneRef,
@@ -406,6 +416,32 @@ export function useMainLyricReel({
     returnToCurrentRef.current = returnToCurrent;
   }, [returnToCurrent]);
 
+  /** Pan the reel so the keyboard-selected line stays visible in the pane. */
+  const scrollToLine = useCallback((index: number) => {
+    if (karaokeMode || lyricsCount === 0) return;
+    const pane = lyricsPaneRef.current;
+    const container = lyricsContainerRef.current;
+    if (!pane || !container) return;
+
+    let target = targetCacheRef.current[index];
+    if (target === undefined || !Number.isFinite(target)) {
+      const el = lyricsRef.current[index];
+      if (!el) return;
+      target = pane.clientHeight / 2 - container.offsetTop - el.offsetTop - el.offsetHeight / 2;
+    }
+
+    browseTranslateRef.current = target;
+    setIsBrowsing(true);
+    const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    container.style.transition = reduceMotion ? 'none' : 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)';
+    container.style.transform = `translate3d(0, ${target}px, 0)`;
+    prevTargetRef.current = target;
+    publishPaintRange(target);
+
+    globalThis.clearTimeout(browseTimerRef.current);
+    browseTimerRef.current = globalThis.setTimeout(() => returnToCurrentRef.current(), BROWSE_IDLE_MS);
+  }, [karaokeMode, lyricsContainerRef, lyricsCount, lyricsPaneRef, lyricsRef, publishPaintRange]);
+
   // Free scrolling: wheel/trackpad pans the reel directly. The current line
   // keeps advancing underneath; the reel stops following until the reader
   // returns (button) or stops scrolling for a few seconds.
@@ -415,6 +451,7 @@ export function useMainLyricReel({
     if (!pane || !container || karaokeMode || lyricsCount === 0) return;
 
     const onWheel = (event: WheelEvent) => {
+      if (event.target instanceof Element && event.target.closest('.lyrics-find')) return;
       if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
       const targets = targetCacheRef.current;
       const first = targets[0];
@@ -459,5 +496,5 @@ export function useMainLyricReel({
     };
   }, []);
 
-  return { paintRange, isBrowsing, returnToCurrent };
+  return { paintRange, isBrowsing, returnToCurrent, scrollToLine };
 }

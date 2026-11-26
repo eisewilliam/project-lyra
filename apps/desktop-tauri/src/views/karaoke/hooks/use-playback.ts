@@ -18,6 +18,7 @@ export function useKaraokePlayback({
   ensureWindowReady: () => Promise<void>;
 }) {
   const [activeLine, setActiveLine] = useState<string | null>(null);
+  const [vocalCue, setVocalCue] = useState<RenderSnapshot['vocal_cue']>(null);
   const [nextLine, setNextLine] = useState<string | null>(null);
   const [activeLineProgress, setActiveLineProgress] = useState(0);
   const [trackTitle, setTrackTitle] = useState('');
@@ -54,6 +55,8 @@ export function useKaraokePlayback({
     }
 
     setSnapshotReady(true);
+    setVocalCue((current) => current?.seconds === snap.vocal_cue?.seconds
+      && current?.next_line === snap.vocal_cue?.next_line ? current : snap.vocal_cue ?? null);
     setHasTrack(Boolean(track));
     setHasVisibleLyrics(hasActiveLine);
     setHasActiveLyric(hasActiveLine);
@@ -115,6 +118,7 @@ export function useKaraokePlayback({
 
   return {
     activeLine,
+    vocalCue,
     nextLine,
     activeLineProgress,
     trackTitle,

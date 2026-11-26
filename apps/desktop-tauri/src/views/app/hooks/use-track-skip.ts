@@ -14,6 +14,7 @@ type SkipState = {
   uri: string;
   /** A skip was requested and its track hasn't arrived yet. */
   switching: boolean;
+  direction: SkipDirection;
 };
 
 /**
@@ -29,12 +30,13 @@ export function useTrackSkip({
   isPlaying: boolean;
   baselineRef: RefObject<PositionBaseline>;
 }) {
-  const [state, setState] = useState<SkipState>({ uri: trackUri, switching: false });
+  const [state, setState] = useState<SkipState>({ uri: trackUri, switching: false, direction: 1 });
   const timerRef = useRef(0);
 
-  // The new track has arrived: end the dimmed state in the same render.
+  // The new track has arrived: end the dimmed state in the same render while
+  // keeping the skip direction so the incoming metadata slides accordingly.
   if (state.uri !== trackUri) {
-    setState({ uri: trackUri, switching: false });
+    setState({ uri: trackUri, switching: false, direction: state.direction });
   }
 
   /** Show a skip's feedback without sending it (the native menu sends it). */
@@ -42,7 +44,7 @@ export function useTrackSkip({
     const restarts = direction < 0
       && interpolatePosition(baselineRef.current, performance.now(), isPlaying) > PREVIOUS_RESTARTS_AFTER_MS;
     if (restarts) return;
-    setState((current) => ({ ...current, switching: true }));
+    setState((current) => ({ ...current, switching: true, direction }));
     globalThis.clearTimeout(timerRef.current);
     timerRef.current = globalThis.setTimeout(() => {
       setState((current) => ({ ...current, switching: false }));
@@ -56,5 +58,5 @@ export function useTrackSkip({
 
   useEffect(() => () => globalThis.clearTimeout(timerRef.current), []);
 
-  return { skip, markSkip, switching: state.switching };
+  return { skip, markSkip, switching: state.switching, skipDirection: state.direction };
 }

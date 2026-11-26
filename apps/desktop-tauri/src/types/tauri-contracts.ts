@@ -151,15 +151,20 @@ export type RenderSnapshot = {
   line_progress: number | null;
   visible_lines: VisibleLine[];
   active_line_words: LyricWord[] | null;
+  vocal_cue: VocalCue | null;
+  lyric_offset_ms: number;
   /** Whether the lyrics are the automatic match or the user's own choice. */
   lyrics_origin: LyricsOrigin;
   /** Changes whenever the track's lyrics are replaced; reload them then. */
   lyrics_revision: number;
 };
 
+export type VocalCue = { seconds: number; next_line: string };
+
 /** Where a track's lyrics came from. */
 export type LyricsOrigin =
   | { kind: 'automatic' }
+  | { kind: 'timed' }
   /** Another LRCLIB match the user chose. */
   | { kind: 'picked'; id: number | null }
   /** A lyrics file the user added. */
@@ -177,8 +182,7 @@ export type LyricCandidate = {
   duration_ms: number | null;
   synced: boolean;
   fit: CandidateFit;
-  /** The first few lines. */
-  preview: string[];
+  preview: { start_ms: number | null; text: string }[];
   /** These are the lyrics showing now. */
   current: boolean;
 };
@@ -216,6 +220,7 @@ export type LyricLineSlim = {
 };
 
 export type UiState = {
+  global_shortcuts_enabled: boolean;
   marquee_visible: boolean;
   floating_visible: boolean;
   karaoke_visible: boolean;
@@ -226,6 +231,8 @@ export type UiState = {
   /** Where the user left the marquee (physical px); null keeps its default
       place. The host owns it: it settles and saves it after a drag. */
   marquee_pos: [number, number] | null;
+  /** Screen edges the marquee is attached to. */
+  marquee_dock: MarqueeDock;
   /** Hide while no player has a track; a paused track still shows. */
   marquee_hide_when_idle: boolean;
   /** Size as a multiple of the base design; null matches the display. */
@@ -259,6 +266,12 @@ export type UiState = {
   touch_bar_control_strip: boolean;
   /** The first-run explanation has been acknowledged. */
   onboarded: boolean;
+};
+
+export type GlobalShortcutStatus = {
+  available: boolean;
+  enabled: boolean;
+  bindings: { key: string; label: string; registered: boolean }[];
 };
 
 export type WindowSettings = {
@@ -313,9 +326,9 @@ export type AppSettings = {
 };
 
 export type SettingsPatch = Partial<{
-  window: WindowSettings;
-  appearance: AppearanceSettings;
-  behavior: BehaviorSettings;
+  window: Partial<WindowSettings>;
+  appearance: Partial<AppearanceSettings>;
+  behavior: Partial<BehaviorSettings>;
 }>;
 
 export type UiStatePatch = Partial<UiState>;
@@ -334,6 +347,40 @@ export type MarqueeSettingsPatch = Partial<{
   hide_when_idle: boolean;
 }>;
 
+/** Screen edges the Marquee is attached to. */
+export type MarqueeDock = {
+  top: boolean;
+  right: boolean;
+  bottom: boolean;
+  left: boolean;
+};
+
+/** Discrete liquid attach/detach momentum impulse from the host. */
+export type DockImpulse =
+  | 'attach_top'
+  | 'attach_bottom'
+  | 'attach_left'
+  | 'attach_right'
+  | 'detach_top'
+  | 'detach_bottom'
+  | 'detach_left'
+  | 'detach_right';
+
+/** Transition hint emitted when revealing or focusing the main window. */
+export type MainWindowReveal = {
+  from_x: number;
+  from_y: number;
+  was_hidden: boolean;
+  from_marquee: boolean;
+};
+
+/** Live surface-tension feedback emitted during a Marquee drag. */
+export type MarqueeDragFeedback = {
+  pull_x: number;
+  pull_y: number;
+  impulse: DockImpulse | null;
+};
+
 /** The Marquee's size on its current display, as fitted by the host
     (`marquee_size.rs`). Lengths are in points. */
 export type MarqueeFrame = {
@@ -344,8 +391,10 @@ export type MarqueeFrame = {
   height: number;
   /** Extra height at the top that sits behind a MacBook notch. */
   notch_inset: number;
-  /** Docked against the top edge of the display: square top corners. */
+  /** Docked against any screen edge or corner. */
   docked: boolean;
+  /** Exact screen edges attached. */
+  dock: MarqueeDock;
   /** The widest the Marquee may be dragged on this display. */
   max_width: number;
 };

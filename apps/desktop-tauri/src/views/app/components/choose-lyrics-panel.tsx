@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { usePlaybackSnapshot } from '@/hooks/use-playback-snapshot';
 import type {
   CandidateFit,
   LyricCandidate,
@@ -13,7 +14,7 @@ import {
   listLyricCandidates,
   resetLyricsChoice,
 } from '@/utils/tauri-commands';
-import { formatMs, noop } from '../utils';
+import { describeLyricsOrigin, formatMs, noop } from '../utils';
 
 const FIT_LABELS: Record<CandidateFit, string | null> = {
   good: null,
@@ -53,6 +54,7 @@ function asChoiceError(error: unknown): LyricChoiceError {
  * with the track's own title and artist or a typed search, or a lyrics file.
  * Shown in place of the lyrics; choosing closes it. */
 export function ChooseLyricsPanel({
+  closing = false,
   trackKey,
   trackTitle,
   trackArtist,
@@ -61,6 +63,7 @@ export function ChooseLyricsPanel({
   onAllowBrowserLyrics,
   onClose,
 }: Readonly<{
+  closing?: boolean;
   trackKey: string;
   /** Fill the search fields while the first search runs. */
   trackTitle: string;
@@ -80,6 +83,16 @@ export function ChooseLyricsPanel({
   const [artist, setArtist] = useState(trackArtist);
   const [choosingId, setChoosingId] = useState<number | null>(null);
   const [chooseError, setChooseError] = useState<LyricChoiceError | null>(null);
+  const [positionMs, setPositionMs] = useState<number | null>(null);
+  const [offsetMs, setOffsetMs] = useState(0);
+  const [focusedId, setFocusedId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  usePlaybackSnapshot({ onSnapshot: (snapshot) => {
+    if (snapshot.playback.track?.uri !== trackKey) return;
+    setPositionMs(snapshot.playback.position_ms);
+    setOffsetMs(snapshot.lyric_offset_ms ?? 0);
+  } });
 
   // Results apply only if no newer search started meanwhile. They leave the
   // fields alone: the user may already be typing the next search.
@@ -97,6 +110,8 @@ export function ChooseLyricsPanel({
   const runSearch = (query: LyricSearchQuery | null) => {
     setSearch({ state: 'loading' });
     setChooseError(null);
+    setFocusedId(null);
+    setExpandedId(null);
     fetchResults(query);
   };
 
@@ -155,26 +170,37 @@ export function ChooseLyricsPanel({
     }
   };
 
-  // Arrow keys move between matches, as in a list.
+  // Arrow keys move between matches (and Preview buttons), as in a list.
   const onListKeyDown = (event: React.KeyboardEvent<HTMLUListElement>) => {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    const rows = Array.from(listRef.current?.querySelectorAll<HTMLButtonElement>('button.chooser-row') ?? []);
-    const at = rows.indexOf(document.activeElement as HTMLButtonElement);
-    const next = rows[Math.max(0, Math.min(rows.length - 1, at + (event.key === 'ArrowDown' ? 1 : -1)))];
+    const items = Array.from(listRef.current?.querySelectorAll<HTMLLIElement>(':scope > li') ?? []);
+    const targetEl = event.target instanceof Element ? event.target : null;
+    const currentItem = targetEl?.closest('li');
+    const at = currentItem ? items.indexOf(currentItem) : -1;
+    if (at < 0) return;
+    const nextItem = items[Math.max(0, Math.min(items.length - 1, at + (event.key === 'ArrowDown' ? 1 : -1)))];
+    if (!nextItem) return;
+    const selector = targetEl?.classList.contains('chooser-preview-toggle')
+      ? 'button.chooser-preview-toggle'
+      : 'button.chooser-row';
+    const next = nextItem.querySelector<HTMLButtonElement>(selector);
     if (next) {
       event.preventDefault();
       next.focus();
     }
   };
 
-  const candidates = search.state === 'done' ? search.result.candidates : [];
+  const candidates = search.state === 'done' && search.result.track_key === trackKey
+    ? search.result.candidates
+    : [];
 
   return (
     <div
       ref={panelRef}
-      className="chooser"
+      className={closing ? 'chooser is-closing' : 'chooser'}
       role="group"
       aria-labelledby={titleId}
+      aria-hidden={closing || undefined}
       tabIndex={-1}
       onKeyDown={onKeyDown}
       onContextMenu={(event) => event.stopPropagation()}
@@ -251,12 +277,17 @@ export function ChooseLyricsPanel({
         {candidates.length > 0 && (
           <ul ref={listRef} className="chooser-list" aria-label="Matches" onKeyDown={onListKeyDown}>
             {candidates.map((candidate) => (
-              <li key={candidate.id}>
+              <li key={candidate.id} onFocus={() => setFocusedId(candidate.id)}>
                 <CandidateRow
                   candidate={candidate}
                   trackDurationMs={trackDurationMs}
+                  positionMs={positionMs}
+                  offsetMs={candidate.current ? offsetMs : 0}
                   choosing={choosingId === candidate.id}
                   disabled={choosingId !== null}
+                  isTabStop={candidate.id === (focusedId ?? candidates[0]?.id)}
+                  expanded={expandedId === candidate.id}
+                  onTogglePreview={() => setExpandedId((id) => id === candidate.id ? null : candidate.id)}
                   onChoose={choose}
                 />
               </li>
@@ -270,7 +301,7 @@ export function ChooseLyricsPanel({
           {chooseError ? (
             <p className="chooser-footer-note is-error" role="alert">{ERROR_MESSAGES[chooseError]}</p>
           ) : (
-            <p className="chooser-footer-note">{describeOrigin(origin)}</p>
+            <p className="chooser-footer-note">{describeLyricsOrigin(origin)}</p>
           )}
           {origin.kind !== 'automatic' && (
             <button type="button" className="sync-text-btn" onClick={useAutomatic}>
@@ -286,16 +317,27 @@ export function ChooseLyricsPanel({
 function CandidateRow({
   candidate,
   trackDurationMs,
+  positionMs,
+  offsetMs,
   choosing,
   disabled,
+  isTabStop,
+  expanded,
+  onTogglePreview,
   onChoose,
 }: Readonly<{
   candidate: LyricCandidate;
   trackDurationMs: number;
+  positionMs: number | null;
+  offsetMs: number;
   choosing: boolean;
   disabled: boolean;
+  isTabStop: boolean;
+  expanded: boolean;
+  onTogglePreview: () => void;
   onChoose: (candidate: LyricCandidate) => void;
 }>) {
+  const previewId = useId();
   const fitLabel = FIT_LABELS[candidate.fit];
   const meta = [candidate.artist, candidate.album].filter(Boolean).join(' · ');
   let lengthNote: string | null = null;
@@ -303,48 +345,94 @@ function CandidateRow({
     const diff = candidate.duration_ms - trackDurationMs;
     if (Math.abs(diff) >= DURATION_NOTE_MS) lengthNote = `${diff > 0 ? '+' : '−'}${formatMs(Math.abs(diff))}`;
   }
+  const pastEnd = positionMs !== null && candidate.duration_ms !== null && positionMs >= candidate.duration_ms;
+  const hasLivePreview = candidate.synced && positionMs !== null;
+  const lineIndex = hasLivePreview && !pastEnd ? previewLineAt(candidate.preview, positionMs - offsetMs) : -1;
+  let previewText: string;
+  if (pastEnd && hasLivePreview) previewText = 'End of this version';
+  else if (lineIndex >= 0) previewText = candidate.preview[lineIndex]?.text.trim() || 'Instrumental';
+  else if (hasLivePreview) previewText = 'Before the first line';
+  else previewText = candidate.preview.map((line) => line.text.trim()).filter(Boolean).slice(0, 3).join(' / ');
 
   return (
-    <button
-      type="button"
-      className={`chooser-row${candidate.current ? ' is-current' : ''}${choosing ? ' is-choosing' : ''}`}
-      aria-current={candidate.current || undefined}
-      aria-disabled={(disabled && !choosing) || candidate.current || undefined}
-      onClick={() => onChoose(candidate)}
-    >
-      <span className="chooser-row-main">
-        <span className="chooser-row-title">{candidate.title || 'Untitled'}</span>
-        {meta && <span className="chooser-row-meta">{meta}</span>}
-        {candidate.preview.length > 0 && (
-          <span className="chooser-row-preview">{candidate.preview.join(' / ')}</span>
-        )}
-      </span>
-      <span className="chooser-row-side">
-        {candidate.duration_ms !== null && (
-          <span className="chooser-row-duration">
-            {formatMs(candidate.duration_ms)}
-            {lengthNote && <span className="chooser-row-delta"> ({lengthNote})</span>}
+    <>
+      <div className="chooser-match">
+        <button
+          type="button"
+          className={`chooser-row${candidate.current ? ' is-current' : ''}${choosing ? ' is-choosing' : ''}`}
+          aria-current={candidate.current || undefined}
+          aria-disabled={(disabled && !choosing) || candidate.current || undefined}
+          tabIndex={isTabStop ? 0 : -1}
+          onClick={() => onChoose(candidate)}
+        >
+          <span className="chooser-row-main">
+            <span className="chooser-row-title">{candidate.title || 'Untitled'}</span>
+            {meta && <span className="chooser-row-meta">{meta}</span>}
+            {previewText && (
+              <span className={`chooser-row-preview${hasLivePreview ? ' is-live' : ''}`}>
+                {hasLivePreview && <span className="chooser-preview-position">{formatMs(positionMs)}</span>}
+                {previewText}
+              </span>
+            )}
           </span>
-        )}
-        <span className="chooser-tags">
-          {choosing && <span className="chooser-tag">Loading…</span>}
-          {candidate.current && <span className="chooser-tag is-current">Showing</span>}
-          <span
-            className="chooser-tag"
-            title={candidate.synced ? undefined : 'No timing: shows in this window only'}
-          >
-            {candidate.synced ? 'Synced' : 'Plain text'}
+          <span className="chooser-row-side">
+            {candidate.duration_ms !== null && (
+              <span className="chooser-row-duration">
+                {formatMs(candidate.duration_ms)}
+                {lengthNote && <span className="chooser-row-delta"> ({lengthNote})</span>}
+              </span>
+            )}
+            <span className="chooser-tags">
+              {choosing && <span className="chooser-tag">Loading…</span>}
+              {candidate.current && <span className="chooser-tag is-current">Showing</span>}
+              <span
+                className="chooser-tag"
+                title={candidate.synced ? undefined : 'Not synced: shows in this window only'}
+              >
+                {candidate.synced ? 'Synced' : 'Plain lyrics'}
+              </span>
+              {fitLabel && <span className="chooser-tag is-caution">{fitLabel}</span>}
+            </span>
           </span>
-          {fitLabel && <span className="chooser-tag is-caution">{fitLabel}</span>}
-        </span>
-      </span>
-    </button>
+        </button>
+        <button
+          type="button"
+          className="chooser-preview-toggle"
+          aria-expanded={expanded}
+          aria-controls={previewId}
+          aria-label={`${expanded ? 'Hide' : 'Preview'} lyrics for ${candidate.title || 'untitled match'}`}
+          tabIndex={isTabStop ? 0 : -1}
+          onClick={onTogglePreview}
+        >
+          <span className="chooser-toggle-labels" aria-hidden="true">
+            <span hidden={expanded}>Preview</span>
+            <span hidden={!expanded}>Hide</span>
+          </span>
+        </button>
+      </div>
+      <div id={previewId} className="chooser-preview-slot" hidden={!expanded}>
+        {expanded && (
+          <ol className="chooser-full-preview" aria-label="Lyrics preview" tabIndex={0}>
+            {candidate.preview.map((line, index) => (
+              <li key={index} className={index === lineIndex ? 'is-live' : undefined}>
+                {line.start_ms !== null && <span>{formatMs(line.start_ms)}</span>}
+                {line.text || (line.start_ms !== null ? '♪' : '\u00a0')}
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </>
   );
 }
 
-function describeOrigin(origin: LyricsOrigin): string {
-  if (origin.kind === 'imported') {
-    return origin.name ? `Showing lyrics from “${origin.name}”` : 'Showing lyrics from your file';
+function previewLineAt(lines: LyricCandidate['preview'], positionMs: number): number {
+  let start = 0;
+  let end = lines.length;
+  while (start < end) {
+    const mid = start + Math.floor((end - start) / 2);
+    if ((lines[mid]?.start_ms ?? Infinity) <= positionMs) start = mid + 1;
+    else end = mid;
   }
-  return 'Showing lyrics you chose';
+  return start - 1;
 }

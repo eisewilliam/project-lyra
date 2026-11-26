@@ -34,6 +34,7 @@ import { PlayersSection } from './players-section';
 import { AppearancePreview, MarqueePreview, KaraokePreview } from './previews';
 import { TouchBarSection } from './touch-bar-section';
 import { DiscordGroup } from './discord-group';
+import { GlobalShortcutsGroup } from './global-shortcuts-group';
 import { UpdatesGroup } from './updates-group';
 
 const MATCH_SCREEN = 'match-screen';
@@ -51,7 +52,7 @@ function MarqueeSizeRow({
     ...MARQUEE_SCALE_STEPS.map((step) => ({ value: String(step.value), label: step.label })),
   ];
   return (
-    <Row label="Size" hint="Match screen picks a size for each display.">
+    <Row label="Size">
       <CustomSelect
         value={scale === null ? MATCH_SCREEN : String(scale)}
         options={options}
@@ -70,7 +71,7 @@ function lyricBlurLevel(value: number | undefined): string {
 }
 
 /** The system colour picker in a compact well, named by its row. */
-function ColorWell({ value, onChange }: Readonly<{ value: string; onChange: (color: string) => void }>) {
+function ColorWell({ value, onChange }: Readonly<{ value: string; onChange: (color: string) => void | Promise<void> }>) {
   const aria = useRowAria();
   return (
     <input
@@ -78,7 +79,7 @@ function ColorWell({ value, onChange }: Readonly<{ value: string; onChange: (col
       type="color"
       className="color-well"
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => runSettingsAction(onChange(e.target.value))}
     />
   );
 }
@@ -91,7 +92,14 @@ export function PinnedPreview({
 }: Readonly<{ section: Section; state: ConsolidatedState; artworkSrc: string }>) {
   const { ui, app } = state;
   if (section === 'marquee') {
-    return <MarqueePreview ui={ui} appearance={app.appearance} artworkSrc={artworkSrc} />;
+    return (
+      <MarqueePreview
+        ui={ui}
+        appearance={app.appearance}
+        batterySaver={app.behavior.battery_saver}
+        artworkSrc={artworkSrc}
+      />
+    );
   }
   if (section === 'karaoke') {
     return <KaraokePreview ui={ui} appearance={app.appearance} artworkSrc={artworkSrc} />;
@@ -140,10 +148,10 @@ export function Body({
     return (
       <>
         <Group title="System">
-          <Row label="Battery saver" hint="Checks the player once a second and lightens blur effects.">
+          <Row label="Battery saver" hint="Checks playback once a second and reduces blur.">
             <Toggle value={app.behavior.battery_saver} onChange={(v: boolean) => actions.updateAppSetting('behavior', 'battery_saver', v)} />
           </Row>
-          <Row label="Hide when paused" hint="Hides every Lyra window while playback is paused.">
+          <Row label="Hide when paused">
             <Toggle value={app.behavior.hide_when_paused} onChange={(v: boolean) => actions.updateAppSetting('behavior', 'hide_when_paused', v)} />
           </Row>
           <Row
@@ -169,6 +177,8 @@ export function Body({
           )}
         </Group>
 
+        <GlobalShortcutsGroup />
+
         <DiscordGroup
           enabled={app.behavior.discord_presence}
           includeSpotify={app.behavior.discord_presence_spotify}
@@ -177,7 +187,7 @@ export function Body({
         />
 
         <Group title="Storage">
-          <Row label="Lyrics cache" hint="Cleared lyrics download again the next time each song plays.">
+          <Row label="Lyrics cache">
             <ActionFeedbackButton
               label="Clear cache"
               pendingLabel="Clearing…"
@@ -223,7 +233,11 @@ export function Body({
   if (section === 'appearance') {
     return (
       <>
-        <AppearancePreview appearance={app.appearance} artworkSrc={artworkSrc} />
+        <AppearancePreview
+          appearance={app.appearance}
+          batterySaver={app.behavior.battery_saver}
+          artworkSrc={artworkSrc}
+        />
         <div className="group-rows">
           <Row label="Theme">
             <CustomSelect
@@ -258,14 +272,14 @@ export function Body({
         </Group>
 
         <Group title="Background">
-          <Row label="Background darkness" hint="Main Window and Marquee.">
+          <Row label="Background darkness" tooltip="Applies to the Main Window and Marquee.">
             <SnapSlider
               steps={BACKGROUND_OPACITY_STEPS}
               value={app.appearance.background_opacity}
               onChange={(v) => actions.updateAppSetting('appearance', 'background_opacity', v)}
             />
           </Row>
-          <Row label="Lyric blur" hint="Softens the lines around the current one.">
+          <Row label="Lyric blur">
             <Segmented
               wide
               value={lyricBlurLevel(app.appearance.lyric_blur)}
@@ -282,7 +296,7 @@ export function Body({
     return (
       <>
         <Group title="Visibility">
-          <Row label="Show Karaoke Lyrics">
+          <Row label={`Show ${activeLabel}`}>
             <Toggle value={ui.karaoke_visible} onChange={() => actions.toggleVisible('karaoke')} />
           </Row>
           <Row label="Show over full-screen apps">
@@ -318,7 +332,7 @@ export function Body({
         </Group>
 
         <Group title="Text">
-          <Row label="Text scale" hint="Relative to Text size in Appearance.">
+          <Row label="Text scale">
             <SnapSlider
               steps={FONT_SCALE_STEPS}
               value={ui.karaoke_font_scale}
@@ -358,7 +372,7 @@ export function Body({
   }
 
   const textScale = (surface: FloatingSurface, value: number) => (
-    <Row label="Text scale" hint="Relative to Text size in Appearance.">
+    <Row label="Text scale">
       <SnapSlider steps={FONT_SCALE_STEPS} value={value} onChange={(v) => actions.setFont(surface, v)} />
     </Row>
   );
@@ -373,22 +387,22 @@ export function Body({
           <Row label="Show over full-screen apps">
             <Toggle value={ui.floating_show_on_fullscreen} onChange={(v: boolean) => actions.setFullscreen('main', v)} />
           </Row>
-          <Row label="Hide when nothing is playing">
+          <Row label="Hide when no track is loaded">
             <Toggle value={app.window.hide_when_idle} onChange={(v: boolean) => actions.updateAppSetting('window', 'hide_when_idle', v)} />
           </Row>
         </Group>
 
         <Group title="Window">
-          <Row label="Keep window on top" hint="Not while the window is maximized or full screen.">
+          <Row label="Keep window on top" hint="Applies at normal window size.">
             <Toggle value={app.window.always_on_top} onChange={(v: boolean) => actions.updateAppSetting('window', 'always_on_top', v)} />
           </Row>
-          <Row label="Click-through" hint="Clicks pass to the window behind Lyra.">
+          <Row label="Pass clicks through">
             <Toggle value={app.window.click_through} onChange={(v: boolean) => actions.updateAppSetting('window', 'click_through', v)} />
           </Row>
         </Group>
 
         <Group title="Lyrics">
-          <Row label="Focus on current line" hint="Shows only the current and next line, centered.">
+          <Row label="Show only the current and next lines">
             <Toggle value={app.behavior.karaoke_mode} onChange={(v: boolean) => actions.updateAppSetting('behavior', 'karaoke_mode', v)} />
           </Row>
           {textScale('main', ui.floating_font_scale)}
@@ -402,13 +416,13 @@ export function Body({
   return (
     <>
       <Group title="Visibility">
-        <Row label={`Show ${activeLabel}`} hint="A dynamic panel above your other windows, wherever you place it.">
+        <Row label={`Show ${activeLabel}`}>
           <Toggle value={ui.marquee_visible} onChange={() => actions.toggleVisible('marquee')} />
         </Row>
         <Row label="Show over full-screen apps">
           <Toggle value={ui.marquee_show_on_fullscreen} onChange={(v: boolean) => actions.setFullscreen('marquee', v)} />
         </Row>
-        <Row label="Hide when nothing is playing" hint="A paused song still shows.">
+        <Row label="Hide when no track is loaded">
           <Toggle
             value={ui.marquee_hide_when_idle ?? true}
             onChange={(v: boolean) => actions.marquee('marquee_hide_when_idle', v)}
@@ -417,13 +431,13 @@ export function Body({
       </Group>
 
       <Group title="Window">
-        <Row label="Lock position" hint="Stops the Marquee from being dragged.">
+        <Row label="Lock position">
           <Toggle value={ui.marquee_locked} onChange={(v: boolean) => actions.setLock(v)} />
         </Row>
-        <Row label="Click-through" hint="Clicks pass to the app behind the Marquee, and its controls turn off.">
+        <Row label="Pass clicks through" hint="Disables mouse controls on the Marquee.">
           <Toggle value={ui.marquee_click_through} onChange={(v: boolean) => actions.setMarqueeClickThrough(v)} />
         </Row>
-        <Row label="Position" hint="Back to the bottom center of the screen.">
+        <Row label="Position">
           <button
             type="button"
             className="action-btn"
@@ -454,7 +468,7 @@ export function Body({
       </Group>
 
       <Group title="Background">
-        <Row label="Transparency" hint="Lyrics keep their contrast at every level.">
+        <Row label="Transparency">
           <SnapSlider
             steps={MARQUEE_TRANSPARENCY_STEPS}
             value={ui.marquee_transparency ?? 0.5}

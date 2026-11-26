@@ -14,19 +14,21 @@ export function useLineMenu({
   plainLyrics,
   canSeek,
   seekToLine,
+  onCopied,
 }: {
   lyrics: ReadonlyArray<LineRef>;
   plainLyrics: string | null;
   canSeek: boolean;
   seekToLine: (index: number, ts: number) => void;
+  onCopied?: (kind: 'copied-line' | 'copied-all', lineIndex: number | null) => void;
 }) {
-  const latestRef = useRef({ lyrics, plainLyrics, canSeek, seekToLine });
+  const latestRef = useRef({ lyrics, plainLyrics, canSeek, seekToLine, onCopied });
   useEffect(() => {
-    latestRef.current = { lyrics, plainLyrics, canSeek, seekToLine };
-  }, [lyrics, plainLyrics, canSeek, seekToLine]);
+    latestRef.current = { lyrics, plainLyrics, canSeek, seekToLine, onCopied };
+  }, [lyrics, plainLyrics, canSeek, seekToLine, onCopied]);
 
   return useCallback((index: number | null) => {
-    const { lyrics: lines, plainLyrics: plain, canSeek: seekable, seekToLine: seek } = latestRef.current;
+    const { lyrics: lines, plainLyrics: plain, canSeek: seekable, seekToLine: seek, onCopied: copied } = latestRef.current;
     const line = index !== null ? lines[index] : undefined;
     const allText = lines.length > 0
       ? lines.map((l) => l.text).join('\n').trim()
@@ -35,10 +37,24 @@ export function useLineMenu({
 
     const copy: MenuEntry[] = [];
     if (line?.text.trim()) {
-      copy.push({ id: 'copy-line', label: 'Copy Line', symbol: 'doc.on.doc', onSelect: () => { copyText(line.text).catch(noop); } });
+      copy.push({
+        id: 'copy-line',
+        label: 'Copy Line',
+        symbol: 'doc.on.doc',
+        onSelect: () => {
+          copyText(line.text).then(() => copied?.('copied-line', index)).catch(noop);
+        },
+      });
     }
     if (allText) {
-      copy.push({ id: 'copy-all', label: 'Copy All Lyrics', symbol: 'doc.on.clipboard', onSelect: () => { copyText(allText).catch(noop); } });
+      copy.push({
+        id: 'copy-all',
+        label: 'Copy All Lyrics',
+        symbol: 'doc.on.clipboard',
+        onSelect: () => {
+          copyText(allText).then(() => copied?.('copied-all', null)).catch(noop);
+        },
+      });
     }
     const play: MenuEntry[] = line && index !== null
       ? [{ id: 'play-from-line', label: 'Play From Here', symbol: 'play', disabled: !seekable, onSelect: () => seek(index, performance.now()) }]

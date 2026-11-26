@@ -60,11 +60,13 @@ function PreviewFrame({
 
 export function AppearancePreview({
   appearance,
+  batterySaver = false,
   artworkSrc,
-}: Readonly<{ appearance: AppearanceSettings; artworkSrc: string }>) {
+}: Readonly<{ appearance: AppearanceSettings; batterySaver?: boolean; artworkSrc: string }>) {
   const style = {
     '--lyric-color': appearance.text_color || '#ffffff',
     '--lyric-blur': String(appearance.lyric_blur ?? 1),
+    '--blur-power': batterySaver ? '0.5' : '1',
     fontFamily: resolveFontFamily(appearance.font_family),
     fontSize: `${(appearance.font_size || 16) / 16}rem`,
   } as CSSProperties;
@@ -88,13 +90,15 @@ export function AppearancePreview({
 export function MarqueePreview({
   ui,
   appearance,
+  batterySaver = false,
   artworkSrc,
-}: Readonly<{ ui: UiState; appearance: AppearanceSettings; artworkSrc: string }>) {
+}: Readonly<{ ui: UiState; appearance: AppearanceSettings; batterySaver?: boolean; artworkSrc: string }>) {
   // At Medium: Size changes how big the Marquee is on screen, not its look.
   const width = ui.marquee_base_width ?? 600;
   const lines = ui.marquee_lines ?? 2;
   const height = marqueeBaseHeight(lines);
   const compact = lines <= 1;
+  const showCover = ui.marquee_show_cover ?? true;
   const transparency = ui.marquee_transparency ?? 0.5;
   return (
     <PreviewFrame className="preview-marquee" artworkSrc={artworkSrc}>
@@ -105,11 +109,14 @@ export function MarqueePreview({
         style={{
           width: `${width}px`,
           height: `${height}px`,
+          fontFamily: resolveFontFamily(appearance.font_family),
           '--font-scale': String(ui.marquee_font_scale),
           '--preview-scale': String(MARQUEE_PREVIEW_SCALE),
           // The marquee reads these from its own root; mirror them here.
           '--bg-darkness': String(appearance.background_opacity),
           '--lyric-color': appearance.text_color || '#ffffff',
+          '--lyric-blur': String(appearance.lyric_blur ?? 1),
+          '--blur-power': batterySaver ? '0.5' : '1',
           '--marquee-transparency': String(transparency),
         } as CSSProperties}
       >
@@ -119,9 +126,9 @@ export function MarqueePreview({
             <div className="marquee-bg-dimmer" />
           </div>
           <div className="panel-content">
-            {ui.marquee_show_cover && (
+            {showCover && (
               <div className="panel-art-container" style={{ position: 'relative', flexShrink: 0 }}>
-                <div className={`panel-art ${ui.marquee_cover_circle ? 'is-circle' : ''} ${ui.marquee_cover_spin ? 'is-spinning' : ''}`}>
+                <div className={`panel-art ${ui.marquee_cover_circle ? 'is-circle' : ''} ${ui.marquee_cover_spin && !batterySaver ? 'is-spinning' : ''}`}>
                   <img src={artworkSrc} className="panel-cover" alt="" draggable={false} />
                 </div>
               </div>
@@ -133,7 +140,7 @@ export function MarqueePreview({
               <div className="panel-lyric-next">{SAMPLE.next}</div>
             </div>
             <div className="marquee-meter">
-              <div className="audio-bars is-playing">
+              <div className={`audio-bars ${batterySaver ? 'is-paused' : 'is-playing'}`}>
                 {[9, 15, 11, 6].map((h, i) => (
                   <span key={i} className="bar" style={{ '--meter-scale': String(h / 18), '--meter-opacity': '0.85' } as CSSProperties} />
                 ))}
@@ -151,6 +158,7 @@ export function KaraokePreview({
   appearance,
   artworkSrc,
 }: Readonly<{ ui: UiState; appearance: AppearanceSettings; artworkSrc: string }>) {
+  const edgePadPx = Math.round(8 + ((ui.karaoke_offset_px ?? 24) / 120) * 18);
   const style = {
     '--lyric-color': appearance.text_color || '#ffffff',
     '--karaoke-bg': String(ui.karaoke_bg_opacity),
@@ -160,6 +168,7 @@ export function KaraokePreview({
     textAlign: ui.karaoke_alignment as CSSProperties['textAlign'],
     '--preview-align': { left: 'flex-start', right: 'flex-end' }[ui.karaoke_alignment] ?? 'center',
     justifyContent: ui.karaoke_position === 'top' ? 'flex-start' : 'flex-end',
+    paddingBlock: `${edgePadPx}px`,
   } as CSSProperties;
 
   return (

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState, type RefObject } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState, type ReactNode, type RefObject } from 'react';
 import { LyricsPlaceholder } from '@/components/lyrics-placeholder';
 import type { BrowserLyrics, IgnoredMedia, LyricWord } from '@/types/tauri-contracts';
 import type { LyricsPlaceholderState, NotFoundReason } from '@/utils/lyrics-state';
@@ -35,8 +35,25 @@ export const MainLyricsPane = memo(function MainLyricsPane({
   onOpenAutomationSettings,
   onChooseLyrics,
   onAddLyricsFile,
+  onTimeLyrics,
+  onScrollToLine,
+  canSeek = true,
+  inert = false,
   chooser,
+  finder,
+  finderActive,
+  vocalCue,
+  syncRail,
 }: Readonly<{
+  onTimeLyrics?: (opener: HTMLButtonElement) => void;
+  onScrollToLine?: (index: number) => void;
+  canSeek?: boolean;
+  inert?: boolean;
+  finder: ReactNode;
+  finderActive?: boolean;
+  vocalCue: ReactNode;
+  /** Earlier and Later beside the current line while Adjust sync is open. */
+  syncRail?: ReactNode;
   activeLine: number | null;
   activeLineWords: ReadonlyArray<LyricWord>;
   karaokeMode: boolean;
@@ -77,6 +94,7 @@ export const MainLyricsPane = memo(function MainLyricsPane({
     ...(onRetryLyrics ? { onRetry: onRetryLyrics } : {}),
     ...(onChooseLyrics ? { onChooseLyrics } : {}),
     ...(onAddLyricsFile ? { onAddLyricsFile } : {}),
+    ...(onTimeLyrics ? { onTimeLyrics } : {}),
   };
   const [keyboardLineIndex, setKeyboardLineIndex] = useState<number | null>(null);
   const hasLyrics = lyrics.length > 0;
@@ -99,11 +117,11 @@ export const MainLyricsPane = memo(function MainLyricsPane({
 
   const moveKeyboardLine = useCallback((delta: number) => {
     if (!hasLyrics) return;
-    setKeyboardLineIndex((current) => {
-      const base = current ?? activeLine ?? 0;
-      return Math.max(0, Math.min(lyrics.length - 1, base + delta));
-    });
-  }, [activeLine, hasLyrics, lyrics.length]);
+    const base = keyboardLineIndex ?? activeLine ?? 0;
+    const next = Math.max(0, Math.min(lyrics.length - 1, base + delta));
+    setKeyboardLineIndex(next);
+    onScrollToLine?.(next);
+  }, [activeLine, hasLyrics, keyboardLineIndex, lyrics.length, onScrollToLine]);
 
   const handleLyricsPaneFocus = useCallback(() => {
     if (hasLyrics && keyboardLineIndex === null) {
@@ -111,8 +129,16 @@ export const MainLyricsPane = memo(function MainLyricsPane({
     }
   }, [activeLine, hasLyrics, keyboardLineIndex]);
 
+  const handleLyricsPaneBlur = useCallback((event: React.FocusEvent<HTMLElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+      setKeyboardLineIndex(null);
+    }
+  }, []);
+
   const handleLyricsPaneKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
-    if (!hasLyrics || selectedLineIndex === null) return;
+    if (chooser || finder || !hasLyrics || selectedLineIndex === null) return;
+    if (event.target !== event.currentTarget
+      && !(event.target instanceof Element && event.target.closest('button.lyric-line'))) return;
 
     if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
       event.preventDefault();
@@ -129,42 +155,66 @@ export const MainLyricsPane = memo(function MainLyricsPane({
     if (event.key === 'Home') {
       event.preventDefault();
       setKeyboardLineIndex(0);
+      onScrollToLine?.(0);
       return;
     }
 
     if (event.key === 'End') {
       event.preventDefault();
-      setKeyboardLineIndex(lyrics.length - 1);
+      const last = lyrics.length - 1;
+      setKeyboardLineIndex(last);
+      onScrollToLine?.(last);
       return;
     }
 
-    if (event.key === 'Enter' || event.key === ' ') {
+    if ((event.key === 'Enter' || event.key === ' ') && canSeek) {
       event.preventDefault();
       seekToLine(selectedLineIndex, event.timeStamp);
     }
-  }, [hasLyrics, lyrics.length, moveKeyboardLine, seekToLine, selectedLineIndex]);
+  }, [canSeek, chooser, finder, hasLyrics, lyrics.length, moveKeyboardLine, onScrollToLine, seekToLine, selectedLineIndex]);
 
   const handleContextMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    if (chooser) return;
     if (lyricsViewState !== 'ready' && lyricsViewState !== 'unsynced') return;
     event.preventDefault();
     const line = event.target instanceof Element ? event.target.closest('button.lyric-line') : null;
     const index = line ? lyricsRef.current.indexOf(line as HTMLButtonElement) : -1;
     onLineMenu(index >= 0 ? index : null);
-  }, [lyricsRef, lyricsViewState, onLineMenu]);
+  }, [chooser, lyricsRef, lyricsViewState, onLineMenu]);
+
+  const isFinderActive = finderActive ?? Boolean(finder);
+
+  const activeLineId = selectedLineIndex !== null && !chooser && !isFinderActive && lyricsViewState === 'ready'
+    ? `lyric-line-${selectedLineIndex}`
+    : undefined;
 
   return (
     <section
-      className={`lyrics-pane ${lyricsViewState === 'unsynced' ? 'is-unsynced' : ''} ${lyricsViewState === 'ready' || lyricsViewState === 'unsynced' ? '' : 'is-placeholder'} ${isBrowsing ? 'is-browsing' : ''} ${switching ? 'is-switching' : ''} ${chooser ? 'is-choosing' : ''}`}
+      className={`lyrics-pane ${lyricsViewState === 'unsynced' ? 'is-unsynced' : ''} ${lyricsViewState === 'ready' || lyricsViewState === 'unsynced' ? '' : 'is-placeholder'} ${isBrowsing ? 'is-browsing' : ''} ${switching ? 'is-switching' : ''} ${chooser ? 'is-choosing' : ''} ${isFinderActive ? 'is-finding' : ''} ${syncRail && !chooser && !isFinderActive ? 'is-syncing' : ''}`}
       aria-label="Lyrics"
+      aria-activedescendant={activeLineId}
+      inert={inert || undefined}
       onFocus={handleLyricsPaneFocus}
+      onBlur={handleLyricsPaneBlur}
       onKeyDown={handleLyricsPaneKeyDown}
       onContextMenu={handleContextMenu}
       ref={lyricsPaneRef}
-      tabIndex={!chooser && ((lyricsViewState === 'ready' && hasLyrics) || lyricsViewState === 'unsynced') ? 0 : undefined}
+      tabIndex={!chooser && !isFinderActive && ((lyricsViewState === 'ready' && hasLyrics) || lyricsViewState === 'unsynced') ? 0 : undefined}
     >
       {chooser ?? (lyricsViewState === 'unsynced' ? (
         <div className="plain-lyrics">
-          <p className="plain-lyrics-label">Unsynchronized lyrics</p>
+          <div className="plain-lyrics-header">
+            <p className="plain-lyrics-label">Plain lyrics</p>
+            {onTimeLyrics && (
+              <button
+                type="button"
+                className="sync-text-btn"
+                onClick={(event) => onTimeLyrics(event.currentTarget)}
+              >
+                Sync lyrics…
+              </button>
+            )}
+          </div>
           <p className="plain-lyrics-text">{plainLyrics ?? 'Loading lyrics text…'}</p>
         </div>
       ) : lyricsViewState === 'ready' ? (
@@ -182,11 +232,13 @@ export const MainLyricsPane = memo(function MainLyricsPane({
             return (
               <LyricLine
                 key={`${line.start_ms}-${line.text}`}
+                id={`lyric-line-${index}`}
                 index={index}
                 text={line.text}
                 proximityClass={getLyricProximityClass(index, activeLine)}
                 screenEdgeMotion={screenEdgeMotion[index] ?? null}
                 words={words}
+                canSeek={canSeek}
                 isKeyboardFocused={selectedLineIndex === index}
                 isLastEmpty={index === lyrics.length - 1}
                 isPaintCulled={isPaintCulled}
@@ -210,7 +262,10 @@ export const MainLyricsPane = memo(function MainLyricsPane({
           {...placeholderProps}
         />
       ))}
-      {isBrowsing && lyricsViewState === 'ready' && !chooser && (
+      {finder}
+      {!chooser && !isFinderActive && vocalCue}
+      {!chooser && !isFinderActive && syncRail}
+      {isBrowsing && lyricsViewState === 'ready' && !chooser && !isFinderActive && (
         <button type="button" className="lyrics-return" onClick={onReturnToCurrent}>
           Back to current line
         </button>

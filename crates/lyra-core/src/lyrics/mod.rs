@@ -2,6 +2,7 @@ pub mod cache;
 mod choice;
 pub mod import;
 pub mod lrclib;
+pub mod maker;
 pub mod offsets;
 pub mod parser;
 pub mod refresh;

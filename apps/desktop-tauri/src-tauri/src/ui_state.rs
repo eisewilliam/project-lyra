@@ -11,6 +11,8 @@ pub struct UiState {
     pub floating_visible: bool,
     #[serde(default)]
     pub karaoke_visible: bool,
+    #[serde(default)]
+    pub global_shortcuts_enabled: bool,
     /// Position lock: the marquee can't be dragged. It still takes hover and
     /// clicks unless `marquee_click_through` is on. Off by default, so the
     /// marquee can be moved straight away.
@@ -23,6 +25,10 @@ pub struct UiState {
     /// `None` keeps it in its default place (see `marquee_size`).
     #[serde(default, alias = "island_pos")]
     pub marquee_pos: Option<(i32, i32)>,
+    /// Screen edges the marquee is attached to (any combination of top/right/
+    /// bottom/left for edge and corner attachment).
+    #[serde(default)]
+    pub marquee_dock: marquee_size::DockEdges,
     /// `marquee_pos` has been checked for the top-centre starting place that
     /// earlier versions saved as though the user had chosen it. States saved
     /// before the check existed get it once; a fresh install needs none.
@@ -171,9 +177,11 @@ impl Default for UiState {
             marquee_visible: true,
             floating_visible: true,
             karaoke_visible: false,
+            global_shortcuts_enabled: false,
             marquee_locked: false,
             marquee_click_through: false,
             marquee_pos: None,
+            marquee_dock: marquee_size::DockEdges::default(),
             marquee_pos_checked: true,
             marquee_hide_when_idle: true,
             marquee_scale: None,
@@ -282,6 +290,26 @@ mod tests {
         assert!(!state.marquee_locked);
         assert!(state.marquee_hide_when_idle);
         assert_eq!(state.marquee_pos, None);
+        assert_eq!(state.marquee_dock, marquee_size::DockEdges::default());
+    }
+
+    #[test]
+    fn marquee_dock_round_trips_and_defaults_for_older_states() {
+        let legacy: UiState = serde_json::from_str(r#"{"marquee_visible":true}"#).unwrap();
+        assert_eq!(legacy.marquee_dock, marquee_size::DockEdges::default());
+
+        let docked = UiState {
+            marquee_dock: marquee_size::DockEdges {
+                top: false,
+                right: true,
+                bottom: true,
+                left: false,
+            },
+            ..UiState::default()
+        };
+        let saved = serde_json::to_string(&docked).unwrap();
+        let reloaded: UiState = serde_json::from_str(&saved).unwrap();
+        assert_eq!(reloaded.marquee_dock, docked.marquee_dock);
     }
 
     #[test]
@@ -351,6 +379,7 @@ mod tests {
         assert!(!state.marquee_visible);
         assert!(state.marquee_locked);
         assert!(state.marquee_click_through);
+        assert!(!state.global_shortcuts_enabled);
         assert_eq!(state.marquee_pos, Some((120, 840)));
         assert!(state.marquee_pos_checked);
         assert!(!state.marquee_hide_when_idle);

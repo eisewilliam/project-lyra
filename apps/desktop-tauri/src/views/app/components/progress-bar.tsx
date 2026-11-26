@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, type CSSProperties, type RefObject } from 'react';
 import type { TrackRef } from '@/types/tauri-contracts';
 import type { PositionBaseline } from '@/utils/playback-sync';
 import { playbackSeekMs } from '@/utils/tauri-commands';
 import type { LineRef } from '../types';
-import { formatMs, noop } from '../utils';
+import { formatMs, noop, pulseProgressTrack } from '../utils';
 
 /** Last line starting at or before `ms` (lyric time), by binary search. */
 function lineAt(lines: ReadonlyArray<LineRef>, ms: number): string | null {
@@ -77,12 +77,14 @@ export function ProgressBar({
   }, [lyrics, lyricOffsetMs, durationMs]);
   const hoverRef = useRef(false);
   const pressedRef = useRef(false);
+  const lastPreviewLineRef = useRef<string | null>(null);
 
   const updatePreview = useCallback((clientX: number) => {
     const preview = previewRef.current;
     const trackEl = progressTrackRef.current;
     const { lyrics: lines, lyricOffsetMs: offset, durationMs: duration } = latestRef.current;
     if (!preview || !trackEl || duration <= 0) return;
+    const wasVisible = preview.classList.contains('is-visible');
     const rect = trackEl.getBoundingClientRect();
     const barRect = preview.parentElement?.getBoundingClientRect() ?? rect;
     const pct = Math.min(1, Math.max(0, (clientX - rect.left) / Math.max(1, rect.width)));
@@ -90,15 +92,32 @@ export function ProgressBar({
     if (previewTimeRef.current) previewTimeRef.current.textContent = formatMs(ms);
     const line = lineAt(lines, ms - offset);
     if (previewLineRef.current) {
+      const prevLine = lastPreviewLineRef.current;
       previewLineRef.current.textContent = line ?? '';
       previewLineRef.current.hidden = !line;
+      if (
+        wasVisible
+        && line
+        && line !== prevLine
+        && !(typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches)
+      ) {
+        previewLineRef.current.animate(
+          [
+            { opacity: 0.55, transform: 'translateY(2px)' },
+            { opacity: 1, transform: 'translateY(0px)' },
+          ],
+          { duration: 130, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
+        );
+      }
     }
+    lastPreviewLineRef.current = line;
     preview.style.setProperty('--preview-x', `${rect.left - barRect.left + pct * rect.width}px`);
     preview.classList.add('is-visible');
   }, [progressTrackRef]);
 
   const hidePreview = useCallback(() => {
     if (hoverRef.current || pressedRef.current) return;
+    lastPreviewLineRef.current = null;
     previewRef.current?.classList.remove('is-visible');
   }, []);
 
@@ -132,8 +151,11 @@ export function ProgressBar({
     setPositionMs(targetMs);
     const now = performance.now();
     baselineRef.current = { ms: targetMs, at: now, targetMs: targetMs, targetAt: now, blendDur: 1 };
+    pulseProgressTrack(progressTrackRef.current);
     playbackSeekMs(targetMs).catch(noop);
   };
+
+  const clampedProgress = Math.max(0, Math.min(1, progressPct / 100));
 
   return (
     <div className="progress-bar">
@@ -141,6 +163,7 @@ export function ProgressBar({
       <div
         className={`progress-track ${trackStateClass}`}
         ref={progressTrackRef}
+        style={{ '--progress': String(clampedProgress) } as CSSProperties}
         onMouseDown={onTrackMouseDown}
         onMouseEnter={(event) => {
           if (!durationKnown) return;
@@ -170,8 +193,9 @@ export function ProgressBar({
         <div
           className="progress-fill"
           ref={progressFillRef}
-          style={{ transform: `scaleX(${Math.max(0, Math.min(1, progressPct / 100))})` }}
+          style={{ transform: `scaleX(${clampedProgress})` }}
         ></div>
+        <span className="progress-thumb" aria-hidden="true" />
       </div>
       <span className="time-label">{durationLabel}</span>
       <div className="scrub-preview" ref={previewRef} aria-hidden="true">

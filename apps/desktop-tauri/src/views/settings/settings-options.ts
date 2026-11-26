@@ -24,14 +24,13 @@ export const BROWSER_LYRICS_OPTIONS: SelectOption[] = [
 ];
 
 /** What the chosen browser-lyrics option does, shown under the row. */
-export const BROWSER_LYRICS_HINTS: Record<BrowserLyrics, string> = {
-  Ask: 'Asks before using a browser title and artist to find lyrics.',
-  Allow: 'Uses the title and artist a browser reports to find lyrics, and cover art while Discord presence is on.',
-  Deny: 'Media playing in a browser shows no lyrics.',
+export const BROWSER_LYRICS_HINTS: Partial<Record<BrowserLyrics, string>> = {
+  Ask: 'Asks before looking up the title and artist.',
+  Allow: 'Uses the title and artist for lyrics and, with Discord on, cover art.',
 };
 
 export const FONT_FAMILY_OPTIONS: SelectOption[] = [
-  { value: 'system-ui', label: 'System Default' },
+  { value: 'system-ui', label: 'System default' },
   { value: "'SF Pro Rounded', sans-serif", label: 'SF Pro Rounded' },
   { value: "'Inter', sans-serif", label: 'Inter' },
   { value: 'monospace', label: 'Monospace' },

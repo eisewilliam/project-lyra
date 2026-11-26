@@ -39,9 +39,11 @@ export function useProgressBarDrag({
     const pct = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
     const targetMs = Math.floor(pct * currentTrack.duration_ms);
 
+    const pctFixed = pct.toFixed(4);
     if (progressFillRef.current) {
-      progressFillRef.current.style.transform = `scaleX(${pct.toFixed(4)})`;
+      progressFillRef.current.style.transform = `scaleX(${pctFixed})`;
     }
+    progressTrackRef.current?.style.setProperty('--progress', pctFixed);
     if (positionLabelRef.current) {
       positionLabelRef.current.textContent = formatMs(targetMs);
     }

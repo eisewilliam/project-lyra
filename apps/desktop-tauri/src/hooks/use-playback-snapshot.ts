@@ -8,7 +8,7 @@ export function usePlaybackSnapshot({
   ensureWindowReady,
   onSnapshot,
 }: {
-  ensureWindowReady: () => Promise<void>;
+  ensureWindowReady?: () => Promise<void>;
   onSnapshot: (snapshot: RenderSnapshot) => void;
 }) {
   const onSnapshotRef = useRef(onSnapshot);
@@ -22,7 +22,7 @@ export function usePlaybackSnapshot({
     let cancelled = false;
 
     (async () => {
-      await ensureWindowReady();
+      await ensureWindowReady?.();
       if (cancelled) return;
 
       try {

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { interpolatePosition, type PositionBaseline } from '@/utils/playback-sync';
 import type { LyricWord } from '@/types/tauri-contracts';
 
@@ -72,9 +72,22 @@ export function useAudioVisualizer({
   // Read the active words through a ref so a new line doesn't tear down and
   // restart the animation loop (which used to happen on every playback tick).
   const wordsRef = useRef(activeLineWords);
+  const [reducedMotion, setReducedMotion] = useState(() => (
+    typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+  ));
+
   useEffect(() => {
     wordsRef.current = activeLineWords;
   }, [activeLineWords]);
+
+  useEffect(() => {
+    if (typeof matchMedia !== 'function') return;
+    const mql = matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => setReducedMotion(mql.matches);
+    sync();
+    mql.addEventListener('change', sync);
+    return () => mql.removeEventListener('change', sync);
+  }, []);
 
   useEffect(() => {
     const bars = visualizerRefs.current;
@@ -87,7 +100,7 @@ export function useAudioVisualizer({
       }
     };
 
-    if (!isPlaying || !pageVisible || !surfaceVisible) {
+    if (!isPlaying || !pageVisible || !surfaceVisible || reducedMotion) {
       setResting();
       return;
     }
@@ -126,6 +139,7 @@ export function useAudioVisualizer({
     isPlaying,
     pageVisible,
     surfaceVisible,
+    reducedMotion,
     trackArtist,
     trackKey,
     trackTitle,

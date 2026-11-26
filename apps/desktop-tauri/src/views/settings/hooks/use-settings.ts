@@ -23,7 +23,19 @@ import {
   updateSettings,
 } from '@/utils/tauri-commands';
 import { applyHostOsDataset } from '@/utils/os';
-import type { AutostartStatus, MonitorInfo, RenderSnapshot, UiState, AppSettings, SettingsPatch, UiStatePatch } from '@/types/tauri-contracts';
+import { subscribeSettingsActionError } from '@/utils/settings-action-runner';
+import type {
+  AppearanceSettings,
+  AppSettings,
+  AutostartStatus,
+  BehaviorSettings,
+  MonitorInfo,
+  RenderSnapshot,
+  SettingsPatch,
+  UiState,
+  UiStatePatch,
+  WindowSettings,
+} from '@/types/tauri-contracts';
 import {
   MARQUEE_SETTINGS_FIELDS,
   KARAOKE_SETTINGS_FIELDS,
@@ -54,11 +66,32 @@ export function useSettings() {
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
   const debounceRef = useRef<Record<string, DebouncedTask>>({});
   const [artworkSrc, setArtworkSrc] = useState('');
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let clearTimer: number | undefined;
+    const unsubscribe = subscribeSettingsActionError((message) => {
+      if (clearTimer !== undefined) globalThis.clearTimeout(clearTimer);
+      setActionError(message);
+      if (message) {
+        clearTimer = globalThis.setTimeout(() => {
+          clearTimer = undefined;
+          setActionError(null);
+        }, 4000);
+      }
+    });
+    return () => {
+      if (clearTimer !== undefined) globalThis.clearTimeout(clearTimer);
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     applyHostOsDataset();
 
+    let cancelled = false;
     let unlisten: (() => void) | undefined;
+    let unlistenApp: (() => void) | undefined;
     (async () => {
       const [ui, app, autostart, monitorList] = await Promise.all([
         getUiState(),
@@ -66,6 +99,7 @@ export function useSettings() {
         getAutostartStatus().catch((): AutostartStatus => 'disabled'),
         getAvailableMonitors().catch(() => [] as MonitorInfo[]),
       ]);
+      if (cancelled) return;
       const nextState = { ui, app };
       stateRef.current = nextState;
       setState(nextState);
@@ -78,8 +112,22 @@ export function useSettings() {
         stateRef.current = next;
         setState(next);
       });
+      unlistenApp = await listen<AppSettings>('app-settings-changed', (e) => {
+        const prev = stateRef.current;
+        const next = prev ? { ...prev, app: e.payload } : null;
+        stateRef.current = next;
+        setState(next);
+      });
+      if (cancelled) {
+        unlisten?.();
+        unlistenApp?.();
+      }
     })();
-    return () => unlisten?.();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+      unlistenApp?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -89,6 +137,28 @@ export function useSettings() {
         task.resolve();
       }
       debounceRef.current = {};
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    listen('main-click-through-restored', () => {
+      const previous = stateRef.current;
+      if (!previous || cancelled) return;
+      const next = {
+        ...previous,
+        app: { ...previous.app, window: { ...previous.app.window, click_through: false } },
+      };
+      stateRef.current = next;
+      setState(next);
+    }).then((stop) => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    }).catch(() => undefined);
+    return () => {
+      cancelled = true;
+      unlisten?.();
     };
   }, []);
 
@@ -211,11 +281,19 @@ export function useSettings() {
     }
   };
 
-  const appRollbackPatch = (previous: AppSettings, patch: SettingsPatch): Partial<AppSettings> => {
-    const rollback: Partial<AppSettings> = {};
-    if (patch.window) rollback.window = previous.window;
-    if (patch.appearance) rollback.appearance = previous.appearance;
-    if (patch.behavior) rollback.behavior = previous.behavior;
+  const pickPartial = <T extends object>(source: T, partial: Partial<T>): Partial<T> => {
+    const picked: Partial<T> = {};
+    for (const key of Object.keys(partial) as (keyof T)[]) {
+      picked[key] = source[key];
+    }
+    return picked;
+  };
+
+  const appRollbackPatch = (previous: AppSettings, patch: SettingsPatch): SettingsPatch => {
+    const rollback: SettingsPatch = {};
+    if (patch.window) rollback.window = pickPartial<WindowSettings>(previous.window, patch.window);
+    if (patch.appearance) rollback.appearance = pickPartial<AppearanceSettings>(previous.appearance, patch.appearance);
+    if (patch.behavior) rollback.behavior = pickPartial<BehaviorSettings>(previous.behavior, patch.behavior);
     return rollback;
   };
 
@@ -264,7 +342,13 @@ export function useSettings() {
       );
     },
     resetMarqueePosition: async () => {
-      await optimisticUiAction({ marquee_pos: null }, () => resetMarqueePosition());
+      await optimisticUiAction(
+        {
+          marquee_pos: null,
+          marquee_dock: { top: false, right: false, bottom: false, left: false },
+        },
+        () => resetMarqueePosition(),
+      );
     },
     setFont: async (surface: FloatingSurface | 'karaoke', scale: number) => {
       await optimisticUiAction(
@@ -287,8 +371,8 @@ export function useSettings() {
       await optimisticUiAction({ theme }, () => setTheme(theme));
     },
     updateAppSetting: async (category: keyof AppSettings, key: string, value: unknown, dbKey?: string) => {
-      const current = requireSettingsState();
-      const patch = { [category]: { ...current.app[category], [key]: value } } as SettingsPatch;
+      requireSettingsState();
+      const patch = { [category]: { [key]: value } } as SettingsPatch;
       const send = () => updateSettings(patch);
       await optimisticAppAction(
         patch,
@@ -339,6 +423,7 @@ export function useSettings() {
     autostartStatus,
     monitors,
     artworkSrc,
+    actionError,
     actions,
   };
 }

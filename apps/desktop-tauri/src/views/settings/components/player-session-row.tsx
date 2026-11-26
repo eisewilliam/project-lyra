@@ -21,9 +21,9 @@ const TRANSPORT_LABELS: Record<Transport, string> = {
 };
 
 const TIMING_LABELS: Record<PositionQuality, string> = {
-  Exact: 'Synced to the player',
-  Extrapolated: 'Synced to the player',
-  Missing: 'Not reported, lyrics cannot sync',
+  Exact: 'Follows the player',
+  Extrapolated: 'Follows the player',
+  Missing: 'Not reported, lyrics can’t sync',
 };
 
 function controlsLabel(caps: PlaybackCaps): string {
@@ -129,7 +129,7 @@ export function PlayerSessionRow({
           <dd>{detectedAsLabel(session)}</dd>
           <dt>Read through</dt>
           <dd>{TRANSPORT_LABELS[session.transport]}</dd>
-          <dt>Timing</dt>
+          <dt>Sync</dt>
           <dd>{TIMING_LABELS[session.position_quality]}</dd>
           <dt>Controls</dt>
           <dd>{controlsLabel(session.caps)}</dd>

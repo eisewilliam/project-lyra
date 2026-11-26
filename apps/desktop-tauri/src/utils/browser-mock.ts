@@ -1,11 +1,14 @@
 import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
 import { emit } from '@tauri-apps/api/event';
-import { marqueeBaseHeight } from '@/constants/marquee-size';
+import { MARQUEE_MAX_BASE_WIDTH, MARQUEE_MIN_BASE_WIDTH, marqueeBaseHeight } from '@/constants/marquee-size';
 import type {
   AppSettings,
+  MarqueeDock,
+  MarqueeDragFeedback,
   MarqueeFrame,
   MarqueeSettingsPatch,
   KaraokeSettingsPatch,
+  SettingsPatch,
   UiState,
   UpdateInfo,
   RenderSnapshot,
@@ -166,12 +169,14 @@ if (!isTauri) {
   };
 
   const defaultUiState: UiState = {
+    global_shortcuts_enabled: false,
     marquee_visible: false,
     floating_visible: true,
     karaoke_visible: false,
     marquee_locked: false,
     marquee_click_through: false,
     marquee_pos: null,
+    marquee_dock: { top: false, right: false, bottom: false, left: false },
     marquee_hide_when_idle: true,
     marquee_scale: null,
     marquee_base_width: 600,
@@ -189,10 +194,10 @@ if (!isTauri) {
     theme: 'dark',
     karaoke_position: 'bottom',
     karaoke_alignment: 'center',
-    karaoke_width_pct: 80,
-    karaoke_offset_px: 20,
+    karaoke_width_pct: 100,
+    karaoke_offset_px: 24,
     karaoke_lines: 2,
-    karaoke_bg_opacity: 0.5,
+    karaoke_bg_opacity: 0,
     karaoke_bold: true,
     autostart_enabled: false,
     preferred_monitor: null,
@@ -231,19 +236,47 @@ if (!isTauri) {
     localStorage.setItem(LOCAL_STORAGE_UI_KEY, JSON.stringify(uiState));
   };
   /** The host's fit (`marquee_size.rs`) for a 1512-point laptop display. */
-  const mockMarqueeFrame = (): MarqueeFrame => {
+  const mockMarqueeFrame = (overrides?: Partial<MarqueeFrame>): MarqueeFrame => {
     const scale = uiState.marquee_scale ?? 0.85;
     const maxWidth = 680;
+    const dock: MarqueeDock = overrides?.dock ?? uiState.marquee_dock ?? {
+      top: false,
+      right: false,
+      bottom: false,
+      left: false,
+    };
+    const docked = dock.top || dock.right || dock.bottom || dock.left;
     return {
       scale,
       auto_scale: uiState.marquee_scale == null,
       width: Math.round(Math.min((uiState.marquee_base_width ?? 600) * scale, maxWidth)),
       height: Math.round(marqueeBaseHeight(uiState.marquee_lines ?? 2) * scale),
       notch_inset: 0,
-      docked: false,
+      docked,
+      dock,
       max_width: maxWidth,
+      ...overrides,
     };
   };
+
+  Object.assign(window, {
+    __lyraMockMarquee: {
+      setDock(dock: Partial<MarqueeDock>, extra?: Partial<MarqueeFrame>) {
+        const nextDock: MarqueeDock = {
+          top: false,
+          right: false,
+          bottom: false,
+          left: false,
+          ...dock,
+        };
+        uiState.marquee_dock = nextDock;
+        void emit('marquee-frame', mockMarqueeFrame({ dock: nextDock, ...extra }));
+      },
+      emitFeedback(feedback: MarqueeDragFeedback) {
+        void emit('marquee-drag-feedback', feedback);
+      },
+    },
+  });
 
   // --- Word Interpolation ---
   const interpolateWords = (text: string, startMs: number, endMs: number): LyricWord[] => {
@@ -274,7 +307,8 @@ if (!isTauri) {
   // --- Lyric choices (mirrors lyra-core's override layer) ---
   type MockTrack = (typeof MOCK_TRACKS)[number];
   type MockLine = MockTrack['lines'][number];
-  const mockChoices = new Map<string, { origin: LyricsOrigin; lines: MockLine[] }>();
+  type MockChoice = { origin: LyricsOrigin; lines: MockLine[]; plain?: string };
+  const mockChoices = new Map<string, MockChoice>();
   let mockRevision = 0;
   const linesFor = (trackData: MockTrack) => mockChoices.get(trackData.track.uri)?.lines ?? trackData.lines;
   const originFor = (uri: string): LyricsOrigin => mockChoices.get(uri)?.origin ?? { kind: 'automatic' };
@@ -284,7 +318,7 @@ if (!isTauri) {
       end_ms: line.end_ms + shiftMs,
       text: index === 1 ? `(${label}) ${line.text}` : line.text,
     }));
-  const setMockChoice = (uri: string, choice: { origin: LyricsOrigin; lines: MockLine[] } | null) => {
+  const setMockChoice = (uri: string, choice: MockChoice | null) => {
     if (choice) mockChoices.set(uri, choice);
     else mockChoices.delete(uri);
     mockRevision += 1;
@@ -293,7 +327,6 @@ if (!isTauri) {
   };
   const mockCandidates = (trackData: MockTrack, query: LyricSearchQuery): LyricCandidates => {
     const { track } = trackData;
-    const sung = trackData.lines.map((line) => line.text).filter((text) => text && !text.startsWith('♪'));
     const origin = originFor(track.uri);
     const make = (
       id: number,
@@ -307,7 +340,9 @@ if (!isTauri) {
       duration_ms: track.duration_ms,
       synced: true,
       fit: 'good',
-      preview: sung.slice(previewFrom, previewFrom + 3),
+      preview: (id === 102 ? markedLines(trackData.lines, 'match 102', 1000) : trackData.lines)
+        .slice(previewFrom)
+        .map((line) => ({ start_ms: overrides.synced === false ? null : line.start_ms, text: line.text })),
       current: origin.kind === 'picked' ? origin.id === id : origin.kind === 'automatic' && id === 101,
       ...overrides,
     });
@@ -325,6 +360,14 @@ if (!isTauri) {
     };
   };
   const mockDelay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const mockGlobalShortcutStatus = () => ({
+    available: true,
+    enabled: uiState.global_shortcuts_enabled,
+    bindings: [
+      ['M', 'Toggle Marquee'], ['K', 'Toggle Karaoke'], ['C', 'Turn off click-through'],
+      ['[', 'Show lyrics earlier'], [']', 'Show lyrics later'],
+    ].map(([key, label]) => ({ key, label, registered: uiState.global_shortcuts_enabled })),
+  });
 
   // --- Compute Render Snapshot ---
   const computeRenderSnapshot = (): RenderSnapshot => {
@@ -346,6 +389,8 @@ if (!isTauri) {
         line_progress: null,
         visible_lines: [],
         active_line_words: null,
+        vocal_cue: null,
+        lyric_offset_ms: 0,
         lyrics_origin: { kind: 'automatic' },
         lyrics_revision: mockRevision,
       };
@@ -367,6 +412,13 @@ if (!isTauri) {
 
     let activeIdx: number | null = null;
     const lines = linesFor(trackData);
+    const nextVocal = lines.find((line) => line.start_ms > adjustedPos && !line.text.startsWith('♪'));
+    const previousVocal = lines.findLast((line) => line.start_ms <= adjustedPos && !line.text.startsWith('♪'));
+    const untilVocal = nextVocal === undefined ? 0 : nextVocal.start_ms - adjustedPos;
+    const vocalCue = nextVocal && playbackState === 'Playing' && untilVocal > 0 && untilVocal <= 3000
+      && nextVocal.start_ms - (previousVocal?.end_ms ?? 0) >= 5000
+      ? { seconds: Math.ceil(untilVocal / 1000), next_line: nextVocal.text }
+      : null;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (line && line.start_ms <= adjustedPos) {
@@ -423,11 +475,13 @@ if (!isTauri) {
 
     return {
       playback,
-      lyrics_status: 'Ready',
+      lyrics_status: mockChoices.get(trackData.track.uri)?.plain === undefined ? 'Ready' : 'Unsynced',
       active_line_index: activeIdx,
       line_progress: lineProgress,
       visible_lines: visibleLines,
       active_line_words: activeLineWords,
+      vocal_cue: vocalCue,
+      lyric_offset_ms: offset,
       lyrics_origin: originFor(trackData.track.uri),
       lyrics_revision: mockRevision,
     };
@@ -498,7 +552,34 @@ if (!isTauri) {
       }
 
       case 'open_main_window':
+        uiState.floating_visible = true;
+        saveUiState();
+        void emit('ui-settings-changed', uiState);
+        void emit('main-window-reveal', {
+          from_x: 0,
+          from_y: -1,
+          was_hidden: true,
+          from_marquee: true,
+        });
         return;
+
+      case 'open_choose_lyrics': {
+        uiState.floating_visible = true;
+        saveUiState();
+        void emit('ui-settings-changed', uiState);
+        void emit('main-window-reveal', {
+          from_x: 0,
+          from_y: -1,
+          was_hidden: true,
+          from_marquee: true,
+        });
+        const uri = MOCK_TRACKS[currentTrackIdx]?.track.uri;
+        if (uri) {
+          void emit('open-choose-lyrics', uri);
+        }
+        Object.assign(window, { __lyraMockOpenedChooser: true });
+        return;
+      }
 
       case 'get_automation_denied':
         return [];
@@ -508,6 +589,16 @@ if (!isTauri) {
 
       case 'get_discord_presence_status':
         return { available: true, connected: false };
+
+      case 'set_global_shortcuts_enabled': {
+        const { enabled } = args as { enabled: boolean };
+        uiState.global_shortcuts_enabled = enabled;
+        saveUiState();
+        return mockGlobalShortcutStatus();
+      }
+
+      case 'get_global_shortcuts_status':
+        return mockGlobalShortcutStatus();
 
       case 'get_touch_bar_support':
         return { present: true, control_strip: true };
@@ -519,6 +610,7 @@ if (!isTauri) {
       case 'show_native_menu': {
         // Dev aid: set `window.__lyraMockMenuChoice` to a row id to pick it
         // the next time a native menu opens.
+        Object.assign(window, { __lyraMockLastMenu: args });
         const pick = window as { __lyraMockMenuChoice?: string | null };
         const chosen = pick.__lyraMockMenuChoice ?? null;
         pick.__lyraMockMenuChoice = null;
@@ -547,7 +639,10 @@ if (!isTauri) {
         return;
 
       case 'open_automation_settings':
+        return;
+
       case 'copy_text':
+        Object.assign(window, { __lyraMockLastCopied: (args as { text: string }).text });
         return;
 
       case 'complete_onboarding': {
@@ -615,13 +710,35 @@ if (!isTauri) {
         return;
       }
 
+      case 'resize_marquee': {
+        const { width, done } = args as { width: number; done: boolean };
+        const frame = mockMarqueeFrame();
+        const baseWidth = Math.round(Math.min(width, frame.max_width) / frame.scale);
+        const clampedBase = Math.min(MARQUEE_MAX_BASE_WIDTH, Math.max(MARQUEE_MIN_BASE_WIDTH, baseWidth));
+        if (done) {
+          uiState.marquee_base_width = clampedBase;
+          saveUiState();
+          void emit('ui-settings-changed', uiState);
+        }
+        void emit('marquee-frame', {
+          ...frame,
+          width: Math.round(Math.min(clampedBase * frame.scale, frame.max_width)),
+        });
+        return;
+      }
+
+      case 'begin_marquee_drag':
+      case 'move_marquee_drag':
+      case 'end_marquee_drag':
       case 'settle_marquee_position':
         return;
 
       case 'reset_marquee_position': {
         uiState.marquee_pos = null;
+        uiState.marquee_dock = { top: false, right: false, bottom: false, left: false };
         saveUiState();
         void emit('ui-settings-changed', uiState);
+        void emit('marquee-frame', mockMarqueeFrame());
         return;
       }
 
@@ -633,6 +750,11 @@ if (!isTauri) {
 
       case 'get_all_lines':
         return get_all_lines();
+
+      case 'get_plain_lyrics': {
+        const track = MOCK_TRACKS[currentTrackIdx];
+        return track ? mockChoices.get(track.track.uri)?.plain ?? null : null;
+      }
 
       case 'get_settings':
         return settings;
@@ -792,7 +914,10 @@ if (!isTauri) {
       case 'set_pinned_app':
       case 'set_only_music':
       case 'set_app_rule':
+        return { pinned_app: null, only_music: true, app_rules: {} } satisfies MediaPolicyView;
+
       case 'set_track_override':
+        Object.assign(window, { __lyraMockLastTrackOverride: args });
         return { pinned_app: null, only_music: true, app_rules: {} } satisfies MediaPolicyView;
 
       case 'playback_raise':
@@ -824,10 +949,25 @@ if (!isTauri) {
         await mockDelay(400);
         setMockChoice(trackKey, {
           origin: { kind: 'picked', id },
-          lines: markedLines(trackData.lines, `match ${id}`, id === 102 ? 1000 : 0),
+          ...(id === 103
+            ? { lines: [], plain: trackData.lines.slice(1).map((line) => line.text).join('\n') }
+            : { lines: markedLines(trackData.lines, `match ${id}`, id === 102 ? 1000 : 0) }),
         });
         return;
       }
+
+      case 'save_timed_lyrics': {
+        const { trackKey, lines } = args as { trackKey: string; lines: { start_ms: number; text: string }[] };
+        const track = MOCK_TRACKS[currentTrackIdx]?.track;
+        if (!track || track.uri !== trackKey) throw 'The playing track changed.';
+        setMockChoice(trackKey, { origin: { kind: 'timed' }, lines: lines.map((line, i) => ({
+          ...line, end_ms: lines[i + 1]?.start_ms ?? track.duration_ms,
+        })) });
+        return;
+      }
+
+      case 'publish_timed_lyrics':
+        throw 'Publishing is available in the desktop app.';
 
       case 'import_lyrics_file': {
         const trackData = MOCK_TRACKS[currentTrackIdx];
@@ -847,7 +987,7 @@ if (!isTauri) {
       }
 
       case 'update_settings': {
-        const { patch } = args as { patch: Partial<AppSettings> };
+        const { patch } = args as { patch: SettingsPatch };
         if (patch.window) settings.window = { ...settings.window, ...patch.window };
         if (patch.appearance) settings.appearance = { ...settings.appearance, ...patch.appearance };
         if (patch.behavior) settings.behavior = { ...settings.behavior, ...patch.behavior };
@@ -871,6 +1011,10 @@ if (!isTauri) {
 
       case 'set_preferred_monitor': {
         const { name } = args as { name: string | null };
+        if (uiState.preferred_monitor !== name) {
+          uiState.marquee_pos = null;
+          uiState.marquee_dock = { top: false, right: false, bottom: false, left: false };
+        }
         uiState.preferred_monitor = name;
         saveUiState();
         void emit('ui-settings-changed', uiState);
@@ -879,6 +1023,15 @@ if (!isTauri) {
 
       case 'window_ready':
         return;
+
+      case 'plugin:window|current_monitor':
+        return {
+          name: 'Mock Monitor',
+          size: { width: 1920, height: 1080 },
+          position: { x: 0, y: 0 },
+          workArea: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1080 } },
+          scaleFactor: 1,
+        };
 
       case 'get_autostart_status':
         return uiState.autostart_enabled ? 'enabled' : 'disabled';

@@ -7,6 +7,8 @@ adapter or player. The website names Spotify, Apple Music and YouTube Music
 players that show up in your computer's media controls"; name another player
 there only once it has been verified.
 
+The main window can time plain or pasted lyrics whenever a followed player reports a live playback position. Seeking is optional. Local saves work without album metadata. Sharing to LRCLIB requires a title, artist, album and track length.
+
 ## Legend
 
 | Mark | Meaning |
@@ -42,6 +44,18 @@ were tested in Chrome on both OSes, including seeking. YouTube skipping works
 within playlists. OS and app versions were not specified; browser results
 apply to Chrome with these players.
 
+## Lyrics and global shortcuts
+
+The main window can find text in synced or plain lyrics. Jumping from a
+search result requires timed lyrics and a player that supports seeking. The
+vocal countdown requires timed lyrics and a reported playback position.
+
+Settings → General can enable global shortcuts for Marquee, Karaoke,
+click-through, and lyric timing on macOS, Windows, and Linux with X11.
+Timing shortcuts apply while a lyric window is visible.
+Native Wayland sessions cannot register these shortcuts. Under XWayland,
+availability depends on the desktop compositor.
+
 ## Media detection (all OSes)
 
 Lyra follows music only by default. Every session is classified as music,
@@ -75,13 +89,12 @@ rules and the selected player can be changed while the app is closed.
 ## Opening the player from Lyra
 
 The main window shows the source's monochrome mark on the album art. Clicking it
-brings the player forward on the current track where the OS allows:
+brings the player forward as it was, without changing what it shows, where the
+OS allows:
 
 | OS | Player | What opens |
 |---|---|---|
-| macOS | Spotify | The track in Spotify (`spotify:track:` link) |
-| macOS | Music.app | Music, with the playing track selected |
-| macOS | Now Playing apps and installed web apps | The app (YouTube Music app, browser window) |
+| macOS | Spotify, Music.app, Now Playing apps and installed web apps | The app, by bundle ID (YouTube Music app, browser window) |
 | Windows | Packaged apps (Apple Music) | The app, through its app ID |
 | Windows | Spotify | Spotify (`spotify:` link) |
 | Windows | Browsers and other desktop apps | Not supported; the mark is not clickable |
@@ -174,8 +187,12 @@ Notes:
   `CanGoPrevious` and `CanSeek`; seeking falls back to relative `Seek` when a
   player has no usable track ID. `file://` artwork is served via `lyra-art://`.
 - Apple Music has no Linux app; its web player is covered by the browser row.
-- Type-checked with `cargo clippy --target x86_64-unknown-linux-gnu` (native
-  library probes stubbed, nothing linked); not yet run on Linux.
+- On Fedora 45 Workstation (x86-64, GNOME in UTM), Lyra 0.3.0-beta.2 followed
+  Rhythmbox over MPRIS, showed the track title and artist, and controlled
+  pause, resume, and seek. The published RPM needed Fedora's `openssl3-libs`
+  package before it could launch on the clean guest.
+- On the same guest, the local build's Marquee measured 48 px with one line
+  and 61 px with two lines at the tested display size, using XWayland.
 
 ## Discord presence
 

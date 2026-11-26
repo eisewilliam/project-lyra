@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export type ShortcutFeedback = 'play' | 'pause' | 'forward' | 'back' | 'next' | 'previous';
+export type ShortcutFeedback = 'play' | 'pause' | 'forward' | 'back' | 'next' | 'previous' | 'copied-line' | 'copied-all';
 export type ShortcutHudState = { kind: ShortcutFeedback; id: number };
 
 const HUD_MS = 900;
