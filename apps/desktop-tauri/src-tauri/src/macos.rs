@@ -1222,11 +1222,13 @@ pub fn apply_marquee_frame(
                 let dock_right_inset = (bounds.width - bounds.work_safe.right).max(0.0);
                 let over_menu_bar = dock.top || local_origin_pt.1 < menu_bar_inset.max(0.5);
                 let over_visible_dock = (dock_bottom_inset >= 16.0
-                    && (dock.bottom || local_origin_pt.1 + size_pt.1 > bounds.work_safe.bottom + 0.5))
+                    && (dock.bottom
+                        || local_origin_pt.1 + size_pt.1 > bounds.work_safe.bottom + 0.5))
                     || (dock_left_inset >= 16.0
                         && (dock.left || local_origin_pt.0 < bounds.work_safe.left - 0.5))
                     || (dock_right_inset >= 16.0
-                        && (dock.right || local_origin_pt.0 + size_pt.0 > bounds.work_safe.right + 0.5));
+                        && (dock.right
+                            || local_origin_pt.0 + size_pt.0 > bounds.work_safe.right + 0.5));
                 let level = if over_menu_bar {
                     LEVEL_ABOVE_MENU_BAR
                 } else if over_visible_dock {
@@ -1244,8 +1246,13 @@ pub fn apply_marquee_frame(
     {
         let _ = (app, screen_origin_pt, local_origin_pt, bleed);
         let sf = window.scale_factor().unwrap_or(1.0).max(0.5);
-        let cur_size = window.outer_size().ok().map(|s| (f64::from(s.width) / sf, f64::from(s.height) / sf));
-        if cur_size.is_none_or(|(w, h)| (w - size_pt.0).abs() >= 0.5 || (h - size_pt.1).abs() >= 0.5) {
+        let cur_size = window
+            .outer_size()
+            .ok()
+            .map(|s| (f64::from(s.width) / sf, f64::from(s.height) / sf));
+        if cur_size
+            .is_none_or(|(w, h)| (w - size_pt.0).abs() >= 0.5 || (h - size_pt.1).abs() >= 0.5)
+        {
             window.set_size(tauri::LogicalSize::new(size_pt.0, size_pt.1))?;
         }
         if !crate::linux::native_wayland() {

@@ -576,8 +576,7 @@ pub fn settle_placement(
     // Resolve horizontal dock first so side-docked vertical snapping can include
     // vertical screen centering.
     let dock_left = active.left || (!active.right && x <= bounds.left_dock_line(false));
-    let dock_right =
-        !dock_left && (active.right || x + width >= bounds.right_dock_line(false));
+    let dock_right = !dock_left && (active.right || x + width >= bounds.right_dock_line(false));
 
     let settled_x = if dock_left {
         dock.left = true;
@@ -608,8 +607,7 @@ pub fn settle_placement(
     };
 
     let dock_top = active.top || (!active.bottom && y <= bounds.top_dock_line(false));
-    let dock_bottom =
-        !dock_top && (active.bottom || y + height >= bounds.bottom_dock_line(false));
+    let dock_bottom = !dock_top && (active.bottom || y + height >= bounds.bottom_dock_line(false));
 
     let settled_y = if dock_top {
         dock.top = true;
@@ -773,17 +771,13 @@ pub fn evaluate_liquid_drag(
     if suppress.top && raw_y > bounds.work_safe.top + ENTRY_SUPPRESS_CLEARANCE_PT {
         suppress.top = false;
     }
-    if suppress.bottom
-        && (raw_y + height) < bounds.work_safe.bottom - ENTRY_SUPPRESS_CLEARANCE_PT
-    {
+    if suppress.bottom && (raw_y + height) < bounds.work_safe.bottom - ENTRY_SUPPRESS_CLEARANCE_PT {
         suppress.bottom = false;
     }
     if suppress.left && raw_x > bounds.work_safe.left + ENTRY_SUPPRESS_CLEARANCE_PT {
         suppress.left = false;
     }
-    if suppress.right
-        && (raw_x + width) < bounds.work_safe.right - ENTRY_SUPPRESS_CLEARANCE_PT
-    {
+    if suppress.right && (raw_x + width) < bounds.work_safe.right - ENTRY_SUPPRESS_CLEARANCE_PT {
         suppress.right = false;
     }
 
@@ -1320,8 +1314,10 @@ fn adjacent_monitors(screens: &[ScreenInfo], idx: usize) -> AdjacentMonitors {
         if j == idx {
             continue;
         }
-        let overlap_y = s.global_y < o.global_y + o.global_h && o.global_y < s.global_y + s.global_h;
-        let overlap_x = s.global_x < o.global_x + o.global_w && o.global_x < s.global_x + s.global_w;
+        let overlap_y =
+            s.global_y < o.global_y + o.global_h && o.global_y < s.global_y + s.global_h;
+        let overlap_x =
+            s.global_x < o.global_x + o.global_w && o.global_x < s.global_x + s.global_w;
         if overlap_y && (o.global_x + o.global_w - s.global_x).abs() <= tol {
             adj.left = true;
         }
@@ -1492,7 +1488,11 @@ fn drive_spring_to(
     if !animate || crate::macos::reduce_motion() {
         let generation = state.marquee_fit.bump_generation();
         {
-            let mut anim = state.marquee_fit.animator.lock().unwrap_or_else(|e| e.into_inner());
+            let mut anim = state
+                .marquee_fit
+                .animator
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             anim.generation = generation;
             anim.running = false;
             anim.spring.snap_all(target);
@@ -1517,7 +1517,11 @@ fn drive_spring_to(
     let generation;
     let tick_pending;
     {
-        let mut anim = state.marquee_fit.animator.lock().unwrap_or_else(|e| e.into_inner());
+        let mut anim = state
+            .marquee_fit
+            .animator
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let was_running = anim.running;
         let prev_screen = anim.screen.clone();
         let same_screen = prev_screen
@@ -1615,7 +1619,11 @@ fn step_animator_on_main_thread(app: &AppHandle, generation: u64) {
     };
 
     let (x, y, w, h, bleed, screen, dock, settled) = {
-        let mut anim = state.marquee_fit.animator.lock().unwrap_or_else(|e| e.into_inner());
+        let mut anim = state
+            .marquee_fit
+            .animator
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if !anim.running || anim.generation != generation {
             return;
         }
@@ -1668,7 +1676,11 @@ fn begin_marquee_drag_now(app: &AppHandle) {
     let _gen = state.marquee_fit.bump_generation();
     state.marquee_fit.animating.store(false, Ordering::Release);
     {
-        let mut anim = state.marquee_fit.animator.lock().unwrap_or_else(|e| e.into_inner());
+        let mut anim = state
+            .marquee_fit
+            .animator
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         anim.running = false;
     }
 
@@ -1682,7 +1694,8 @@ fn begin_marquee_drag_now(app: &AppHandle) {
             let idx = screen_index_for_point(&screens, gx + w / 2.0, gy + h / 2.0).unwrap_or(0);
             (gx, gy, w, h, idx)
         } else if let Some(pos) = window_position(&window) {
-            let size = window_points(&window).unwrap_or((f64::from(DEFAULT_BASE_WIDTH), TWO_LINE_HEIGHT));
+            let size =
+                window_points(&window).unwrap_or((f64::from(DEFAULT_BASE_WIDTH), TWO_LINE_HEIGHT));
             let monitor = marquee_monitor(&window);
             let idx = monitor
                 .as_ref()
@@ -1713,7 +1726,11 @@ fn begin_marquee_drag_now(app: &AppHandle) {
         bleed: GlassBleed::from_dock(dock, 0.0, 0.0),
     };
     {
-        let mut anim = state.marquee_fit.animator.lock().unwrap_or_else(|e| e.into_inner());
+        let mut anim = state
+            .marquee_fit
+            .animator
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         anim.spring = FrameSpring::at(init_target);
         anim.target = init_target;
         anim.dock = dock;
@@ -1736,7 +1753,11 @@ fn begin_marquee_drag_now(app: &AppHandle) {
         last_notch_inset,
         straddling: false,
     };
-    *state.marquee_fit.drag.lock().unwrap_or_else(|e| e.into_inner()) = Some(session);
+    *state
+        .marquee_fit
+        .drag
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some(session);
     state.marquee_fit.dragging.store(true, Ordering::Release);
 }
 
@@ -1778,7 +1799,11 @@ fn move_marquee_drag_now(app: &AppHandle, dx: f64, dy: f64) {
         return;
     }
 
-    let mut drag_guard = state.marquee_fit.drag.lock().unwrap_or_else(|e| e.into_inner());
+    let mut drag_guard = state
+        .marquee_fit
+        .drag
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let Some(session) = drag_guard.as_mut() else {
         return;
     };
@@ -1915,7 +1940,9 @@ fn move_marquee_drag_now(app: &AppHandle, dx: f64, dy: f64) {
     } else if !step.dock.left && (target_w - current_w).abs() >= 0.5 {
         step.target_x += (current_w - target_w) / 2.0;
         if !session.straddling {
-            step.target_x = step.target_x.clamp(0.0, (screen.bounds.width - target_w).max(0.0));
+            step.target_x = step
+                .target_x
+                .clamp(0.0, (screen.bounds.width - target_w).max(0.0));
         }
     }
     if step.dock.bottom {
@@ -1979,7 +2006,11 @@ fn move_marquee_drag_now(app: &AppHandle, dx: f64, dy: f64) {
     let attached_or_detached = step.dock != prev_dock;
     let reduce = crate::macos::reduce_motion();
     let (prev_target_w, prev_target_h) = {
-        let anim = state.marquee_fit.animator.lock().unwrap_or_else(|e| e.into_inner());
+        let anim = state
+            .marquee_fit
+            .animator
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         (anim.target.w, anim.target.h)
     };
     let size_changed =
@@ -1994,7 +2025,11 @@ fn move_marquee_drag_now(app: &AppHandle, dx: f64, dy: f64) {
             SpringPreset::Chase
         };
         {
-            let mut anim = state.marquee_fit.animator.lock().unwrap_or_else(|e| e.into_inner());
+            let mut anim = state
+                .marquee_fit
+                .animator
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             if !already_running {
                 let h_changed =
                     step.dock.left != prev_dock.left || step.dock.right != prev_dock.right;
@@ -2021,7 +2056,11 @@ fn move_marquee_drag_now(app: &AppHandle, dx: f64, dy: f64) {
         let generation = state.marquee_fit.bump_generation();
         state.marquee_fit.animating.store(false, Ordering::Release);
         {
-            let mut anim = state.marquee_fit.animator.lock().unwrap_or_else(|e| e.into_inner());
+            let mut anim = state
+                .marquee_fit
+                .animator
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             anim.generation = generation;
             anim.running = false;
             anim.spring.snap_all(target);
@@ -2078,7 +2117,11 @@ fn end_marquee_drag_now(app: &AppHandle) {
 
     let (active_dock, screen, cur_x, cur_y, cur_w, cur_h) = if let Some(s_session) = session {
         let anim_target = {
-            let anim = state.marquee_fit.animator.lock().unwrap_or_else(|e| e.into_inner());
+            let anim = state
+                .marquee_fit
+                .animator
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             anim.target
         };
         let screen = screens
@@ -2108,15 +2151,8 @@ fn end_marquee_drag_now(app: &AppHandle) {
     };
 
     let prefs = SizePrefs::from_ui(&state.ui.snapshot());
-    let ((mut sx, mut sy), settled_dock) = settle_placement(
-        screen.bounds,
-        cur_x,
-        cur_y,
-        cur_w,
-        cur_h,
-        active_dock,
-        true,
-    );
+    let ((mut sx, mut sy), settled_dock) =
+        settle_placement(screen.bounds, cur_x, cur_y, cur_w, cur_h, active_dock, true);
 
     // Recompute frame at settled center/dock (e.g. if snapping aligned under notch).
     let frame = frame_with_center(prefs, screen.bounds.display(), settled_dock, |w| {
@@ -2350,7 +2386,10 @@ pub fn fit_marquee_now(app: &AppHandle, resize: bool) {
     let current_dock = if at_saved_place {
         ui.marquee_dock
     } else {
-        state.marquee_fit.current().map_or(DockEdges::NONE, |f| f.dock)
+        state
+            .marquee_fit
+            .current()
+            .map_or(DockEdges::NONE, |f| f.dock)
     };
 
     let (placement, display) = match screen.as_ref() {
@@ -2466,7 +2505,10 @@ fn place_marquee_now(app: &AppHandle, monitor: Option<tauri::Monitor>) {
             dock: ui.marquee_dock,
         },
     );
-    let (approx_w, approx_h) = (f64::from(approx_frame.width), f64::from(approx_frame.height));
+    let (approx_w, approx_h) = (
+        f64::from(approx_frame.width),
+        f64::from(approx_frame.height),
+    );
 
     let (origin, dock) = if let Some((px, py)) = saved {
         let sf = screen.sf;
@@ -2515,7 +2557,10 @@ fn place_marquee_now(app: &AppHandle, monitor: Option<tauri::Monitor>) {
             false,
         )
     } else {
-        (default_origin(screen.bounds.float_safe, fw, fh), DockEdges::NONE)
+        (
+            default_origin(screen.bounds.float_safe, fw, fh),
+            DockEdges::NONE,
+        )
     };
 
     if state.marquee_fit.replace(frame) {
@@ -3178,25 +3223,11 @@ mod tests {
             top: true,
             ..DockEdges::NONE
         };
-        let (wide, _, x) = resize_frame(
-            prefs,
-            NOTCHED,
-            top,
-            600.0,
-            ResizeEdge::Right,
-            100.0,
-            1412.0,
-        );
+        let (wide, _, x) =
+            resize_frame(prefs, NOTCHED, top, 600.0, ResizeEdge::Right, 100.0, 1412.0);
         assert_eq!((x, wide.notch_inset), (100.0, 32));
-        let (narrow, _, x) = resize_frame(
-            prefs,
-            NOTCHED,
-            top,
-            400.0,
-            ResizeEdge::Right,
-            100.0,
-            1412.0,
-        );
+        let (narrow, _, x) =
+            resize_frame(prefs, NOTCHED, top, 400.0, ResizeEdge::Right, 100.0, 1412.0);
         assert_eq!((x, narrow.notch_inset), (100.0, 0));
         assert!(narrow.docked);
         assert!(narrow.dock.top);

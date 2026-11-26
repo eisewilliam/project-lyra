@@ -1495,7 +1495,8 @@ mod tests {
 
         // When every surface was occluded, becoming visible requests a poll.
         visibility.set_occluded("marquee", true);
-        let any_visible = visibility.is_visible("marquee", true) || visibility.is_visible("main", true);
+        let any_visible =
+            visibility.is_visible("marquee", true) || visibility.is_visible("main", true);
         assert!(!any_visible);
         assert!(should_request_poll_on_unocclude(any_visible));
     }

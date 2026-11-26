@@ -928,8 +928,10 @@ mod tests {
         settings.behavior.browser_lyrics = BrowserLyrics::Allow;
         settings.behavior.hide_when_paused = true;
 
-        let patch: SettingsPatch =
-            serde_json::from_str(r#"{"behavior":{"battery_saver":true},"window":{"always_on_top":true}}"#).unwrap();
+        let patch: SettingsPatch = serde_json::from_str(
+            r#"{"behavior":{"battery_saver":true},"window":{"always_on_top":true}}"#,
+        )
+        .unwrap();
         if let Some(w) = patch.window {
             w.merge_into(&mut settings.window);
         }

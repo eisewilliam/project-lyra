@@ -353,11 +353,7 @@ fn open_lyra_inner(app: &AppHandle, from_marquee: bool) {
             let mut rt = state.runtime.lock().unwrap_or_else(|e| e.into_inner());
             rt.tick()
         };
-        let _ = app.emit_to(
-            EventTarget::webview_window("main"),
-            "playback-tick",
-            render,
-        );
+        let _ = app.emit_to(EventTarget::webview_window("main"), "playback-tick", render);
     }
 
     if (was_hidden || from_marquee) && !is_minimized {
