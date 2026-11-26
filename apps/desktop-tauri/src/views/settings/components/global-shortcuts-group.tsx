@@ -32,24 +32,26 @@ export function GlobalShortcutsGroup() {
   };
 
   return (
-    <Group title="Shortcuts">
-      <Row
-        label="Global shortcuts"
-        hint={status?.available === false ? 'Unavailable on this desktop.' : undefined}
-        disabled={!status?.available || pending}
-      >
-        <Toggle value={status?.enabled ?? false} onChange={setEnabled} />
-      </Row>
-      {error && <p className="shortcut-settings-error" role="alert">{error}</p>}
-      {status?.enabled && status.available && status.bindings.map((binding) => (
+    <>
+      <Group title="Shortcuts">
         <Row
-          key={binding.key}
-          label={binding.label}
-          hint={binding.registered ? undefined : 'Another app may be using this shortcut.'}
+          label="Global shortcuts"
+          hint={status?.available === false ? 'Unavailable on this desktop.' : undefined}
+          disabled={!status?.available || pending}
         >
-          <kbd className="global-shortcut-key">{isMac ? `⌘⌥⇧${binding.key}` : `Ctrl + Alt + Shift + ${binding.key}`}</kbd>
+          <Toggle value={status?.enabled ?? false} onChange={setEnabled} />
         </Row>
-      ))}
-    </Group>
+        {status?.enabled && status.available && status.bindings.map((binding) => (
+          <Row
+            key={binding.key}
+            label={binding.label}
+            hint={binding.registered ? undefined : 'Another app may be using this shortcut.'}
+          >
+            <kbd className="global-shortcut-key">{isMac ? `⌘ ⌥ ⇧ ${binding.key}` : `Ctrl + Alt + Shift + ${binding.key}`}</kbd>
+          </Row>
+        ))}
+      </Group>
+      {error && <p className="shortcut-settings-error" role="alert">{error}</p>}
+    </>
   );
 }

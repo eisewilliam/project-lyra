@@ -672,13 +672,13 @@ pub fn update_settings(patch: SettingsPatch, state: State<'_, AppState>, app: Ap
         let battery_saver_was = s.behavior.battery_saver;
 
         if let Some(w) = patch.window {
-            s.window = w;
+            w.merge_into(&mut s.window);
         }
         if let Some(a) = patch.appearance {
-            s.appearance = a;
+            a.merge_into(&mut s.appearance);
         }
         if let Some(b) = patch.behavior {
-            s.behavior = b;
+            b.merge_into(&mut s.behavior);
         }
 
         rt.update_settings(s.clone());

@@ -71,7 +71,7 @@ function lyricBlurLevel(value: number | undefined): string {
 }
 
 /** The system colour picker in a compact well, named by its row. */
-function ColorWell({ value, onChange }: Readonly<{ value: string; onChange: (color: string) => void }>) {
+function ColorWell({ value, onChange }: Readonly<{ value: string; onChange: (color: string) => void | Promise<void> }>) {
   const aria = useRowAria();
   return (
     <input
@@ -79,7 +79,7 @@ function ColorWell({ value, onChange }: Readonly<{ value: string; onChange: (col
       type="color"
       className="color-well"
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => runSettingsAction(onChange(e.target.value))}
     />
   );
 }
@@ -92,7 +92,14 @@ export function PinnedPreview({
 }: Readonly<{ section: Section; state: ConsolidatedState; artworkSrc: string }>) {
   const { ui, app } = state;
   if (section === 'marquee') {
-    return <MarqueePreview ui={ui} appearance={app.appearance} artworkSrc={artworkSrc} />;
+    return (
+      <MarqueePreview
+        ui={ui}
+        appearance={app.appearance}
+        batterySaver={app.behavior.battery_saver}
+        artworkSrc={artworkSrc}
+      />
+    );
   }
   if (section === 'karaoke') {
     return <KaraokePreview ui={ui} appearance={app.appearance} artworkSrc={artworkSrc} />;
@@ -141,7 +148,7 @@ export function Body({
     return (
       <>
         <Group title="System">
-          <Row label="Battery saver" tooltip="Checks playback once a second and reduces blur.">
+          <Row label="Battery saver" hint="Checks playback once a second and reduces blur.">
             <Toggle value={app.behavior.battery_saver} onChange={(v: boolean) => actions.updateAppSetting('behavior', 'battery_saver', v)} />
           </Row>
           <Row label="Hide when paused">
@@ -226,7 +233,11 @@ export function Body({
   if (section === 'appearance') {
     return (
       <>
-        <AppearancePreview appearance={app.appearance} artworkSrc={artworkSrc} />
+        <AppearancePreview
+          appearance={app.appearance}
+          batterySaver={app.behavior.battery_saver}
+          artworkSrc={artworkSrc}
+        />
         <div className="group-rows">
           <Row label="Theme">
             <CustomSelect
@@ -285,7 +296,7 @@ export function Body({
     return (
       <>
         <Group title="Visibility">
-          <Row label="Show Karaoke Lyrics">
+          <Row label={`Show ${activeLabel}`}>
             <Toggle value={ui.karaoke_visible} onChange={() => actions.toggleVisible('karaoke')} />
           </Row>
           <Row label="Show over full-screen apps">
@@ -382,7 +393,7 @@ export function Body({
         </Group>
 
         <Group title="Window">
-          <Row label="Keep window on top" hint={app.window.always_on_top ? 'Applies at normal window size.' : undefined}>
+          <Row label="Keep window on top" hint="Applies at normal window size.">
             <Toggle value={app.window.always_on_top} onChange={(v: boolean) => actions.updateAppSetting('window', 'always_on_top', v)} />
           </Row>
           <Row label="Pass clicks through">

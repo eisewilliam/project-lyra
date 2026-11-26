@@ -6,6 +6,7 @@ import type {
   MarqueeFrame,
   MarqueeSettingsPatch,
   KaraokeSettingsPatch,
+  SettingsPatch,
   UiState,
   UpdateInfo,
   RenderSnapshot,
@@ -886,7 +887,7 @@ if (!isTauri) {
       }
 
       case 'update_settings': {
-        const { patch } = args as { patch: Partial<AppSettings> };
+        const { patch } = args as { patch: SettingsPatch };
         if (patch.window) settings.window = { ...settings.window, ...patch.window };
         if (patch.appearance) settings.appearance = { ...settings.appearance, ...patch.appearance };
         if (patch.behavior) settings.behavior = { ...settings.behavior, ...patch.behavior };

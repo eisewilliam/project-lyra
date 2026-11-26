@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { SettingsSkeleton } from '@/components/settings-controls';
 import { TRANSPARENT_FALLBACK_ART } from '@/utils/artwork';
 import { detectHostOs } from '@/utils/os';
@@ -11,7 +11,6 @@ import { useSidebarGlass } from './hooks/use-sidebar-glass';
 import { useTouchBarSupport } from './hooks/use-touch-bar-support';
 import { useWindowFocused } from './hooks/use-window-focused';
 import { SETTINGS_SECTION_LABELS } from './settings-sections';
-import type { Section } from './types';
 import './settings.css';
 
 // Windows and Linux windows have no native title bar, so they draw their own
@@ -26,27 +25,25 @@ export default function Settings() {
     autostartStatus,
     monitors,
     artworkSrc,
+    actionError,
     actions,
   } = useSettings();
   const touchBar = useTouchBarSupport();
   const hasTouchBar = touchBar?.present ?? false;
 
   // The Touch Bar page exists only on Macs that have one.
-  const section = requested === 'touchbar' && touchBar && !touchBar.present ? 'general' : requested;
+  const section = requested === 'touchbar' && !hasTouchBar ? 'general' : requested;
   const activeLabel = SETTINGS_SECTION_LABELS[section];
   const paneRef = useRef<HTMLDivElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const sidebarGlass = useSidebarGlass(shellRef, sidebarRef);
   const windowFocused = useWindowFocused();
-  const edges = useScrollEdges(paneRef, state ? section : null);
 
-  // A new section starts at its top, like a native settings window.
-  const changeSection = (next: Section) => {
-    if (next === section) return;
+  useLayoutEffect(() => {
     if (paneRef.current) paneRef.current.scrollTop = 0;
-    setSection(next);
-  };
+  }, [section]);
+  const edges = useScrollEdges(paneRef, state ? section : null);
 
   const artworkSrcUrl = artworkSrc || TRANSPARENT_FALLBACK_ART;
 
@@ -66,7 +63,7 @@ export default function Settings() {
         ref={sidebarRef}
         section={section}
         showTouchBar={hasTouchBar}
-        onSectionChange={changeSection}
+        onSectionChange={setSection}
       />
 
       <main className="settings-pane flex min-w-0 flex-1 flex-col z-[1]">
@@ -103,7 +100,12 @@ export default function Settings() {
             <SettingsSkeleton />
           )}
         </div>
-        <footer className={`pane-footer shrink-0 ${edges.below ? 'has-more' : ''}`}>Changes apply immediately.</footer>
+        <footer
+          className={`pane-footer shrink-0 ${edges.below ? 'has-more' : ''} ${actionError ? 'has-error' : ''}`}
+          role={actionError ? 'alert' : undefined}
+        >
+          {actionError ?? 'Changes apply immediately.'}
+        </footer>
       </main>
     </div>
   );

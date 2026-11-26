@@ -323,9 +323,9 @@ export type AppSettings = {
 };
 
 export type SettingsPatch = Partial<{
-  window: WindowSettings;
-  appearance: AppearanceSettings;
-  behavior: BehaviorSettings;
+  window: Partial<WindowSettings>;
+  appearance: Partial<AppearanceSettings>;
+  behavior: Partial<BehaviorSettings>;
 }>;
 
 export type UiStatePatch = Partial<UiState>;

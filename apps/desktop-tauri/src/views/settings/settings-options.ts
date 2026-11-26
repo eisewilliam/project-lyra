@@ -30,7 +30,7 @@ export const BROWSER_LYRICS_HINTS: Partial<Record<BrowserLyrics, string>> = {
 };
 
 export const FONT_FAMILY_OPTIONS: SelectOption[] = [
-  { value: 'system-ui', label: 'System Default' },
+  { value: 'system-ui', label: 'System default' },
   { value: "'SF Pro Rounded', sans-serif", label: 'SF Pro Rounded' },
   { value: "'Inter', sans-serif", label: 'Inter' },
   { value: 'monospace', label: 'Monospace' },

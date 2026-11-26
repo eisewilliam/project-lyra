@@ -652,11 +652,126 @@ pub enum UiIntent {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WindowSettingsPatch {
+    pub x: Option<i32>,
+    pub y: Option<i32>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub always_on_top: Option<bool>,
+    pub click_through: Option<bool>,
+    pub hide_when_idle: Option<bool>,
+}
+
+impl WindowSettingsPatch {
+    pub fn merge_into(&self, target: &mut WindowSettings) {
+        if let Some(x) = self.x {
+            target.x = Some(x);
+        }
+        if let Some(y) = self.y {
+            target.y = Some(y);
+        }
+        if let Some(width) = self.width {
+            target.width = width;
+        }
+        if let Some(height) = self.height {
+            target.height = height;
+        }
+        if let Some(always_on_top) = self.always_on_top {
+            target.always_on_top = always_on_top;
+        }
+        if let Some(click_through) = self.click_through {
+            target.click_through = click_through;
+        }
+        if let Some(hide_when_idle) = self.hide_when_idle {
+            target.hide_when_idle = hide_when_idle;
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AppearanceSettingsPatch {
+    pub font_family: Option<String>,
+    pub font_size: Option<u32>,
+    pub text_color: Option<String>,
+    pub background_opacity: Option<f32>,
+    pub context_lines_above: Option<u32>,
+    pub context_lines_below: Option<u32>,
+    pub lyric_blur: Option<f32>,
+}
+
+impl AppearanceSettingsPatch {
+    pub fn merge_into(&self, target: &mut AppearanceSettings) {
+        if let Some(ref font_family) = self.font_family {
+            target.font_family = font_family.clone();
+        }
+        if let Some(font_size) = self.font_size {
+            target.font_size = font_size;
+        }
+        if let Some(ref text_color) = self.text_color {
+            target.text_color = text_color.clone();
+        }
+        if let Some(background_opacity) = self.background_opacity {
+            target.background_opacity = background_opacity;
+        }
+        if let Some(context_lines_above) = self.context_lines_above {
+            target.context_lines_above = context_lines_above;
+        }
+        if let Some(context_lines_below) = self.context_lines_below {
+            target.context_lines_below = context_lines_below;
+        }
+        if let Some(lyric_blur) = self.lyric_blur {
+            target.lyric_blur = lyric_blur;
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BehaviorSettingsPatch {
+    pub karaoke_mode: Option<bool>,
+    pub poll_interval_ms: Option<u64>,
+    pub hide_when_paused: Option<bool>,
+    pub browser_lyrics: Option<BrowserLyrics>,
+    pub battery_saver: Option<bool>,
+    pub discord_presence: Option<bool>,
+    pub discord_presence_spotify: Option<bool>,
+}
+
+impl BehaviorSettingsPatch {
+    pub fn merge_into(&self, target: &mut BehaviorSettings) {
+        if let Some(karaoke_mode) = self.karaoke_mode {
+            target.karaoke_mode = karaoke_mode;
+        }
+        if let Some(poll_interval_ms) = self.poll_interval_ms {
+            target.poll_interval_ms = poll_interval_ms;
+        }
+        if let Some(hide_when_paused) = self.hide_when_paused {
+            target.hide_when_paused = hide_when_paused;
+        }
+        if let Some(browser_lyrics) = self.browser_lyrics {
+            target.browser_lyrics = browser_lyrics;
+        }
+        if let Some(battery_saver) = self.battery_saver {
+            target.battery_saver = battery_saver;
+        }
+        if let Some(discord_presence) = self.discord_presence {
+            target.discord_presence = discord_presence;
+        }
+        if let Some(discord_presence_spotify) = self.discord_presence_spotify {
+            target.discord_presence_spotify = discord_presence_spotify;
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SettingsPatch {
-    pub window: Option<WindowSettings>,
-    pub appearance: Option<AppearanceSettings>,
-    pub behavior: Option<BehaviorSettings>,
+    pub window: Option<WindowSettingsPatch>,
+    pub appearance: Option<AppearanceSettingsPatch>,
+    pub behavior: Option<BehaviorSettingsPatch>,
 }
 
 impl Default for WindowSettings {
@@ -798,5 +913,33 @@ mod tests {
         let behavior: BehaviorSettings = serde_json::from_str(json).unwrap();
         assert_eq!(behavior.browser_lyrics, BrowserLyrics::Ask);
         assert!(behavior.hide_when_paused);
+    }
+
+    #[test]
+    fn partial_settings_patch_preserves_unmentioned_fields() {
+        let mut settings = SettingsSnapshot::default();
+        settings.window.x = Some(120);
+        settings.window.y = Some(80);
+        settings.behavior.browser_lyrics = BrowserLyrics::Allow;
+        settings.behavior.hide_when_paused = true;
+
+        let patch: SettingsPatch =
+            serde_json::from_str(r#"{"behavior":{"battery_saver":true},"window":{"always_on_top":true}}"#).unwrap();
+        if let Some(w) = patch.window {
+            w.merge_into(&mut settings.window);
+        }
+        if let Some(a) = patch.appearance {
+            a.merge_into(&mut settings.appearance);
+        }
+        if let Some(b) = patch.behavior {
+            b.merge_into(&mut settings.behavior);
+        }
+
+        assert!(settings.behavior.battery_saver);
+        assert_eq!(settings.behavior.browser_lyrics, BrowserLyrics::Allow);
+        assert!(settings.behavior.hide_when_paused);
+        assert!(settings.window.always_on_top);
+        assert_eq!(settings.window.x, Some(120));
+        assert_eq!(settings.window.y, Some(80));
     }
 }

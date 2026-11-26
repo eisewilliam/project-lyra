@@ -25,22 +25,31 @@ offered it as an update.
 ### Changed
 
 - Settings is easier to scan, with clearer labels, fewer inline explanations,
-  and more contrast for the help that remains. Hover or focus Battery saver
-  or Background darkness for details.
-- In Settings, pane changes and tooltips fade in place. Sliders track the
-  thumb directly, and arrow keys move between segmented choices.
+  and more contrast for the help that remains. Hover or focus Background
+  darkness for details; Battery saver keeps its short note inline.
+- In Settings, pane changes and tooltips fade in place, while section selection
+  moves cleanly in the sidebar. Sliders track the thumb directly, and arrow
+  keys move between segmented choices.
 - The artwork and playback controls move smoothly when you open or close
   Sync Lyrics. Closing a tool opened from Track Actions returns focus to
   that button. Playback buttons respond as soon as you press them.
 - Marquee gives immediate feedback when you press its play button and
   releases it when you start dragging the panel.
+- Settings previews now reflect Battery saver, lyric blur, font family, and
+  Karaoke edge distance live, and Settings displays failed save feedback
+  directly in its footer.
 
 ### Fixed
 
 - The Marquee uses its compact one- or two-line height on Linux.
+- Settings buttons stay aligned while showing feedback, the Marquee preview
+  fits in smaller windows, and switching panes opens them at the top.
 - On macOS, clicking the player mark or the Marquee artwork brings Spotify
   and Music forward as they were, like every other player, instead of
   jumping to the playing track.
+- In Settings → Players, buttons on macOS match the pop-up menus, remembered
+  players use full-width menus with Forget beside them, and the now-playing
+  row's hover no longer runs to its edges.
 - On macOS 26, the Settings sidebar keeps its album-art tint when the window
   loses focus.
 
