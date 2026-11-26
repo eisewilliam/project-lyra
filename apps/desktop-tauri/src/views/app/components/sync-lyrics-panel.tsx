@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState, type RefObject } from 'react';
 import { interpolatePosition, type PositionBaseline } from '@/utils/playback-sync';
 import {
-  describeOffset,
   isTapTargetStale,
   NUDGE_STEP_MS,
   offsetForTap,
@@ -9,48 +8,6 @@ import {
   TAP_STALE_MS,
 } from '../sync-timing';
 import type { LineRef } from '../types';
-
-const HOLD_DELAY_MS = 380;
-const HOLD_REPEAT_MS = 70;
-
-/** Press once to step; hold to keep stepping. Keyboard presses step once
- * per click, and key repeat does the rest. */
-function useHoldRepeat(step: () => void) {
-  const stepRef = useRef(step);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => {
-    stepRef.current = step;
-  });
-  const stop = () => {
-    clearTimeout(timer.current);
-    timer.current = undefined;
-  };
-  useEffect(() => () => clearTimeout(timer.current), []);
-  return {
-    onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => {
-      if (event.button !== 0) return;
-      // Keeps the release here if the pointer drifts off while held.
-      try {
-        event.currentTarget.setPointerCapture(event.pointerId);
-      } catch {
-        // Not an active pointer; release still ends the hold.
-      }
-      stop();
-      stepRef.current();
-      const repeat = () => {
-        stepRef.current();
-        timer.current = setTimeout(repeat, HOLD_REPEAT_MS);
-      };
-      timer.current = setTimeout(repeat, HOLD_DELAY_MS);
-    },
-    onPointerUp: stop,
-    onPointerCancel: stop,
-    onLostPointerCapture: stop,
-    onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
-      if (event.detail === 0) stepRef.current();
-    },
-  };
-}
 
 /** Line the lyrics up with the singer: tap as a line is sung, or nudge the
  * timing earlier or later. Changes apply live and are saved per song. */
@@ -147,9 +104,6 @@ export function SyncLyricsPanel({
     setCursor(target);
   };
 
-  const earlier = useHoldRepeat(() => onNudgeOffset(-NUDGE_STEP_MS));
-  const later = useHoldRepeat(() => onNudgeOffset(NUDGE_STEP_MS));
-
   let prompt = 'Tap when you hear';
   if (!targetLine) prompt = 'No lines left in this song';
   else if (!isPlaying) prompt = 'Play the song, then tap when you hear';
@@ -163,7 +117,10 @@ export function SyncLyricsPanel({
       tabIndex={-1}
     >
       <div className="sync-panel-header">
-        <h3 id={titleId} className="sync-panel-title">Sync lyrics</h3>
+        <div className="sync-panel-heading">
+          <h3 id={titleId} className="sync-panel-title">Adjust sync</h3>
+          {lyricOffsetMs !== 0 && <p className="sync-readout-note">Saved for this song</p>}
+        </div>
         <div className="sync-panel-header-actions">
           <button
             type="button"
@@ -212,40 +169,7 @@ export function SyncLyricsPanel({
           </button>
         )}
       </div>
-
-      <div className="sync-nudge">
-        <button
-          type="button"
-          className="sync-nudge-btn"
-          title="Show lyrics 0.1 s earlier. Hold to keep going. Shortcut: ["
-          {...earlier}
-        >
-          <IconChevron direction="left" />
-          Earlier
-        </button>
-        <div className="sync-readout">
-          <span className="sync-readout-value" aria-live="polite">{describeOffset(lyricOffsetMs)}</span>
-          {lyricOffsetMs !== 0 && <span className="sync-readout-note">Saved for this song</span>}
-        </div>
-        <button
-          type="button"
-          className="sync-nudge-btn is-later"
-          title="Show lyrics 0.1 s later. Hold to keep going. Shortcut: ]"
-          {...later}
-        >
-          Later
-          <IconChevron direction="right" />
-        </button>
-      </div>
     </div>
-  );
-}
-
-function IconChevron({ direction }: Readonly<{ direction: 'left' | 'right' }>) {
-  return (
-    <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d={direction === 'left' ? 'M12 5l-5 5 5 5' : 'M8 5l5 5-5 5'} />
-    </svg>
   );
 }
 

@@ -14,7 +14,7 @@ import {
   listLyricCandidates,
   resetLyricsChoice,
 } from '@/utils/tauri-commands';
-import { formatMs, noop } from '../utils';
+import { describeLyricsOrigin, formatMs, noop } from '../utils';
 
 const FIT_LABELS: Record<CandidateFit, string | null> = {
   good: null,
@@ -54,6 +54,7 @@ function asChoiceError(error: unknown): LyricChoiceError {
  * with the track's own title and artist or a typed search, or a lyrics file.
  * Shown in place of the lyrics; choosing closes it. */
 export function ChooseLyricsPanel({
+  closing = false,
   trackKey,
   trackTitle,
   trackArtist,
@@ -62,6 +63,7 @@ export function ChooseLyricsPanel({
   onAllowBrowserLyrics,
   onClose,
 }: Readonly<{
+  closing?: boolean;
   trackKey: string;
   /** Fill the search fields while the first search runs. */
   trackTitle: string;
@@ -168,13 +170,20 @@ export function ChooseLyricsPanel({
     }
   };
 
-  // Arrow keys move between matches, as in a list.
+  // Arrow keys move between matches (and Preview buttons), as in a list.
   const onListKeyDown = (event: React.KeyboardEvent<HTMLUListElement>) => {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    const rows = Array.from(listRef.current?.querySelectorAll<HTMLButtonElement>('button.chooser-row') ?? []);
-    const at = rows.indexOf(event.target as HTMLButtonElement);
+    const items = Array.from(listRef.current?.querySelectorAll<HTMLLIElement>(':scope > li') ?? []);
+    const targetEl = event.target instanceof Element ? event.target : null;
+    const currentItem = targetEl?.closest('li');
+    const at = currentItem ? items.indexOf(currentItem) : -1;
     if (at < 0) return;
-    const next = rows[Math.max(0, Math.min(rows.length - 1, at + (event.key === 'ArrowDown' ? 1 : -1)))];
+    const nextItem = items[Math.max(0, Math.min(items.length - 1, at + (event.key === 'ArrowDown' ? 1 : -1)))];
+    if (!nextItem) return;
+    const selector = targetEl?.classList.contains('chooser-preview-toggle')
+      ? 'button.chooser-preview-toggle'
+      : 'button.chooser-row';
+    const next = nextItem.querySelector<HTMLButtonElement>(selector);
     if (next) {
       event.preventDefault();
       next.focus();
@@ -188,9 +197,10 @@ export function ChooseLyricsPanel({
   return (
     <div
       ref={panelRef}
-      className="chooser"
+      className={closing ? 'chooser is-closing' : 'chooser'}
       role="group"
       aria-labelledby={titleId}
+      aria-hidden={closing || undefined}
       tabIndex={-1}
       onKeyDown={onKeyDown}
       onContextMenu={(event) => event.stopPropagation()}
@@ -291,7 +301,7 @@ export function ChooseLyricsPanel({
           {chooseError ? (
             <p className="chooser-footer-note is-error" role="alert">{ERROR_MESSAGES[chooseError]}</p>
           ) : (
-            <p className="chooser-footer-note">{describeOrigin(origin)}</p>
+            <p className="chooser-footer-note">{describeLyricsOrigin(origin)}</p>
           )}
           {origin.kind !== 'automatic' && (
             <button type="button" className="sync-text-btn" onClick={useAutomatic}>
@@ -377,9 +387,9 @@ function CandidateRow({
               {candidate.current && <span className="chooser-tag is-current">Showing</span>}
               <span
                 className="chooser-tag"
-                title={candidate.synced ? undefined : 'No timing: shows in this window only'}
+                title={candidate.synced ? undefined : 'Not synced: shows in this window only'}
               >
-                {candidate.synced ? 'Synced' : 'Plain text'}
+                {candidate.synced ? 'Synced' : 'Plain lyrics'}
               </span>
               {fitLabel && <span className="chooser-tag is-caution">{fitLabel}</span>}
             </span>
@@ -394,10 +404,13 @@ function CandidateRow({
           tabIndex={isTabStop ? 0 : -1}
           onClick={onTogglePreview}
         >
-          {expanded ? 'Hide' : 'Preview'}
+          <span className="chooser-toggle-labels" aria-hidden="true">
+            <span hidden={expanded}>Preview</span>
+            <span hidden={!expanded}>Hide</span>
+          </span>
         </button>
       </div>
-      <div id={previewId} hidden={!expanded}>
+      <div id={previewId} className="chooser-preview-slot" hidden={!expanded}>
         {expanded && (
           <ol className="chooser-full-preview" aria-label="Lyrics preview" tabIndex={0}>
             {candidate.preview.map((line, index) => (
@@ -422,11 +435,4 @@ function previewLineAt(lines: LyricCandidate['preview'], positionMs: number): nu
     else end = mid;
   }
   return start - 1;
-}
-
-function describeOrigin(origin: LyricsOrigin): string {
-  if (origin.kind === 'imported') {
-    return origin.name ? `Showing lyrics from “${origin.name}”` : 'Showing lyrics from your file';
-  }
-  return 'Showing lyrics you chose';
 }

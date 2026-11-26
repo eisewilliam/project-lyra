@@ -70,8 +70,8 @@ impl std::fmt::Display for LrclibHttpError {
 impl std::error::Error for LrclibHttpError {}
 
 pub struct LrclibClient {
-    http: reqwest::Client,
-    base_url: String,
+    pub(super) http: reqwest::Client,
+    pub(super) base_url: String,
     retry_backoff: Duration,
     /// LRCLIB's latest busy answer. Every lookup shares it, so a wait LRCLIB
     /// asks for holds for all of them, not only the request that got it.
@@ -178,7 +178,7 @@ impl LrclibClient {
     /// sharing it come back spread out. A pause longer than `MAX_RETRY_WAIT`
     /// is not waited: nothing is sent, and the lookup fails with the status
     /// that asked for it.
-    async fn wait_turn(&self) -> Result<()> {
+    pub(super) async fn wait_turn(&self) -> Result<()> {
         let busy = *self.lock_busy();
         let Some(busy) = busy else {
             return Ok(());
@@ -198,6 +198,16 @@ impl LrclibClient {
 
     /// Record a busy answer: nothing is sent for `pause` from now, or until
     /// an earlier answer's pause ends if that is later.
+    pub(super) fn record_publish_response(&self, response: &reqwest::Response) {
+        let status = response.status().as_u16();
+        if is_busy_status(status) {
+            self.note_busy(
+                status,
+                pause(self.retry_backoff, 1, parse_retry_after(response.headers())),
+            );
+        }
+    }
+
     fn note_busy(&self, status: u16, pause: Duration) {
         let now = Instant::now();
         let until = now + pause.min(MAX_PAUSE);

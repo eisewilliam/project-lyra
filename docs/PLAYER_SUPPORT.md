@@ -7,6 +7,8 @@ adapter or player. The website names Spotify, Apple Music and YouTube Music
 players that show up in your computer's media controls"; name another player
 there only once it has been verified.
 
+The main window can time plain or pasted lyrics whenever a followed player reports a live playback position. Seeking is optional. Local saves work without album metadata. Sharing to LRCLIB requires a title, artist, album and track length.
+
 ## Legend
 
 | Mark | Meaning |

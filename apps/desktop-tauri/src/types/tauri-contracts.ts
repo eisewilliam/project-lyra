@@ -164,6 +164,7 @@ export type VocalCue = { seconds: number; next_line: string };
 /** Where a track's lyrics came from. */
 export type LyricsOrigin =
   | { kind: 'automatic' }
+  | { kind: 'timed' }
   /** Another LRCLIB match the user chose. */
   | { kind: 'picked'; id: number | null }
   /** A lyrics file the user added. */

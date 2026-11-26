@@ -16,7 +16,7 @@ const lines = [
 
 describe('lyric sync timing', () => {
   test('describes offsets in seconds, in the direction the lyrics move', () => {
-    expect(describeOffset(0)).toBe('Original timing');
+    expect(describeOffset(0)).toBe('Original sync');
     expect(describeOffset(300)).toBe('0.3 s later');
     expect(describeOffset(-1250)).toBe('1.25 s earlier');
     expect(describeOffset(2000)).toBe('2.0 s later');

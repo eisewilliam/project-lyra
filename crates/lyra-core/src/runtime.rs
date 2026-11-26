@@ -336,6 +336,12 @@ impl LyraRuntime {
         }
     }
 
+    pub(crate) fn timed_override(&self) -> Option<&LyricDocument> {
+        (self.current_origin == LyricsOrigin::Timed)
+            .then_some(self.stored_doc.as_ref())
+            .flatten()
+    }
+
     pub fn current_origin(&self) -> &LyricsOrigin {
         &self.current_origin
     }

@@ -175,15 +175,32 @@ img {
   height: .32em;
   border-radius: 50%;
   background: currentColor;
-  opacity: .3;
+  opacity: .28;
+  transform: scale(0.8);
 }
 
 .vocal-countdown > [data-lit="true"] {
   opacity: 1;
+  transform: scale(1);
+}
+
+@keyframes vocal-dot-beat {
+  0% {
+    transform: scale(1.28);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .vocal-countdown > span {
-    transition: opacity var(--duration-fast) var(--ease-standard);
+    transition:
+      opacity var(--duration-fast) var(--ease-standard),
+      transform var(--duration-fast) var(--ease-standard);
+  }
+
+  :root:not([data-low-power="true"]) .vocal-countdown > [data-active="true"] {
+    animation: vocal-dot-beat 320ms var(--ease-standard);
   }
 }

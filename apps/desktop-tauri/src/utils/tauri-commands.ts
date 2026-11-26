@@ -258,6 +258,14 @@ export function chooseLyricCandidate(trackKey: string, id: number): Promise<void
 /** Ask for a lyrics file with the system's open panel and use it for the
  * playing track. Resolves false when the user cancels. The host explains a
  * file it can't use in a native alert. */
+export function saveTimedLyrics(trackKey: string, lines: { start_ms: number; text: string }[]): Promise<void> {
+  return invoke('save_timed_lyrics', { trackKey, lines });
+}
+
+export function publishTimedLyrics(trackKey: string): Promise<void> {
+  return invoke('publish_timed_lyrics', { trackKey });
+}
+
 export function importLyricsFile(): Promise<boolean> {
   return invoke('import_lyrics_file');
 }

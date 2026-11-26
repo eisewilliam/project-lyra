@@ -869,6 +869,19 @@ if (!isTauri) {
         return;
       }
 
+      case 'save_timed_lyrics': {
+        const { trackKey, lines } = args as { trackKey: string; lines: { start_ms: number; text: string }[] };
+        const track = MOCK_TRACKS[currentTrackIdx]?.track;
+        if (!track || track.uri !== trackKey) throw 'The playing track changed.';
+        setMockChoice(trackKey, { origin: { kind: 'timed' }, lines: lines.map((line, i) => ({
+          ...line, end_ms: lines[i + 1]?.start_ms ?? track.duration_ms,
+        })) });
+        return;
+      }
+
+      case 'publish_timed_lyrics':
+        throw 'Publishing is available in the desktop app.';
+
       case 'import_lyrics_file': {
         const trackData = MOCK_TRACKS[currentTrackIdx];
         if (!trackData) throw 'no_track';

@@ -4,8 +4,8 @@
 use super::refresh::{failure_reason, LyricsRefresh};
 use super::{import, LyricSource};
 use crate::domain::{
-    LyricCandidates, LyricChoiceError, LyricDocument, LyricSearchQuery, LyricsOrigin,
-    NotFoundReason, TrackRef,
+    LyricCandidate, LyricCandidates, LyricChoiceError, LyricDocument, LyricSearchQuery,
+    LyricsOrigin, NotFoundReason, TrackRef,
 };
 use crate::runtime::LyraRuntime;
 use std::sync::{Mutex, MutexGuard};
@@ -35,15 +35,31 @@ impl<S: LyricSource> LyricsRefresh<S> {
             .candidates(&track, &query)
             .await
             .map_err(|error| provider_error(&error))?;
-        let showing = {
+        let (showing, picked) = {
             let rt = lock(runtime)?;
-            rt.current_track()
-                .is_some_and(|current| current.uri == track.uri)
-                .then(|| rt.current_fingerprint())
-                .flatten()
+            let same_track = rt
+                .current_track()
+                .is_some_and(|current| current.uri == track.uri);
+            let picked = match rt.current_origin() {
+                LyricsOrigin::Picked { id } => *id,
+                _ => None,
+            };
+            (
+                same_track.then(|| rt.current_fingerprint()).flatten(),
+                picked,
+            )
         };
+        // Matches often share their text (one per album), so mark only one:
+        // the match the user picked, else the first with the showing text.
+        let matching = |c: &&LyricCandidate| Some(c.fingerprint) == showing;
+        let marked = candidates
+            .iter()
+            .filter(matching)
+            .find(|c| Some(c.id) == picked)
+            .or_else(|| candidates.iter().find(matching))
+            .map(|c| c.id);
         for candidate in &mut candidates {
-            candidate.current = Some(candidate.fingerprint) == showing;
+            candidate.current = Some(candidate.id) == marked;
         }
         Ok(LyricCandidates {
             track_key: track.uri,
@@ -104,7 +120,7 @@ impl<S: LyricSource> LyricsRefresh<S> {
 
     /// Save, then show. Disk writes happen outside the runtime lock; a lookup
     /// that lands in between finds the saved override and leaves it alone.
-    fn save_user_lyrics(
+    pub(super) fn save_user_lyrics(
         &self,
         runtime: &Mutex<LyraRuntime>,
         doc: LyricDocument,
@@ -155,7 +171,8 @@ mod tests {
     const AUTO: &str = "[00:01.00]Automatic";
     const CHOSEN: &str = "[00:01.00]Chosen";
 
-    /// Offers the automatic lyrics and one other match.
+    /// Offers the automatic lyrics, one other match, and a second match
+    /// with the automatic text (as another album's release would have).
     struct Matches;
     impl LyricSource for Matches {
         fn name(&self) -> &str {
@@ -169,7 +186,7 @@ mod tests {
             _: &TrackRef,
             _: &LyricSearchQuery,
         ) -> anyhow::Result<Vec<LyricCandidate>> {
-            Ok([(1, AUTO), (7, CHOSEN)]
+            Ok([(1, AUTO), (7, CHOSEN), (8, AUTO)]
                 .into_iter()
                 .map(|(id, text)| LyricCandidate {
                     id,
@@ -190,9 +207,12 @@ mod tests {
             track_key: &str,
             id: i64,
         ) -> anyhow::Result<Option<LyricDocument>> {
-            (id == 7)
-                .then(|| parse_lrc(track_key, CHOSEN, LyricSourceKind::Lrclib))
-                .transpose()
+            let text = match id {
+                7 => CHOSEN,
+                8 => AUTO,
+                _ => return Ok(None),
+            };
+            parse_lrc(track_key, text, LyricSourceKind::Lrclib).map(Some)
         }
     }
 
@@ -233,7 +253,11 @@ mod tests {
         let list = refresh.candidates(&rt, None).await.unwrap();
         assert_eq!(list.track_key, KEY);
         let current: Vec<_> = list.candidates.iter().map(|c| c.current).collect();
-        assert_eq!(current, [true, false], "the automatic match is showing");
+        assert_eq!(
+            current,
+            [true, false, false],
+            "only the first match with the showing text is marked"
+        );
 
         let before = rt.lock().unwrap().tick().lyrics_revision;
         refresh.choose(&rt, KEY, 7).await.unwrap();
@@ -248,7 +272,16 @@ mod tests {
         assert_eq!(first_line(&rt), "Chosen");
         let list = refresh.candidates(&rt, None).await.unwrap();
         let current: Vec<_> = list.candidates.iter().map(|c| c.current).collect();
-        assert_eq!(current, [false, true]);
+        assert_eq!(current, [false, true, false]);
+
+        refresh.choose(&rt, KEY, 8).await.unwrap();
+        let list = refresh.candidates(&rt, None).await.unwrap();
+        let current: Vec<_> = list.candidates.iter().map(|c| c.current).collect();
+        assert_eq!(
+            current,
+            [false, false, true],
+            "the picked duplicate is marked"
+        );
 
         refresh.reset_choice(&rt).unwrap();
         let render = rt.lock().unwrap().tick();

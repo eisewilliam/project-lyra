@@ -582,6 +582,32 @@ pub async fn choose_lyric_candidate(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn save_timed_lyrics(
+    track_key: String,
+    lines: Vec<lyra_core::lyrics::maker::TimedLine>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = handle.state::<AppState>();
+        state.lyrics.save_timed(&state.runtime, &track_key, &lines)
+    })
+    .await
+    .map_err(|_| "Couldn't save synced lyrics.")??;
+    broadcast_render(&state, &app);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn publish_timed_lyrics(
+    track_key: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.lyrics.publish_timed(&state.runtime, &track_key).await
+}
+
 /// Ask for a lyrics file with the system's open panel and use it for the
 /// track playing now. A file Lyra can't use gets a native alert saying why.
 /// Returns false when the user cancels.

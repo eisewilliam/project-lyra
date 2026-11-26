@@ -1,0 +1,356 @@
+.lyric-maker {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  width: min(760px, 100%);
+  max-height: 100%;
+  margin: 0 auto;
+  overflow: auto;
+  text-align: left;
+  color: inherit;
+  cursor: default;
+  outline: none;
+  animation: control-panel-enter var(--duration-fast) var(--ease-standard);
+}
+
+.lyric-maker p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.maker-label {
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.chooser-field.maker-textarea {
+  width: 100%;
+  min-height: 180px;
+  max-height: 360px;
+  height: auto;
+  padding: 10px 12px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.maker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.maker-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 14px;
+  border: 1px solid var(--main-control-border);
+  border-radius: 14px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--main-control-bg);
+  color: rgba(255, 255, 255, 0.9);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: default;
+  white-space: nowrap;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.maker-btn-secondary:hover:not(:disabled) {
+  background: var(--main-control-bg-hover);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
+}
+
+.maker-btn-secondary:active:not(:disabled) {
+  background: var(--main-control-bg-active);
+  transition-duration: 0s;
+}
+
+.maker-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 118, 108, 0.35);
+  border-radius: 14px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: rgba(255, 69, 58, 0.16);
+  color: var(--main-error-text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: default;
+  white-space: nowrap;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+.maker-btn-danger:hover:not(:disabled) {
+  background: rgba(255, 69, 58, 0.24);
+  border-color: rgba(255, 118, 108, 0.52);
+}
+
+.maker-btn-secondary:focus-visible,
+.maker-btn-danger:focus-visible {
+  outline: 2px solid var(--main-focus-ring);
+  outline-offset: 2px;
+}
+
+.lyric-maker button:disabled,
+.lyric-maker button[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.maker-discard,
+.maker-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.maker-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  animation: maker-stage-in 180ms var(--ease-standard);
+}
+
+@keyframes maker-stage-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+.maker-progress {
+  width: 100%;
+  height: 3px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.maker-progress-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--lyric-color, #fff);
+  transform-origin: left center;
+  transition: transform 200ms var(--ease-standard);
+}
+
+.maker-status {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.88);
+  font-variant-numeric: tabular-nums;
+}
+
+.maker-stamped {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  font-size: 13px;
+  opacity: 0.72;
+  animation: maker-stamped-in 220ms var(--ease-standard);
+}
+
+.maker-stamped-time {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 11.5px;
+}
+
+.maker-stamped-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes maker-stamped-in {
+  from { opacity: 0; transform: translateY(8px); }
+}
+
+/* Matches .sync-tap / .sync-tap-button so "tap a line" looks and acts as one gesture. */
+.maker-tap {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-height: 68px;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: none;
+  border-radius: 14px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--main-control-bg);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+  outline: none;
+  touch-action: manipulation;
+  transition:
+    transform 120ms var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+.maker-tap:not([aria-disabled="true"]):hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.maker-tap:not([aria-disabled="true"]):active,
+.maker-tap[data-pressed="true"]:not([aria-disabled="true"]) {
+  background: var(--main-control-bg);
+  transform: scale(0.985);
+}
+
+.maker-tap:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--main-focus-ring);
+}
+
+.maker-tap-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--lyric-color, #fff) 24%, transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--lyric-color, #fff) 72%, transparent);
+  pointer-events: none;
+  animation: maker-tap-flash 420ms var(--ease-standard) forwards;
+}
+
+@keyframes maker-tap-flash {
+  from { opacity: 1; transform: scale(0.985); }
+  to { opacity: 0; transform: scale(1); }
+}
+
+.maker-tap-prompt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.maker-tap-prompt svg {
+  color: var(--lyric-color, #fff);
+}
+
+.maker-tap[aria-disabled="true"] .maker-tap-prompt svg {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.maker-tap-line {
+  position: relative;
+  z-index: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: #fff;
+  animation: maker-line-in 180ms var(--ease-standard);
+}
+
+.maker-tap[aria-disabled="true"] .maker-tap-line {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+@keyframes maker-line-in {
+  from { opacity: 0.4; transform: translateY(5px); }
+}
+
+.maker-upcoming {
+  margin: 0;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.56);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lyric-maker .maker-error {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--main-error-text);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyric-maker,
+  .maker-stage,
+  .maker-stamped,
+  .maker-tap-flash,
+  .maker-tap-line {
+    animation: none;
+  }
+
+  .maker-progress-fill,
+  .maker-tap {
+    transition: none;
+  }
+
+  .maker-tap:active,
+  .maker-tap[data-pressed="true"] {
+    transform: none;
+  }
+}
+
+:root[data-low-power="true"] .lyric-maker,
+:root[data-low-power="true"] .maker-stage,
+:root[data-low-power="true"] .maker-stamped,
+:root[data-low-power="true"] .maker-tap-flash,
+:root[data-low-power="true"] .maker-tap-line {
+  animation: none;
+}
+
+:root[data-low-power="true"] .maker-progress-fill,
+:root[data-low-power="true"] .maker-tap {
+  transition: none;
+}

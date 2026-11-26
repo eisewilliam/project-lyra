@@ -1299,6 +1299,8 @@ pub fn run() {
             commands::force_refresh_lyrics,
             commands::list_lyric_candidates,
             commands::choose_lyric_candidate,
+            commands::save_timed_lyrics,
+            commands::publish_timed_lyrics,
             commands::import_lyrics_file,
             commands::reset_lyrics_choice,
             commands::clear_lyrics_cache,

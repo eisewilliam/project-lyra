@@ -38,6 +38,7 @@ export function useLyricsPlayback({
   const [track, setTrack] = useState<TrackRef | null>(null);
   const [lyricsStatus, setLyricsStatus] = useState<RenderSnapshot['lyrics_status']>('Loading');
   const [snapshotReady, setSnapshotReady] = useState(false);
+  const [hasPosition, setHasPosition] = useState(false);
   const [positionMs, setPositionMs] = useState(0);
   const [vocalCountdown, setVocalCountdown] = useState<number | null>(null);
   const [activeLineWords, setActiveLineWords] = useState<LyricWord[]>([]);
@@ -47,6 +48,7 @@ export function useLyricsPlayback({
   const [lyricsOrigin, setLyricsOrigin] = useState<LyricsOrigin>(AUTOMATIC_ORIGIN);
   const seekContext = useRef({ enabled: false, durationMs: 0, offsetMs: 0 });
 
+  const timingClock = useRef({ at: 0, rate: 1, ageMs: 0 });
   const baselineRef = useRef<PositionBaseline>({ ms: 0, at: 0, targetMs: 0, targetAt: 0, blendDur: 1 });
   const lyricsRef = useRef<(HTMLButtonElement | null)[]>([]);
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([]);
@@ -140,11 +142,13 @@ export function useLyricsPlayback({
     setLyricOffsetMs(offsetMs);
     setVocalCountdown(snap.vocal_cue?.seconds ?? null);
 
+    setHasPosition(snap.playback.position_ms !== null);
     const newPos = snap.playback.position_ms ?? 0;
     const now = performance.now();
     const ageMs = playingNow
       ? Math.max(0, Math.min(2000, Date.now() - snap.playback.observed_at_ms))
       : 0;
+    timingClock.current = { at: now, rate: snap.playback.rate, ageMs };
     const correctedPos = newPos + ageMs;
     const currentInterp = interpolatePosition(baselineRef.current, now, playingNow);
     const drift = correctedPos - currentInterp;
@@ -215,6 +219,8 @@ export function useLyricsPlayback({
   }, []);
 
   return {
+    timingClock,
+    hasPosition,
     lyrics,
     plainLyrics,
     activeLine,

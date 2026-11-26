@@ -14,6 +14,7 @@ export function useMainProgressAndWordAnimation({
   pageVisible,
   positionLabelRef,
   progressFillRef,
+  progressTrackRef,
   surfaceVisible,
   wordRefs,
   isDragging,
@@ -25,6 +26,7 @@ export function useMainProgressAndWordAnimation({
   pageVisible: boolean;
   positionLabelRef: RefObject<HTMLSpanElement | null>;
   progressFillRef: RefObject<HTMLDivElement | null>;
+  progressTrackRef?: RefObject<HTMLDivElement | null>;
   surfaceVisible: boolean;
   wordRefs: RefObject<(HTMLSpanElement | null)[]>;
   isDragging: RefObject<boolean>;
@@ -46,6 +48,7 @@ export function useMainProgressAndWordAnimation({
     const updateProgressBar = (pos: number) => {
       if (isDragging.current) return;
       const fill = progressFillRef.current;
+      const track = progressTrackRef?.current;
       const label = positionLabelRef.current;
       if (isPlaying && durationMs > 0 && fill) {
         // 0.1% steps: sub-pixel on any realistic bar width, and an unchanged
@@ -55,6 +58,7 @@ export function useMainProgressAndWordAnimation({
         if (nextTransform !== lastProgressTransform) {
           lastProgressTransform = nextTransform;
           fill.style.transform = nextTransform;
+          track?.style.setProperty('--progress', scale);
         }
       }
       if (isPlaying && label) {
@@ -85,6 +89,7 @@ export function useMainProgressAndWordAnimation({
     pageVisible,
     positionLabelRef,
     progressFillRef,
+    progressTrackRef,
     surfaceVisible,
     isDragging,
   ]);

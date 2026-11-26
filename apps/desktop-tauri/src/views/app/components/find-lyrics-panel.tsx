@@ -3,6 +3,7 @@ import type { LineRef } from '../types';
 import { formatMs } from '../utils';
 
 export function FindLyricsPanel({
+  closing = false,
   lyrics,
   focusRequest,
   plainLyrics,
@@ -10,6 +11,7 @@ export function FindLyricsPanel({
   onSeek,
   onClose,
 }: Readonly<{
+  closing?: boolean;
   lyrics: ReadonlyArray<LineRef>;
   focusRequest: number;
   plainLyrics: string | null;
@@ -35,23 +37,27 @@ export function FindLyricsPanel({
   }, [lines, term]);
 
   useEffect(() => {
+    if (closing) return;
     inputRef.current?.focus();
     inputRef.current?.select();
-  }, [focusRequest]);
+  }, [closing, focusRequest]);
 
   const jumpTo = (index: number, timestamp: number) => {
+    if (closing) return;
     onClose();
     onSeek(index, timestamp);
   };
 
   return (
     <div
-      className="lyrics-find"
+      className={closing ? 'lyrics-find is-closing' : 'lyrics-find'}
       role="search"
       aria-label="Find in lyrics"
+      aria-hidden={closing || undefined}
       onContextMenu={(event) => event.stopPropagation()}
       onWheel={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
+        if (closing) return;
         if (!event.metaKey && !event.ctrlKey) event.stopPropagation();
         if (event.key === 'Escape') {
           event.preventDefault();

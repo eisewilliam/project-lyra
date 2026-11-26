@@ -12,10 +12,12 @@ offered it as an update.
 
 ### Added
 
+- Time plain or pasted lyrics by tapping each line as it starts. Save them for this track on your device, then optionally share them with LRCLIB.
+
 - Choose Lyrics shows the line each match would display at the current
   playback position. Open Preview to read the full lyrics before choosing.
 - Settings → General has opt-in global shortcuts to show or hide Marquee and
-  Karaoke, turn off click-through, and adjust lyric timing from another app.
+  Karaoke, turn off click-through, and adjust lyric sync from another app.
 - Three dots count down to the next vocal line after a long intro or
   instrumental break in the main window, Marquee, and Karaoke.
 - Find a phrase in the current song with Find in Lyrics in the track menu
@@ -31,7 +33,7 @@ offered it as an update.
   moves cleanly in the sidebar. Sliders track the thumb directly, and arrow
   keys move between segmented choices.
 - The artwork and playback controls move smoothly when you open or close
-  Sync Lyrics. Closing a tool opened from Track Actions returns focus to
+  Adjust Sync. Closing a tool opened from Track Actions returns focus to
   that button. Playback buttons respond as soon as you press them.
 - Marquee gives immediate feedback when you press its play button and
   releases it when you start dragging the panel.
@@ -42,11 +44,22 @@ offered it as an update.
 ### Fixed
 
 - The Marquee uses its compact one- or two-line height on Linux.
+- Choose Lyrics marks one match as Showing when several share the same
+  lyrics, so the others stay choosable, and every row lines up whether its
+  preview is open or closed.
+- Sync lyrics shows one main button at a time; Done stays quiet until the
+  lyrics are shared.
 - Settings buttons stay aligned while showing feedback, the Marquee preview
   fits in smaller windows, and switching panes opens them at the top.
+- Lyric errors in the main window tint their message like the Marquee and
+  Karaoke do.
 - On macOS, clicking the player mark or the Marquee artwork brings Spotify
   and Music forward as they were, like every other player, instead of
   jumping to the playing track.
+- Adjust Sync (formerly Adjust Timing) puts Earlier and Later in a column
+  beside the current lyric line, which stays centered even in small windows.
+  Both buttons work with the keyboard. The tool, its menus, and Settings use
+  "sync" throughout.
 - In Settings → Players, buttons on macOS match the pop-up menus, remembered
   players use full-width menus with Forget beside them, and the now-playing
   row's hover no longer runs to its edges.

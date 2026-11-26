@@ -8,9 +8,18 @@ const LABELS: Record<ShortcutFeedback, string> = {
   back: '−5 s',
   next: 'Next',
   previous: 'Previous',
+  'copied-line': 'Copied line',
+  'copied-all': 'Copied lyrics',
 };
 
 function HudIcon({ kind }: Readonly<{ kind: ShortcutFeedback }>) {
+  if (kind === 'copied-line' || kind === 'copied-all') {
+    return (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M5 13l4 4L19 7" />
+      </svg>
+    );
+  }
   if (kind === 'play' || kind === 'pause') {
     // Pause shows the bars, play shows the triangle.
     return <TransportGlyph playing={kind === 'pause'} className="shortcut-hud-glyph" />;

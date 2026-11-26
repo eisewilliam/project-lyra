@@ -46,6 +46,17 @@ export function LyricsPlaceholderIcon({
         );
     }
 
+    if (state === 'unsynced') {
+        return (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                <path d="M4 6h16" />
+                <path d="M4 10h12" />
+                <path d="M4 14h16" />
+                <path d="M4 18h9" />
+            </svg>
+        );
+    }
+
     if (state === 'idle' || state === 'consent') {
         return <MusicNoteIcon className={className} />;
     }

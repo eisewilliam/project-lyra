@@ -19,7 +19,7 @@ export function TransportControls({
   return (
     <div className="transport-controls">
       <button
-        className="btn-icon skip"
+        className="btn-icon skip is-prev"
         aria-label="Previous"
         disabled={!caps.previous}
         onClick={() => onSkip(-1)}
@@ -41,7 +41,7 @@ export function TransportControls({
         </span>
       </button>
       <button
-        className="btn-icon skip"
+        className="btn-icon skip is-next"
         aria-label="Next"
         disabled={!caps.next}
         onClick={() => onSkip(1)}

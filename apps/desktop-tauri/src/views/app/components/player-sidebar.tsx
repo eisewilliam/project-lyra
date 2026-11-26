@@ -30,6 +30,8 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   onChooseLyrics,
   onCloseSyncLyrics,
   onFindLyrics,
+  onShareTimed,
+  makerOpen,
   onMarkNotMusic,
   onNudgeOffset,
   onResetOffset,
@@ -43,6 +45,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   progressTrackRef,
   setPositionMs,
   showDelayControl,
+  skipDirection = 1,
   snapshotReady,
   baselineRef,
   togglePlaying,
@@ -50,6 +53,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   trackActionsRef,
   lyrics,
   onSkip,
+  inert = false,
 }: Readonly<{
   artworkError: boolean;
   artworkSrc: string;
@@ -67,6 +71,8 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   onArtworkError: () => void;
   onChooseLyrics: () => void;
   onCloseSyncLyrics: () => void;
+  makerOpen: boolean;
+  onShareTimed: () => void;
   onFindLyrics: (() => void) | null;
   onMarkNotMusic: () => void;
   onNudgeOffset: (deltaMs: number) => void;
@@ -81,6 +87,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   progressTrackRef: RefObject<HTMLDivElement | null>;
   setPositionMs: React.Dispatch<React.SetStateAction<number>>;
   showDelayControl: boolean;
+  skipDirection?: SkipDirection;
   snapshotReady: boolean;
   baselineRef: RefObject<PositionBaseline>;
   togglePlaying: () => void;
@@ -89,6 +96,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   /** Lyric lines for the progress bar's scrub preview. */
   lyrics: LineRef[];
   onSkip: (direction: SkipDirection) => void;
+  inert?: boolean;
 }>) {
   // Track changes crossfade the cover once the new one has decoded.
   const art = useCrossfadeSrc(artworkSrc);
@@ -125,7 +133,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
   }, [showDelayControl]);
 
   return (
-    <section ref={sidebarRef} className="player-sidebar">
+    <section ref={sidebarRef} className="player-sidebar" inert={inert || undefined}>
       <div className="drag-region" data-tauri-drag-region />
 
       <div className="album-art-large">
@@ -179,6 +187,8 @@ export const PlayerSidebar = memo(function PlayerSidebar({
             lyricsOrigin={lyricsOrigin}
             onAddLyricsFile={onAddLyricsFile}
             onChooseLyrics={onChooseLyrics}
+            makerOpen={makerOpen}
+            onShareTimed={onShareTimed}
             onFindLyrics={onFindLyrics}
             onMarkNotMusic={onMarkNotMusic}
             onRetryLyrics={onRetryLyrics}
@@ -189,6 +199,7 @@ export const PlayerSidebar = memo(function PlayerSidebar({
               onSyncLyrics();
             }}
             onUseAutomaticLyrics={onUseAutomaticLyrics}
+            skipDirection={skipDirection}
             snapshotReady={snapshotReady}
             track={track}
             trackActionsRef={trackActionsRef}

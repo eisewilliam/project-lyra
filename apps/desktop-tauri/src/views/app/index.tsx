@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { AmbientBackground } from './components/ambient-background';
 import { ChooseLyricsPanel } from './components/choose-lyrics-panel';
+import { LyricMaker } from './components/lyric-maker';
 import { FindLyricsPanel } from './components/find-lyrics-panel';
 import { VocalCountdown } from '@/components/vocal-countdown';
 import { FirstRunCard } from './components/first-run-card';
@@ -26,6 +27,7 @@ import {
 import { applyHostOsDataset, detectHostOs } from '@/utils/os';
 import { usePageVisible } from '@/utils/use-page-visible';
 import { useArtworkFallback } from '@/hooks/use-artwork-fallback';
+import { useExitPresence } from '@/hooks/use-exit-presence';
 import { useSurfaceAutoHide } from '@/hooks/use-surface-auto-hide';
 import { useSurfaceSettings } from '@/hooks/use-surface-settings';
 import { makeWindowReady } from '@/utils/playback-sync';
@@ -44,7 +46,9 @@ import {
 } from '@/utils/tauri-commands';
 import type { BrowserLyrics } from '@/types/tauri-contracts';
 import { TRANSPARENT_FALLBACK_ART } from '@/utils/artwork';
-import { noop } from './utils';
+import type { TrackRef } from '@/types/tauri-contracts';
+import { noop, pulseProgressTrack } from './utils';
+import { SyncNudge } from './components/sync-nudge';
 import './app.css';
 
 const hostOs = detectHostOs();
@@ -82,6 +86,8 @@ function App() {
     lyricsStatus,
     lyricsOrigin,
     snapshotReady,
+    hasPosition,
+    timingClock,
     positionMs,
     setPositionMs,
     activeLineWords,
@@ -108,7 +114,9 @@ function App() {
   const [automationDenied, setAutomationDenied] = useState<string[]>([]);
   const [syncTrackUri, setSyncTrackUri] = useState<string | null>(null);
   // The track the lyrics chooser was opened for; it closes when that track
-  // stops playing.
+  // stops playing, unless the user has unsaved timing work in LyricMaker.
+  const [maker, setMaker] = useState<{ track: TrackRef; plain: string; saved: boolean } | null>(null);
+  const [makerDirty, setMakerDirty] = useState(false);
   const [chooserUri, setChooserUri] = useState<string | null>(null);
   const [finderUri, setFinderUri] = useState<string | null>(null);
   const [finderFocus, setFinderFocus] = useState(0);
@@ -125,6 +133,7 @@ function App() {
   const autoHiddenRef = useRef(false);
 
   const trackUri = track?.uri ?? '';
+  if (maker && maker.track.uri !== trackUri && !makerDirty) setMaker(null);
   if (syncTrackUri !== null && (syncTrackUri !== trackUri || lyricsStatus !== 'Ready')) setSyncTrackUri(null);
   if (chooserUri !== null && chooserUri !== trackUri) setChooserUri(null);
   const chooserOpen = chooserUri === trackUri;
@@ -148,7 +157,17 @@ function App() {
       }
     });
   }, []);
+  const openMaker = (saved: boolean, opener?: HTMLElement) => {
+    if (!track) return;
+    rememberLyricsPanelOpener(saved ? trackActionsRef.current : opener);
+    setSyncTrackUri(null);
+    setChooserUri(null);
+    setFinderUri(null);
+    setMakerDirty(false);
+    setMaker({ track, plain: plainLyrics ?? '', saved });
+  };
   const openFinder = useCallback((opener?: HTMLElement | null) => {
+    setMaker(null);
     if (finderUri !== trackUri) rememberLyricsPanelOpener(opener);
     setSyncTrackUri(null);
     setChooserUri(null);
@@ -196,7 +215,7 @@ function App() {
     setSurfaceVisible,
   });
 
-  const { paintRange, isBrowsing, returnToCurrent } = useMainLyricReel({
+  const { paintRange, isBrowsing, returnToCurrent, scrollToLine } = useMainLyricReel({
     activeLine,
     karaokeMode,
     lyricsCount: chooserOpen ? 0 : lyrics.length,
@@ -208,15 +227,18 @@ function App() {
     trackUri,
   });
 
-  const { skip, markSkip, switching } = useTrackSkip({
+  const { skip, markSkip, switching, skipDirection } = useTrackSkip({
     trackUri,
     isPlaying,
     baselineRef,
   });
   const { hud, show: showShortcutHud } = useShortcutHud();
+  const handleSeekPulse = useCallback(() => {
+    pulseProgressTrack(progressTrackRef.current);
+  }, [progressTrackRef]);
 
   useMainKeyboardShortcuts({
-    track,
+    track: maker ? null : track,
     caps,
     isPlaying,
     togglePlaying,
@@ -224,7 +246,8 @@ function App() {
     setPositionMs,
     onSkip: skip,
     onFeedback: showShortcutHud,
-    onFind: canFind && chooserUri === null && onboarded ? openFinder : null,
+    onSeekPulse: handleSeekPulse,
+    onFind: !maker && canFind && chooserUri === null && onboarded ? openFinder : null,
   });
 
   // Skips sent from the macOS menu bar (⌘←/⌘→, Playback menu) or the
@@ -253,11 +276,29 @@ function App() {
     seekToLine(index, ts);
   }, [returnToCurrent, seekToLine]);
 
+  const handleLineCopied = useCallback((kind: 'copied-line' | 'copied-all', lineIndex: number | null) => {
+    showShortcutHud(kind);
+    if (lineIndex === null) return;
+    if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const lineEl = lyricsRef.current[lineIndex];
+    if (!lineEl) return;
+    lineEl.getAnimations().forEach((a) => a.cancel());
+    lineEl.animate(
+      [
+        { opacity: '1', filter: 'brightness(1.35)' },
+        { opacity: '0.88', filter: 'brightness(1)', offset: 0.45 },
+        { opacity: '1', filter: 'brightness(1)' },
+      ],
+      { duration: 320, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
+    );
+  }, [lyricsRef, showShortcutHud]);
+
   const openLineMenu = useLineMenu({
     lyrics: syncedLyrics,
     plainLyrics,
     canSeek: caps.seek,
     seekToLine: seekFromLine,
+    onCopied: handleLineCopied,
   });
 
   useMainProgressAndWordAnimation({
@@ -268,6 +309,7 @@ function App() {
     pageVisible,
     positionLabelRef,
     progressFillRef,
+    progressTrackRef,
     surfaceVisible,
     wordRefs,
     isDragging,
@@ -342,6 +384,7 @@ function App() {
     setSyncTrackUri(null);
     setFinderUri(null);
     returnToCurrent();
+    setMaker(null);
     setChooserUri(trackUri);
   }, [rememberLyricsPanelOpener, returnToCurrent, trackUri]);
   const openChooserFromTrack = useCallback(() => openChooser(trackActionsRef.current), [openChooser]);
@@ -353,6 +396,7 @@ function App() {
   const openSyncLyrics = useCallback(() => {
     setChooserUri(null);
     setFinderUri(null);
+    setMaker(null);
     setSyncTrackUri(trackUri);
   }, [trackUri]);
 
@@ -378,8 +422,15 @@ function App() {
 
   const allowBrowserLyrics = useCallback(() => setBrowserLyrics('Allow'), []);
 
-  const chooser = chooserOpen && track ? (
+  const chooserPresence = useExitPresence(chooserOpen && Boolean(track) && !maker, 130);
+  const finderOpen = canFind && finderUri === trackUri;
+  const finderPresence = useExitPresence(finderOpen, 130);
+  const firstRunPresence = useExitPresence(isMac && !onboarded, 140);
+  const modalBlocksBackground = firstRunPresence.mounted && !firstRunPresence.closing;
+
+  const chooser = chooserPresence.mounted && track ? (
     <ChooseLyricsPanel
+      closing={chooserPresence.closing}
       trackKey={track.uri}
       trackTitle={track.title}
       trackArtist={track.artist}
@@ -410,6 +461,8 @@ function App() {
       .catch(noop);
   }, []);
 
+  const syncing = syncTrackUri === trackUri && lyricsStatus === 'Ready';
+
   return (
     <main className="lyra-window">
       {drawsWindowControls && <WindowControls />}
@@ -437,7 +490,9 @@ function App() {
         onArtworkError={handleArtworkError}
         onChooseLyrics={openChooserFromTrack}
         onCloseSyncLyrics={closeSyncLyrics}
-        onFindLyrics={canFind ? openFinderFromTrack : null}
+        makerOpen={!!maker}
+        onShareTimed={() => openMaker(true)}
+        onFindLyrics={!maker && canFind ? openFinderFromTrack : null}
         onNudgeOffset={nudgeOffset}
         onResetOffset={resetOffset}
         onRetryLyrics={retryLyrics}
@@ -451,12 +506,14 @@ function App() {
         togglePlaying={togglePlaying}
         onMarkNotMusic={markNotMusic}
         setPositionMs={setPositionMs}
-        showDelayControl={syncTrackUri === trackUri && lyricsStatus === 'Ready'}
+        showDelayControl={syncing}
+        skipDirection={skipDirection}
         snapshotReady={snapshotReady}
         track={track}
         trackActionsRef={trackActionsRef}
         lyrics={syncedLyrics}
         onSkip={skip}
+        inert={modalBlocksBackground}
       />
 
       <MainLyricsPane
@@ -478,15 +535,21 @@ function App() {
         screenEdgeMotion={screenEdgeMotion}
         {...(canRetry ? { onRetryLyrics: retryLyrics } : {})}
         seekToLine={seekFromLine}
+        canSeek={caps.seek}
+        onScrollToLine={scrollToLine}
+        inert={modalBlocksBackground}
         wordRefs={wordRefs}
         isBrowsing={isBrowsing}
         onReturnToCurrent={returnToCurrent}
         switching={switching}
         onLineMenu={openLineMenu}
         automationDenied={automationDenied}
+        syncRail={syncing && <SyncNudge lyricOffsetMs={lyricOffsetMs} onNudgeOffset={nudgeOffset} />}
         vocalCue={vocalCountdown !== null && <div className="lyrics-vocal-cue"><VocalCountdown seconds={vocalCountdown} /></div>}
-        finder={canFind && finderUri === trackUri && (
+        finderActive={finderOpen}
+        finder={finderPresence.mounted && (
           <FindLyricsPanel
+            closing={finderPresence.closing}
             focusRequest={finderFocus}
             lyrics={syncedLyrics}
             plainLyrics={lyricsStatus === 'Unsynced' ? plainLyrics : null}
@@ -497,11 +560,20 @@ function App() {
         )}
         onOpenAutomationSettings={openPrivacySettings}
         {...(hasTrack ? { onChooseLyrics: openChooser, onAddLyricsFile: addLyricsFile } : {})}
-        {...(chooser ? { chooser } : {})}
+        {...(track && (lyricsViewState === 'empty' || lyricsViewState === 'error' || (lyricsViewState === 'unsynced' && plainLyrics))
+          ? { onTimeLyrics: (opener: HTMLButtonElement) => openMaker(false, opener) } : {})}
+        {...(maker ? { chooser: (
+          <LyricMaker key={maker.track.uri} track={maker.track} trackMatches={trackUri === maker.track.uri}
+            plain={maker.plain} alreadySaved={maker.saved} playing={isPlaying} hasPosition={hasPosition}
+            baseline={baselineRef} timingClock={timingClock} onDirtyChange={setMakerDirty}
+            onClose={() => { setMakerDirty(false); setMaker(null); restoreLyricsPanelFocus(); }} />
+        ) } : chooser ? { chooser } : {})}
       />
 
       <ShortcutHud hud={hud} />
-      {isMac && !onboarded && <FirstRunCard onContinue={finishOnboarding} />}
+      {firstRunPresence.mounted && (
+        <FirstRunCard closing={firstRunPresence.closing} onContinue={finishOnboarding} />
+      )}
     </main>
   );
 }

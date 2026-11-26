@@ -425,9 +425,14 @@ pub enum LyricsOrigin {
     #[default]
     Automatic,
     /// Another provider match the user chose instead.
-    Picked { id: Option<i64> },
+    Picked {
+        id: Option<i64>,
+    },
+    Timed,
     /// A lyrics file the user added.
-    Imported { name: Option<String> },
+    Imported {
+        name: Option<String>,
+    },
 }
 
 impl LyricsOrigin {
